@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { dueChoices } from '../../../shared/due-choices.ts';
+import { canDeferToTomorrow, dueChoices } from '../../../shared/due-choices.ts';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
@@ -667,6 +667,14 @@ export function TodoRow({
         onSelect: () => bridge.update(todo.id, { important: !todo.important }),
       },
     ];
+    // 마감 바꾸기 메뉴의 "내일"과 같은 날. 미래 마감, 반복, 이미 내일인 것은 뺀다
+    const tomorrow = dueChoices(today).find((c) => c.key === 'tomorrow')?.day;
+    if (tomorrow && todo.due !== tomorrow && canDeferToTomorrow(todo, today))
+      items.push({
+        key: 'postpone',
+        label: t('rows.postpone'),
+        onSelect: () => bridge.update(todo.id, { due: tomorrow }),
+      });
     if (!lean) {
       items.push(
         { key: 'due', label: t('rows.due'), onSelect: openDue },

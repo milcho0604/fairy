@@ -124,7 +124,7 @@ export const ko = {
   'panel.today.next': '다음 할 일',
   'panel.today.nextFocus': '이거 {n}분 집중',
   'panel.today.nextPrepare': '{time}에 시작해. 미리 준비하자',
-  'panel.today.stop': '그만',
+  'panel.today.stop': '집중 그만하기',
   'panel.today.focusUndo': '방금 멈춘 집중 되돌리기',
   'panel.today.events': '오늘 일정',
   'panel.today.colPlan': '할 것',
@@ -165,6 +165,10 @@ export const ko = {
   'panel.note.pickOne': '왼쪽에서 메모를 고르거나 "새 메모"를 눌러.',
   'panel.note.toTodos': '할 일로 쪼개기',
   'panel.note.summary': '요약',
+  'panel.note.toTodosHint': (v: { ai: string }) =>
+    `메모를 할 일 목록으로 나눠 줘 (${v.ai ? withParticle(v.ai, '으로') : 'AI로'} 보내)`,
+  'panel.note.summaryHint': (v: { ai: string }) =>
+    `메모를 세 줄 안으로 줄여 줘 (${v.ai ? withParticle(v.ai, '으로') : 'AI로'} 보내)`,
   'panel.note.polish': '다듬기',
   'panel.note.polishHint': (v: { ai: string }) =>
     `AI가 쓴 티를 걷고 자연스럽게 (${v.ai ? withParticle(v.ai, '으로') : 'AI로'} 보내). 일부를 고르면 그 부분만, 4,000자까지`,
@@ -369,7 +373,7 @@ export const en: Translation<typeof ko> = {
   'panel.today.next': 'Up next',
   'panel.today.nextFocus': 'Focus {n} min on this',
   'panel.today.nextPrepare': 'Starts at {time}. Time to get ready',
-  'panel.today.stop': 'Stop',
+  'panel.today.stop': 'Stop focusing',
   'panel.today.focusUndo': 'Undo stopping focus',
   'panel.today.events': "Today's events",
   'panel.today.colPlan': 'To do',
@@ -411,6 +415,10 @@ export const en: Translation<typeof ko> = {
   'panel.note.pickOne': 'Pick a note on the left, or press "New note".',
   'panel.note.toTodos': 'Make to-dos',
   'panel.note.summary': 'Summarize',
+  'panel.note.toTodosHint': (v: { ai: string }) =>
+    `Splits the note into a to-do list (sent to ${v.ai || 'AI'})`,
+  'panel.note.summaryHint': (v: { ai: string }) =>
+    `Shortens the note to three lines or fewer (sent to ${v.ai || 'AI'})`,
   'panel.note.polish': 'Polish',
   'panel.note.polishHint': (v: { ai: string }) =>
     `Makes AI-written text read naturally (sent to ${v.ai || 'AI'}). Select part of it to polish just that, up to 4,000 characters`,

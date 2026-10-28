@@ -16,6 +16,8 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
   const [items, setItems] = useState<TrashRecord[]>([]);
   const [kind, setKind] = useState<TrashKind | 'all'>('all');
   const [confirmAll, setConfirmAll] = useState(false);
+  // 영구 삭제를 한 번 더 물어보는 항목
+  const [confirmOne, setConfirmOne] = useState<TrashRecord | null>(null);
   const [note, setNote] = useState('');
   const alive = useRef(true);
   useEffect(() => {
@@ -48,6 +50,7 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
   };
   const purge = async (item: TrashRecord) => {
     await bridge.trashPurge(item.kind, item.id);
+    setConfirmOne(null);
     setNote('');
     await load();
   };
@@ -68,6 +71,7 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
         onClick={() => {
           setOpen((v) => !v);
           setConfirmAll(false);
+          setConfirmOne(null);
           setNote('');
         }}
       >
@@ -83,9 +87,12 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
                 type="button"
                 className="link"
                 aria-pressed={kind === k}
-                onClick={() => setKind(k)}
+                onClick={() => {
+                  setKind(k);
+                  setConfirmOne(null);
+                }}
               >
-                {k === 'all' ? t('records.trash.title') : t(`records.trash.${k}`)}
+                {t(`records.trash.${k}`)}
               </button>
             ))}
           </div>
@@ -128,7 +135,10 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
                       type="button"
                       className="link danger"
                       aria-label={t('records.trash.purgeOf', { title: item.title })}
-                      onClick={() => void purge(item)}
+                      onClick={() => {
+                        setConfirmAll(false);
+                        setConfirmOne(item);
+                      }}
                     >
                       {t('records.trash.purge')}
                     </button>
@@ -136,6 +146,25 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
                 </li>
               ))}
             </ul>
+          )}
+          {confirmOne && (
+            <div
+              className="trash-confirm trash-confirm-one"
+              role="alertdialog"
+              aria-label={t('records.trash.purgeOf', { title: confirmOne.title })}
+            >
+              <small>
+                {t('records.trash.confirmOne', { title: confirmOne.title || t('records.trash.event') })}
+              </small>
+              <span className="trash-actions">
+                <button type="button" className="link danger" onClick={() => void purge(confirmOne)}>
+                  {t('records.trash.confirmYes')}
+                </button>
+                <button type="button" className="link" onClick={() => setConfirmOne(null)}>
+                  {t('records.trash.confirmNo')}
+                </button>
+              </span>
+            </div>
           )}
           {visible.length > 0 &&
             (confirmAll ? (
@@ -154,7 +183,10 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
               <button
                 type="button"
                 className="link danger trash-empty-all"
-                onClick={() => setConfirmAll(true)}
+                onClick={() => {
+                  setConfirmOne(null);
+                  setConfirmAll(true);
+                }}
               >
                 {t('records.trash.emptyAll')}
               </button>

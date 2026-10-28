@@ -306,6 +306,7 @@ const body = async () => {
   const itemText = await p.ev(`document.querySelector('.trash-item')?.innerText ?? ''`);
   check('휴지통에 지운 할 일과 남은 날(30일)이 보임', itemText.includes(tx('둘', 'two')) && /30/.test(itemText), itemText.replace(/\n/g, ' / '));
   await p.shots('trash-open', `document.querySelector('.panel')`);
+  check('휴지통 걸러 보기 첫 링크는 "전체" (제목과 이름이 겹치지 않음)', (await p.ev(`document.querySelector('.trash-body > .trash-actions .link')?.innerText.trim()`)) === tx('전체', 'All'));
 
   // 되살리기
   await p.click(`document.querySelector('.trash-item button.link:not(.danger)')`);
@@ -341,6 +342,9 @@ const body = async () => {
   await setTrash(true);
   await p.until(() => p.ev(`!!document.querySelector('.trash-item')`));
   await p.click(`document.querySelector('.trash-item button.link.danger')`);
+  check('영구 삭제: 확인 문구가 먼저 나옴', await p.until(() => p.ev(`!!document.querySelector('.trash-confirm-one')`)));
+  check('확인 전에는 아직 지워지지 않음 (낱개)', (await main('__jj.store.trashCount()')) === 1);
+  await p.click(`document.querySelector('.trash-confirm-one button.danger')`);
   await p.until(async () => (await main('__jj.store.trashCount()')) === 0);
   check('영구 삭제: 휴지통이 비고 되살릴 수 없음', (await main('__jj.store.trashCount()')) === 0);
   check('영구 삭제해도 코인 그대로', (await balance()) === coinsAfterDone);

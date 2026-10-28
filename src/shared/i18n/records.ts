@@ -14,6 +14,7 @@ export const ko = {
   'records.trash.restoreOf': (v: { title: string }) => `${v.title} 되살리기`,
   'records.trash.purge': '영구 삭제',
   'records.trash.purgeOf': (v: { title: string }) => `${v.title} 영구 삭제`,
+  'records.trash.confirmOne': (v: { title: string }) => `"${v.title}" 영구 삭제할까? 되돌릴 수 없어.`,
   'records.trash.emptyAll': '휴지통 비우기',
   'records.trash.confirmAll': (v: { n: number }) => `${v.n}개를 영구 삭제할까? 되돌릴 수 없어.`,
   'records.trash.confirmYes': '영구 삭제',
@@ -21,6 +22,7 @@ export const ko = {
   'records.trash.restored': (v: { title: string }) => `"${v.title}" 되살렸어.`,
   'records.trash.gone': '이미 없는 할 일이야.',
   'records.trash.dup': '같은 반복 할 일이 이미 열려 있어서 되살리지 않았어. 필요 없으면 영구 삭제해 줘.',
+  'records.trash.all': '전체',
   'records.trash.todo': '할 일',
   'records.trash.note': '메모',
   'records.trash.event': '일정',
@@ -108,6 +110,7 @@ export const en: Translation<typeof ko> = {
   'records.trash.restoreOf': (v: { title: string }) => `Restore ${v.title}`,
   'records.trash.purge': 'Delete forever',
   'records.trash.purgeOf': (v: { title: string }) => `Delete ${v.title} forever`,
+  'records.trash.confirmOne': (v: { title: string }) => `Delete "${v.title}" forever? This cannot be undone.`,
   'records.trash.emptyAll': 'Empty trash',
   'records.trash.confirmAll': (v: { n: number }) =>
     `Delete ${v.n} ${v.n === 1 ? 'item' : 'items'} forever? This cannot be undone.`,
@@ -117,6 +120,7 @@ export const en: Translation<typeof ko> = {
   'records.trash.gone': 'That to-do is already gone.',
   'records.trash.dup':
     'The same repeating to-do is already open, so this one was not restored. Delete it forever if you do not need it.',
+  'records.trash.all': 'All',
   'records.trash.todo': 'To-dos',
   'records.trash.note': 'Notes',
   'records.trash.event': 'Events',
