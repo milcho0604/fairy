@@ -13,7 +13,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'sha256-+tj8IgE9g/UuXOrcff+1AOb+qUfxTv2acf7WGqnGmjE=' 'sha256-KwAazJA3s/sLXTirzmL+bfx4gYRPOVnSd5bAh4ClqkU=' 'sha256-ZvxoLfb4mNsiXhmze3tM/0DlH7GZz3Uv4uhbtPtlnlI='; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'sha256-2h0glnKNfFYFnJ8i7oiXKz9s13gqFbTaNfQlmcRDo94=' 'sha256-IX5NCf1xH93aFvfiVIM8pKCnqDsVqHF+lqt6dopwILo=' 'sha256-Ir5IABQTYF+Sb9XoXTVYShihtTzMkLE0QSS5l4QrhHw='; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
         },
         {
           "key": "Referrer-Policy",
