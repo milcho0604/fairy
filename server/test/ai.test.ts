@@ -570,6 +570,20 @@ describe('질문 하나', () => {
     assert.equal(await tickets(a.session), AI_GIFT);
   });
 
+  test('사용량을 한 번도 못 받고 끊기면 비용을 0 으로 덮지 않고 예약금을 남기며 이용권은 돌려준다', async () => {
+    const a = await adult();
+    const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[slow]] 비용') });
+    assert.equal(r.status, 504, r.text);
+    const u = await pool.query<{ status: string; cost_micros: string; input_tokens: number }>(
+      'SELECT status, cost_micros, input_tokens FROM ai_usage WHERE account_id = $1',
+      [await accountOf(a.session)],
+    );
+    const reserve = reserveMicros(ai.model, ask('[[slow]] 비용') as never);
+    assert.ok(reserve > 0);
+    assert.deepEqual(u.rows, [{ status: 'refunded', cost_micros: String(reserve), input_tokens: 0 }]);
+    assert.equal(await tickets(a.session), AI_GIFT);
+  });
+
   test('앱이 답을 받기 전에 끊으면 업스트림도 멈추고 되돌린다', async () => {
     const a = await adult();
     await tickets(a.session);

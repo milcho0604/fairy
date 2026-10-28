@@ -44,7 +44,13 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
     setNote(
       res === 'ok'
         ? t('records.trash.restored', { title: item.title })
-        : t(res === 'dup' ? 'records.trash.dup' : 'records.trash.gone'),
+        : t(
+            res === 'dup'
+              ? item.kind === 'event'
+                ? 'records.trash.dupEvent'
+                : 'records.trash.dup'
+              : 'records.trash.gone',
+          ),
     );
     await load();
   };
