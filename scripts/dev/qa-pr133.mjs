@@ -371,6 +371,7 @@ const body = async () => {
   await setTrash(true);
   await p.until(() => p.ev(`!!(${trashItem(C)})`));
   await p.click(`${trashItem(C)}.querySelector('button.link.danger')`);
+  await p.click(`document.querySelector('.trash-confirm-one button.danger')`);
   check('영구 삭제: 휴지통에서 사라지고 DB 줄도 없음', await p.until(async () => !(await p.ev(`!!(${trashItem(C)})`)) && sql(`select count(*) from todo where id = ${cId}`) === '0'));
   check('영구 삭제해도 잔액 그대로', (await balance()) === coins1);
 
@@ -390,6 +391,7 @@ const body = async () => {
   await setTrash(true);
   await p.until(() => p.ev(`!!(${trashItem(D)})`));
   await p.click(`${trashItem(D)}.querySelector('button.link.danger')`);
+  await p.click(`document.querySelector('.trash-confirm-one button.danger')`);
   await p.until(() => sql(`select count(*) from todo where id = ${dId}`) === '0');
   await setTrash(false);
   const E = tx('새 할 일', 'New todo');

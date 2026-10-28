@@ -294,7 +294,11 @@ export function SettingsApp() {
       return snap.settings;
     }
     setSnap((v) => v && { ...v, settings: next });
-    flash(message);
+    // 언어를 바꾸면 화면이 새 말로 다시 그려진다. 옛 말로 만든 안내가 남지 않게 숨긴다
+    if (patch.lang !== undefined) {
+      clearTimeout(flashTimer.current);
+      setSaved('');
+    } else flash(message);
     return next;
   };
 

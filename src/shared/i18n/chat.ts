@@ -37,7 +37,7 @@ export const ko = {
   'chat.ephemeralUnsupported': (v: { label: string }) =>
     `${withParticle(v.label, '은')} 기록 안 남기기를 지원하지 않아. Claude나 Codex에서 돼.`,
   'chat.ephemeralTitle': 'AI 쪽에도 이 대화를 저장하지 않아. 켜고 끄면 새 대화로 시작해.',
-  'chat.ephemeral': '기록 안 남김',
+  'chat.ephemeral': '이 대화는 기록하지 않기',
   'chat.attach': '그림 붙이기',
   'chat.placeholder': (v: { name: string }) => `${v.name}에게 물어보기`,
   'chat.inputTitle': 'Enter로 보내고, Shift+Enter로 줄을 바꿔',
@@ -184,7 +184,7 @@ export const en: Translation<typeof ko> = {
   'chat.knowsTodos': 'Share my to-dos',
   'chat.ephemeralUnsupported': (v) => `${v.label} can't skip saving history. Claude and Codex can.`,
   'chat.ephemeralTitle': "The AI won't save this chat either. Turning it on or off starts a new chat.",
-  'chat.ephemeral': "Don't save",
+  'chat.ephemeral': "Don't save this chat",
   'chat.attach': 'Attach image',
   'chat.placeholder': (v) => `Ask ${v.name}`,
   'chat.inputTitle': 'Enter to send, Shift+Enter for a new line',

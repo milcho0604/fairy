@@ -16,10 +16,10 @@ const key = (
   ...mods,
 });
 
-test('구역 순서: 오늘, 할 일, 일정, 메모, 채팅, 상점, 기록, 친구', () => {
+test('구역 순서: 오늘, 할 일, 메모, 일정, 채팅, 상점, 기록, 친구', () => {
   assert.deepEqual(
     HOME_SECTIONS.map((s) => s.id),
-    ['today', 'todo', 'event', 'note', 'chat', 'shop', 'records', 'friends'],
+    ['today', 'todo', 'note', 'event', 'chat', 'shop', 'records', 'friends'],
   );
 });
 
@@ -45,7 +45,7 @@ test('따로 창을 여는 구역은 친구뿐, 채팅은 창 안에 품는다',
 
 test('Cmd+1~7 (친구 꺼짐), Cmd+8 은 친구가 켜졌을 때만', () => {
   assert.equal(sectionForKey(key('Digit1', '1', { metaKey: true }), true, false)?.id, 'today');
-  assert.equal(sectionForKey(key('Digit3', '3', { metaKey: true }), true, false)?.id, 'event');
+  assert.equal(sectionForKey(key('Digit3', '3', { metaKey: true }), true, false)?.id, 'note');
   assert.equal(sectionForKey(key('Digit5', '5', { metaKey: true }), true, false)?.id, 'chat');
   assert.equal(sectionForKey(key('Digit6', '6', { metaKey: true }), true, false)?.id, 'shop');
   assert.equal(sectionForKey(key('Digit7', '7', { metaKey: true }), true, false)?.id, 'records');
@@ -61,7 +61,7 @@ test('윈도우는 Ctrl, 맥에서 Ctrl 이나 Shift, Option 이 섞이면 아�
 });
 
 test('한글 입력 중에도 code 로 읽는다', () => {
-  assert.equal(sectionForKey(key('Digit4', 'ㅋ', { metaKey: true }), true, false)?.id, 'note');
+  assert.equal(sectionForKey(key('Digit4', 'ㅋ', { metaKey: true }), true, false)?.id, 'event');
 });
 
 test('구역 풀이 단축키는 보이는 순서를 따른다', () => {

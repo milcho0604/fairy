@@ -667,6 +667,14 @@ export function TodoRow({
         onSelect: () => bridge.update(todo.id, { important: !todo.important }),
       },
     ];
+    // 마감 바꾸기 메뉴의 "내일"과 같은 날. 이미 내일이면 뺀다
+    const tomorrow = dueChoices(today).find((c) => c.key === 'tomorrow')?.day;
+    if (tomorrow && todo.due !== tomorrow)
+      items.push({
+        key: 'postpone',
+        label: t('rows.postpone'),
+        onSelect: () => bridge.update(todo.id, { due: tomorrow }),
+      });
     if (!lean) {
       items.push(
         { key: 'due', label: t('rows.due'), onSelect: openDue },

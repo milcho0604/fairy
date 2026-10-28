@@ -1446,7 +1446,7 @@ const body = async () => {
   const navNames = await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
   check(
     '사이드바 구역 순서 (친구는 꺼져 있으면 없음)',
-    navNames === tx('오늘|할 일|일정|메모|채팅|상점|기록', 'Today|To-dos|Events|Notes|Chat|Shop|Records'),
+    navNames === tx('오늘|할 일|메모|일정|채팅|상점|기록', 'Today|To-dos|Notes|Events|Chat|Shop|Records'),
     navNames,
   );
   check('사이드바 머리: 이름, 코인, 배부름 줄', await h.ev(`!!document.querySelector('.home-head strong') && !!document.querySelector('.home-head .coins') && !!document.querySelector('.home-fullness .track')`));
@@ -1458,8 +1458,8 @@ const body = async () => {
   for (const [id, label] of [
     ['today', 'today'],
     ['todo', 'todo'],
-    ['event', 'event'],
     ['note', 'note'],
+    ['event', 'event'],
     ['shop', 'shop'],
     ['records', 'records'],
   ]) {
@@ -1472,7 +1472,10 @@ const body = async () => {
   check('Cmd+2 는 할 일', (await sectionNow(h)) === 'ptab-todo');
   await h.ev(keyEvent({ ...mod, key: '3', code: 'Digit3' }));
   await sleep(300);
-  check('Cmd+3 은 일정', (await sectionNow(h)) === 'ptab-event');
+  check('Cmd+3 은 메모 (작은 패널과 같은 순서)', (await sectionNow(h)) === 'ptab-note');
+  await h.ev(keyEvent({ ...mod, key: '4', code: 'Digit4' }));
+  await sleep(300);
+  check('Cmd+4 는 일정', (await sectionNow(h)) === 'ptab-event');
   await h.ev(keyEvent({ ...mod, key: '6', code: 'Digit6' }));
   await sleep(300);
   check('Cmd+6 은 상점', (await sectionNow(h)) === 'ptab-shop');

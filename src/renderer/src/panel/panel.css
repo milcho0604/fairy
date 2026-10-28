@@ -2403,3 +2403,8 @@ li:is(.todo, .event) .tools .extra .due.none {
     animation: none;
   }
 }
+
+/* 일정 줄: 제목과 반복 뱃지가 붙어 보이지 않게 */
+.title > .repeat-badge {
+  margin-inline-start: 6px;
+}

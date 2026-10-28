@@ -685,10 +685,22 @@ function NoteEditor({
           ‹ {t('panel.note.back')}
         </button>
         <span className="note-ai">
-          <button type="button" className="link" disabled={!body.trim()} onClick={() => askAi('todos')}>
+          <button
+            type="button"
+            className="link"
+            title={t('panel.note.toTodosHint', { ai: aiName })}
+            disabled={!body.trim()}
+            onClick={() => askAi('todos')}
+          >
             {t('panel.note.toTodos')}
           </button>
-          <button type="button" className="link" disabled={!body.trim()} onClick={() => askAi('summary')}>
+          <button
+            type="button"
+            className="link"
+            title={t('panel.note.summaryHint', { ai: aiName })}
+            disabled={!body.trim()}
+            onClick={() => askAi('summary')}
+          >
             {t('panel.note.summary')}
           </button>
           <button
