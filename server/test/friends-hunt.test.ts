@@ -208,15 +208,20 @@ describe('마이그레이션 0006 이 0007, 0008 뒤에', () => {
         'CREATE TABLE _migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())',
       );
       for (const f of (await readdir(dir)).filter((x) => x.endsWith('.sql')).sort()) {
-        if (f.startsWith('0006')) continue;
+        // 0016 은 0006 의 친구 표에 칸을 더하므로 0006 과 함께 migrate 가 적용한다
+        if (f.startsWith('0006') || f.startsWith('0016')) continue;
         await c.query(await readFile(join(dir, f), 'utf8'));
         await c.query('INSERT INTO _migrations (name) VALUES ($1)', [f]);
       }
       await runMigrations(p.databaseUrl);
       const r = await c.query(`SELECT name FROM _migrations WHERE name LIKE '0006%'`);
       assert.equal(r.rowCount, 1);
-      const t = await c.query(`SELECT to_regclass('friend') AS t, to_regclass('busy_block') AS b`);
-      assert.ok(t.rows[0].t && t.rows[0].b);
+      const later = await c.query(`SELECT name FROM _migrations WHERE name LIKE '0016%'`);
+      assert.equal(later.rowCount, 1);
+      const t = await c.query(
+        `SELECT to_regclass('friend') AS t, to_regclass('busy_block') AS b, to_regclass('busy_title') AS bt`,
+      );
+      assert.ok(t.rows[0].t && t.rows[0].b && t.rows[0].bt);
       await c.end();
     } finally {
       p.stop();

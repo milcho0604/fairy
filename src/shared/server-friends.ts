@@ -1,4 +1,4 @@
-// 서버 친구 (이슈 #110 1부): 친구 맺기, 선물, 일정 공유 1차(바쁜 시간대만). 설정 창과 메인이 같이 쓰는 모양만 둔다.
+// 서버 친구 (이슈 #110 1부): 친구 맺기, 선물, 일정 공유 1차(바쁜 시간대)와 2차(친구별 일정 제목). 설정 창과 메인이 같이 쓰는 모양만 둔다.
 // 토큰과 네트워크는 메인(main/server-friends.ts)에만 있다. 펫끼리 같이 걷는 "친구"(settings/Friends.tsx, main/friends.ts)와는 다른 것이다.
 import { normalizeDeviceCode } from './account-profile.ts';
 import { SITE_URL } from './update-policy.ts';
@@ -17,6 +17,12 @@ export interface FriendItem extends FriendPerson {
   theyShare: boolean;
   /** 이 친구가 마지막으로 일정을 올린 때 (보여 줄 때만) */
   busyAt: string | null;
+  /** 둘 다 만 18세 이상이라 일정 제목 공유를 켤 수 있다 (14~17세는 바쁜 시간만) */
+  canTitle: boolean;
+  /** 내가 이 친구에게 일정 제목까지 보여 준다 */
+  iTitle: boolean;
+  /** 이 친구가 나에게 일정 제목까지 보여 준다 */
+  theyTitle: boolean;
 }
 
 export interface FriendRequestItem extends FriendPerson {
@@ -75,6 +81,18 @@ export interface BusyBlock {
   end: number;
 }
 
+/** 제목이 있는 일정 (일정 제목 공유 2차). 제목을 켠 친구에게만 서버가 준다 */
+export interface TitledBlock extends BusyBlock {
+  title: string;
+}
+
+/** 친구의 바쁜 시간 보기 */
+export interface BusyView {
+  blocks: BusyBlock[];
+  titles: TitledBlock[];
+  updatedAt: string | null;
+}
+
 export type FriendResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
 export const FRIENDS = {
@@ -89,6 +107,7 @@ export const FRIENDS = {
   unblock: 'friends:unblock',
   gift: 'friends:gift',
   share: 'friends:share',
+  shareTitle: 'friends:share-title',
   busy: 'friends:busy',
   copyCode: 'friends:copy-code',
   copyLink: 'friends:copy-link',
@@ -110,7 +129,9 @@ export interface FriendsBridge {
   unblock(code: string): Promise<FriendResult>;
   gift(code: string, coins: number, passes: number): Promise<FriendResult<{ coins: number; passes: number }>>;
   share(code: string, on: boolean): Promise<FriendResult>;
-  busy(code: string): Promise<FriendResult<{ blocks: BusyBlock[]; updatedAt: string | null }>>;
+  /** 이 친구에게 일정 제목도 보여 주기 (둘 다 만 18세 이상, 바쁜 시간을 보여 주는 중일 때만) */
+  shareTitle(code: string, on: boolean): Promise<FriendResult>;
+  busy(code: string): Promise<FriendResult<BusyView>>;
   copyCode(): Promise<boolean>;
   copyLink(): Promise<boolean>;
   clearPrefill(): void;
@@ -157,4 +178,28 @@ export function busyByDay(
     out.push({ day: a, spans });
   }
   return out;
+}
+
+/** 제목 있는 일정을 날마다 나눈다 (현지 시간, 바쁜 시간대와 같은 방식). 날마다 시작 순 */
+export function titlesByDay(
+  titles: readonly TitledBlock[],
+  now: number,
+  days = 7,
+): { day: number; items: { from: number; to: number; title: string }[] }[] {
+  return busyByDay(titles, now, days).map((d) => {
+    const next = new Date(d.day);
+    next.setDate(next.getDate() + 1);
+    return {
+      day: d.day,
+      items: titles
+        .filter((x) => x.end > d.day && x.start < next.getTime())
+        .map((x) => ({
+          from: Math.round((Math.max(x.start, d.day) - d.day) / 60_000),
+          to: Math.round((Math.min(x.end, next.getTime()) - d.day) / 60_000),
+          title: x.title,
+        }))
+        .filter((x) => x.to > x.from)
+        .sort((p, q) => p.from - q.from || p.title.localeCompare(q.title)),
+    };
+  });
 }

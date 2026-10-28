@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setLang } from '../shared/i18n/index.ts';
 import type { ServerStatus } from '../shared/server-account.ts';
-import { busyByDay, friendCodeFrom, inviteLink } from '../shared/server-friends.ts';
+import { busyByDay, friendCodeFrom, inviteLink, titlesByDay } from '../shared/server-friends.ts';
 import { parseJjUrl } from '../shared/url-scheme.ts';
 import { friendsListOf, inboxItemOf } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
@@ -12,6 +12,8 @@ import {
   createServerFriends,
   SHARE_GOOGLE_EVENTS,
   shareableEvent,
+  shareableTitle,
+  titledBlocks,
 } from './server-friends.ts';
 import { createServerInbox, inboxLines, inboxTitle } from './server-inbox.ts';
 
@@ -336,4 +338,127 @@ test('쪽지를 열 때 410 이 받을 수 없게 된 것이면 돌려줬다고 
   await inbox.open('inbox:7');
   assert.ok(said[0]?.includes('돌려줬어'), String(said[0]));
   assert.ok(said[1]?.includes('기한'), String(said[1]));
+});
+
+const TITLE_LIST = (iTitle: boolean) => ({
+  ...LIST,
+  data: {
+    ...LIST.data,
+    friends: [
+      {
+        code: 'F-0000-1111',
+        nickname: '콩',
+        since: '2026-10-16T00:00:00Z',
+        iShare: true,
+        theyShare: false,
+        busyAt: null,
+        canTitle: true,
+        iTitle,
+        theyTitle: false,
+      },
+    ],
+  },
+});
+
+test('제목을 보내도 되는 일정: 직접 넣은 것만, 비공개 표시와 구글, 가져온 일정과 빈 제목은 뺀다', () => {
+  const ok = { source: 'local' as const, title: '치과' };
+  assert.equal(shareableTitle(ok), true);
+  assert.equal(shareableTitle({ ...ok, private: true }), false, '비공개 일정은 제목 없이 바쁨만');
+  assert.equal(shareableTitle({ ...ok, title: '  ' }), false);
+  assert.equal(shareableTitle({ source: 'google', title: '치과' }), false, '구글 일정은 제목을 막아 둔다');
+  assert.equal(shareableTitle({ source: 'ics', title: '치과' }), false);
+});
+
+test('제목 있는 일정: 14일 안으로 자르고 합치지 않으며 한 줄로 다듬어 80자까지', () => {
+  const b = titledBlocks(
+    [
+      { startAt: T0 + H, endAt: T0 + 2 * H, source: 'local', title: '치과 진료' },
+      { startAt: T0 + 90 * 60_000, endAt: T0 + 3 * H, source: 'local', title: '줄\n바꿈' },
+      { startAt: T0 + 4 * H, endAt: null, source: 'local', title: '가'.repeat(120) },
+      { startAt: T0 + 5 * H, endAt: T0 + 6 * H, source: 'local', title: '비공개', private: true },
+      { startAt: T0 + 6 * H, endAt: T0 + 7 * H, source: 'google', title: '구글' },
+      { startAt: T0 + 20 * 24 * H, endAt: T0 + 20 * 24 * H + H, source: 'local', title: '먼 일정' },
+    ],
+    T0,
+  );
+  assert.deepEqual(
+    b.map((x) => x.title),
+    ['치과 진료', '줄 바꿈', '가'.repeat(80)],
+  );
+  assert.equal(b[0]?.end, T0 + 2 * H);
+  assert.equal(b[1]?.start, T0 + 90 * 60_000, '겹쳐도 합치지 않는다');
+  assert.equal(b[2]?.end, T0 + 4 * H + 30 * 60_000, '끝이 없으면 30분');
+});
+
+test('제목을 켠 친구가 없으면 제목은 서버로 나가지 않고(키 자체가 없다), 켠 친구가 있으면 제목과 함께 올린다', async () => {
+  const list: BusySource[] = [
+    { startAt: T0 + H, endAt: T0 + 2 * H, source: 'local', title: '치과 진료' },
+    { startAt: T0 + 3 * H, endAt: T0 + 4 * H, source: 'local', title: '개인 약속', private: true },
+  ];
+  const off = fakeCore({ replies: { friends: TITLE_LIST(false) } });
+  const a = createServerFriends({
+    core: () => off.core,
+    events: () => list,
+    now: () => T0,
+    onChange: () => {},
+    log: () => {},
+  });
+  await a.refresh();
+  await a.uploadBusy();
+  const up = off.calls.find((c) => c.startsWith('busyUpload')) ?? '';
+  assert.ok(up.includes(`"start":${T0 + H}`), up);
+  assert.ok(!up.includes('치과') && !up.includes('개인'), '제목이 나가지 않는다');
+  assert.ok(up.endsWith(',null]'), `items 없음: ${up}`);
+
+  const on = fakeCore({ replies: { friends: TITLE_LIST(true) } });
+  const b = createServerFriends({
+    core: () => on.core,
+    events: () => list,
+    now: () => T0,
+    onChange: () => {},
+    log: () => {},
+  });
+  await b.refresh();
+  await b.uploadBusy();
+  const up2 = on.calls.find((c) => c.startsWith('busyUpload')) ?? '';
+  assert.ok(up2.includes('"title":"치과 진료"'), up2);
+  assert.ok(!up2.includes('개인 약속'), '비공개 일정의 제목은 나가지 않는다');
+  // 비공개 일정의 시간은 바쁨으로 들어간다
+  assert.ok(up2.includes(`"start":${T0 + 3 * H}`), up2);
+});
+
+test('일정 제목 켜기와 끄기: 서버 호출 뒤 목록을 받고 올린다. 모양이 틀린 제목 대답은 버린다', async () => {
+  const f = fakeCore({ replies: { friends: TITLE_LIST(true) } });
+  const friends = createServerFriends({
+    core: () => f.core,
+    events: () => [{ startAt: T0 + H, endAt: T0 + 2 * H, source: 'local', title: '치과 진료' }],
+    now: () => T0,
+    onChange: () => {},
+    log: () => {},
+  });
+  assert.deepEqual(await friends.shareTitle('F-0000-1111', true), { ok: true, data: undefined });
+  assert.ok(
+    f.calls.some((c) => c.startsWith('friendShareTitle ["F-0000-1111",true]')),
+    f.calls.join('\n'),
+  );
+  assert.ok(f.calls.some((c) => c.startsWith('busyUpload') && c.includes('치과 진료')));
+  const l = friendsListOf(TITLE_LIST(true).data as unknown as Record<string, unknown>);
+  assert.equal(l?.friends[0]?.iTitle, true);
+  assert.equal(l?.friends[0]?.canTitle, true);
+  // 옛 서버(칸이 없음)는 못 켜는 것으로 읽는다
+  const old = friendsListOf({
+    ...LIST.data,
+    friends: [{ code: 'F-0000-1111', since: '2026-10-16T00:00:00Z' }],
+  });
+  assert.equal(old?.friends[0]?.canTitle, false);
+  assert.equal(old?.friends[0]?.iTitle, false);
+});
+
+test('제목 있는 일정을 날마다 나눈다 (자정을 넘으면 두 날에)', () => {
+  const now = new Date(2026, 9, 16, 9).getTime();
+  const mid = new Date(2026, 9, 16, 23).getTime();
+  const days = titlesByDay([{ start: mid, end: mid + 2 * H, title: '야식' }], now, 3);
+  assert.deepEqual(days[0]?.items, [{ from: 23 * 60, to: 24 * 60, title: '야식' }]);
+  assert.deepEqual(days[1]?.items, [{ from: 0, to: 60, title: '야식' }]);
+  assert.deepEqual(days[2]?.items, []);
 });

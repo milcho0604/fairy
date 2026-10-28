@@ -462,11 +462,13 @@
 | `POST /v1/friends/blocks` `{ code }`, `DELETE /v1/friends/blocks/:code` | 차단(대답 `{ blocked: { code } }`), 풀기 |
 | `POST /v1/friends/gifts` `{ to, coins, passes, requestId }` | 선물 |
 | `PUT /v1/friends/:code/calendar` `{ share }` | 이 친구에게 바쁜 시간 보여 주기 |
-| `PUT /v1/friends/calendar/busy` `{ blocks: [{ start, end }] }` | 바쁜 시간대 올리기 (전체 바꾸기, 400개까지) |
+| `PUT /v1/friends/:code/calendar/titles` `{ share }` | 이 친구에게 일정 제목도 보여 주기 (둘 다 만 18세 이상이고 바쁜 시간을 보여 주는 중일 때만, 아니면 409 `title_age`, `busy_off`) |
+| `PUT /v1/friends/calendar/busy` `{ blocks: [{ start, end }], items?: [{ start, end, title }] }` | 바쁜 시간대 올리기 (전체 바꾸기, 400개까지). `items` 는 제목을 볼 친구가 있을 때만 저장한다 (제목 80자까지) |
 | `DELETE /v1/friends/calendar` | 모두 끄고 지우기 (로그아웃도 서버가 부른다) |
-| `GET /v1/friends/:code/busy` | 친구의 바쁜 시간대 |
+| `GET /v1/friends/:code/busy` | 친구의 바쁜 시간대 (`titles` 는 그 친구가 나에게 제목까지 켰고 둘 다 만 18세 이상일 때만, 아니면 빈 배열) |
 
-### 데이터 (0006)
+### 데이터 (0006, 0016)
+0016 은 `friend.share_title`(받는 친구 단위, 기본 꺼짐)과 `busy_title`(올린 일정 제목)을 더한다. 제목을 볼 친구(제목을 켠 성인 친구)가 없어지면 바로 지운다.
 `friend`(한 쌍 두 줄, `share_busy`), `friend_request`(`withdrawn`), `friend_block`, `friend_gift`(`returned_at`), `busy_block`, `busy_upload`, `inbox.from_account`, `inbox.friend_request_id`, 쪽지 종류 `gift`, `friend`, `gift_back`. 모두 계정을 지우면 함께 지워진다(선물 기록은 상대 몫만 남고 계정 번호를 비운다). 합치기는 친구, 신청, 차단을 남는 쪽으로 옮기고 서로 친구였던 두 계정의 관계는 없앤다.
 
 ## 근거

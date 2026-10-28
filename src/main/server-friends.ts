@@ -1,15 +1,20 @@
-// 서버 친구의 앱 쪽 흐름 (이슈 #110 1부). Electron 없이 돌아 시험에서 그대로 부른다. main/server.ts 가 IPC 와 타이머를 붙인다.
+// 서버 친구의 앱 쪽 흐름 (이슈 #110 1부, 일정 제목 2차). Electron 없이 돌아 시험에서 그대로 부른다. main/server.ts 가 IPC 와 타이머를 붙인다.
 // - 서버 모드(만 14세 이상, 서버 주소 있음), 로그인 세션, 서버가 켜 준 친구 기능(friends)일 때만 무엇이든 보낸다.
 // - 일정 공유 1차: 내가 바쁜 시간을 보여 주는 친구가 하나라도 있으면, 몇 분마다 앞으로 14일의 바쁜 시간대(시작, 끝)만 올린다.
-//   제목, 장소, 메모는 보내지 않는다. 구글 Limited Use 확인 전이라 직접 넣은 일정만 쓴다 (shareableEvent).
+//   장소, 메모는 보내지 않는다. 구글 Limited Use 확인 전이라 직접 넣은 일정만 쓴다 (shareableEvent).
+// - 일정 제목 2차: 제목을 켠 친구(iTitle)가 하나라도 있을 때만 제목 있는 일정(items)을 함께 올린다. 아무도 안 켰으면 제목은
+//   서버로 나가지 않는다 (키 자체를 보내지 않는다). 서버가 친구별 허용에 따라 제목을 거르므로 앱은 켠 친구가 있을 때만 올리면 된다.
+//   구글 일정은 제목을 보내지 않는다 (비공개 표시 private 를 로컬에 저장하지 않아 가릴 수 없으니 통째로 뺀다, shareableTitle).
 // - 토큰은 server-core 의 sessionCall 안에만 있다.
 import { randomBytes } from 'node:crypto';
 import {
   type BusyBlock,
+  type BusyView,
   type FriendResult,
   type FriendsList,
   type FriendsState,
   friendCodeFrom,
+  type TitledBlock,
 } from '../shared/server-friends.ts';
 import type { ApiResult } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
@@ -21,11 +26,17 @@ export const BUSY_DAYS = 14;
 /** 끝이 없는 일정은 30분으로 본다 (event-overlap.ts 와 같다) */
 const NO_END_MS = 30 * 60_000;
 
-/** 바쁜 시간대를 만드는 일정 하나 (시작, 끝, 어디서 왔나). 제목은 받지도 않는다 */
+/** 올리는 제목 길이 (서버 TITLE_MAX) */
+export const TITLE_MAX = 80;
+
+/** 바쁜 시간대를 만드는 일정 하나 (시작, 끝, 어디서 왔나). 제목은 제목을 켠 친구가 있을 때만 쓴다 */
 export interface BusySource {
   startAt: number;
   endAt: number | null;
   source: 'local' | 'ics' | 'google';
+  title?: string;
+  /** 비공개로 표시된 일정 (구글 visibility private 등). 있으면 제목은 빼고 바쁜 시간만 */
+  private?: boolean;
 }
 
 /**
@@ -37,6 +48,14 @@ export interface BusySource {
 export const SHARE_GOOGLE_EVENTS = false;
 export const shareableEvent = (e: Pick<BusySource, 'source'>, google = SHARE_GOOGLE_EVENTS): boolean =>
   e.source === 'local' || (google && e.source === 'google');
+
+/**
+ * 제목을 보내도 되는 일정인가: 직접 넣은 일정(local)이고 비공개 표시가 없고 제목이 있다. 구글에서 읽어 온 일정은
+ * SHARE_GOOGLE_EVENTS 를 열어도 제목은 따로 막아 둔다: 구글의 비공개 일정(visibility private, confidential)을 가려내려면
+ * 그 표시를 읽어 저장해야 하는데 아직 받지 않으므로, 모르는 채 제목을 내보내지 않는다
+ */
+export const shareableTitle = (e: Pick<BusySource, 'source' | 'title' | 'private'>): boolean =>
+  e.source === 'local' && e.private !== true && !!e.title?.trim();
 
 export interface ServerFriendsDeps {
   core: () => ServerCore | undefined;
@@ -71,6 +90,32 @@ export function busyBlocks(
   return out
     .slice(0, 400)
     .map((b) => ({ start: Math.floor(b.start / 60_000) * 60_000, end: Math.ceil(b.end / 60_000) * 60_000 }));
+}
+
+/** 앞으로 BUSY_DAYS 일의 제목 있는 일정 (겹쳐도 합치지 않는다). 제목은 한 줄로 다듬어 TITLE_MAX 글자까지, 400개까지 */
+export function titledBlocks(
+  events: readonly Pick<BusySource, 'startAt' | 'endAt' | 'source' | 'title' | 'private'>[],
+  now: number,
+): TitledBlock[] {
+  const to = now + BUSY_DAYS * 86_400_000;
+  return events
+    .filter(shareableTitle)
+    .map((e) => ({
+      start: Math.max(now, e.startAt),
+      end: Math.min(to, e.endAt !== null && e.endAt > e.startAt ? e.endAt : e.startAt + NO_END_MS),
+      title: Array.from((e.title ?? '').replace(/[\p{Cc}\p{Cf}\u2028\u2029]+/gu, ' ').trim())
+        .slice(0, TITLE_MAX)
+        .join('')
+        .trim(),
+    }))
+    .filter((b) => b.end > b.start && b.title)
+    .sort((a, b) => a.start - b.start || a.title.localeCompare(b.title))
+    .slice(0, 400)
+    .map((b) => ({
+      start: Math.floor(b.start / 60_000) * 60_000,
+      end: Math.ceil(b.end / 60_000) * 60_000,
+      title: b.title,
+    }));
 }
 
 const errorOf = (r: { status: number; error: string }): string => (r.status === 0 ? 'offline' : r.error);
@@ -166,6 +211,9 @@ export function createServerFriends(d: ServerFriendsDeps) {
     return { ok: true, data: (pick ? pick(r.data) : undefined) as T };
   }
 
+  /** 제목을 켠 친구가 있나 (둘 다 만 18세 이상이라 서버가 켜 준 것만, 목록의 iTitle) */
+  const titlesOn = (): boolean => list?.friends.some((f) => f.iShare && f.iTitle) ?? false;
+
   /** 바쁜 시간대 올리기 (몇 분마다, 공유를 켠 직후). 공유하는 친구가 없으면 아무것도 하지 않는다 */
   async function uploadBusy(force = false): Promise<void> {
     if (uploading || !available()) return;
@@ -179,13 +227,13 @@ export function createServerFriends(d: ServerFriendsDeps) {
     try {
       if (!s.calendar) return;
       const now = d.now();
-      const blocks = busyBlocks(
-        d.events(now, now + BUSY_DAYS * 86_400_000).filter((e) => shareableEvent(e)),
-        now,
-      );
-      const key = JSON.stringify(blocks);
+      const events = d.events(now, now + BUSY_DAYS * 86_400_000).filter((e) => shareableEvent(e));
+      const blocks = busyBlocks(events, now);
+      // 제목을 켠 친구가 없으면 items 를 아예 보내지 않는다 (undefined)
+      const items = titlesOn() ? titledBlocks(events, now) : undefined;
+      const key = JSON.stringify({ blocks, items });
       if (!force && lastUpload && lastUpload.key === key && now - lastUpload.at < BUSY_REFRESH_MS) return;
-      const r = await call<{ stored: number }>((api, t) => api.busyUpload(t, blocks));
+      const r = await call<{ stored: number }>((api, t) => api.busyUpload(t, blocks, items));
       if (r.ok) {
         lastUpload = { key, at: now };
         d.log('friends', '바쁜 시간 올림', r.data.stored);
@@ -263,10 +311,19 @@ export function createServerFriends(d: ServerFriendsDeps) {
       if (r.ok && on) await uploadBusy(true);
       return r;
     },
-    async busy(code: string): Promise<FriendResult<{ blocks: BusyBlock[]; updatedAt: string | null }>> {
-      const r = await call<{ blocks: BusyBlock[]; updatedAt: string | null }>((api, t) =>
-        api.friendBusy(t, code),
+    /**
+     * 이 친구에게 일정 제목도 보여 주기. 켜면 바로 제목까지 올리고, 끄면 목록을 다시 받아 아무도 안 켰으면 다음 올리기부터
+     * 제목 없이 올린다 (서버는 끄는 즉시 저장된 제목을 지운다)
+     */
+    async shareTitle(code: string, on: boolean): Promise<FriendResult> {
+      const r = await act(on ? '일정 제목 공유 켬' : '일정 제목 공유 끔', (api, t) =>
+        api.friendShareTitle(t, code, on),
       );
+      if (r.ok) await uploadBusy(true);
+      return r;
+    },
+    async busy(code: string): Promise<FriendResult<BusyView>> {
+      const r = await call<BusyView>((api, t) => api.friendBusy(t, code));
       if (!r.ok) return { ok: false, error: errorOf(r) };
       return { ok: true, data: r.data };
     },

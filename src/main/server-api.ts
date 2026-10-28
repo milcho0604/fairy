@@ -12,10 +12,12 @@ import {
 } from '../shared/server-account.ts';
 import type {
   BusyBlock,
+  BusyView,
   FriendItem,
   FriendPerson,
   FriendRequestItem,
   FriendsList,
+  TitledBlock,
 } from '../shared/server-friends.ts';
 import {
   APP_VERSION_HEADER,
@@ -310,7 +312,16 @@ function friendItemOf(v: unknown): FriendItem | undefined {
   const p = personOf(o);
   const since = iso(o.since);
   if (!p || !since) return undefined;
-  return { ...p, since, iShare: o.iShare === true, theyShare: o.theyShare === true, busyAt: iso(o.busyAt) };
+  return {
+    ...p,
+    since,
+    iShare: o.iShare === true,
+    theyShare: o.theyShare === true,
+    busyAt: iso(o.busyAt),
+    canTitle: o.canTitle === true,
+    iTitle: o.iTitle === true,
+    theyTitle: o.theyTitle === true,
+  };
 }
 
 function requestOf(v: unknown): FriendRequestItem | undefined {
@@ -353,6 +364,12 @@ const busyOf = (v: unknown): BusyBlock | undefined => {
   const start = nat(o.start);
   const end = nat(o.end);
   return start && end && end > start ? { start, end } : undefined;
+};
+
+const titledOf = (v: unknown): TitledBlock | undefined => {
+  const b = busyOf(v);
+  const title = obj(v).title;
+  return b && typeof title === 'string' && title.trim() ? { ...b, title: title.slice(0, 200) } : undefined;
 };
 
 const rewardOf = (j: Record<string, unknown>): RewardResult | undefined =>
@@ -747,26 +764,39 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
         body: { share },
         read: (j) => ({ sharing: nat(j.sharing) ?? 0 }),
       }),
-    /** 바쁜 시간대 올리기 (시작, 끝만. 제목은 보내지 않는다) */
-    busyUpload: (token: string, blocks: readonly BusyBlock[]) =>
+    /** 이 친구에게 일정 제목도 보여 주기 켜고 끄기 (둘 다 만 18세 이상일 때만 서버가 켠다) */
+    friendShareTitle: (token: string, code: string, share: boolean) =>
+      call<{ titles: number }>('PUT', `/v1/friends/${encodeURIComponent(code)}/calendar/titles`, {
+        token,
+        body: { share },
+        read: (j) => ({ titles: nat(j.titles) ?? 0 }),
+      }),
+    /**
+     * 바쁜 시간대 올리기. items(제목 있는 일정)는 제목을 켠 친구가 있을 때만 준다: 없으면 키 자체를 보내지 않아
+     * 제목이 서버로 나가지 않는다. 주면(빈 배열도) 서버가 그 내용으로 바꾼다
+     */
+    busyUpload: (token: string, blocks: readonly BusyBlock[], items?: readonly TitledBlock[]) =>
       call<{ stored: number }>('PUT', '/v1/friends/calendar/busy', {
         token,
-        body: { blocks: blocks.map((b) => ({ start: b.start, end: b.end })) },
+        body: {
+          blocks: blocks.map((b) => ({ start: b.start, end: b.end })),
+          ...(items ? { items: items.map((b) => ({ start: b.start, end: b.end, title: b.title })) } : {}),
+        },
         read: (j) => ({ stored: nat(j.stored) ?? 0 }),
       }),
     busyStop: (token: string) => call('DELETE', '/v1/friends/calendar', { token, read: () => true }),
     friendBusy: (token: string, code: string) =>
-      call<{ blocks: BusyBlock[]; updatedAt: string | null }>(
-        'GET',
-        `/v1/friends/${encodeURIComponent(code)}/busy`,
-        {
-          token,
-          read: (j) =>
-            Array.isArray(j.blocks)
-              ? { blocks: listOf(j.blocks, busyOf, 1000), updatedAt: iso(j.updatedAt) }
-              : undefined,
-        },
-      ),
+      call<BusyView>('GET', `/v1/friends/${encodeURIComponent(code)}/busy`, {
+        token,
+        read: (j) =>
+          Array.isArray(j.blocks)
+            ? {
+                blocks: listOf(j.blocks, busyOf, 1000),
+                titles: listOf(j.titles, titledOf, 1000),
+                updatedAt: iso(j.updatedAt),
+              }
+            : undefined,
+      }),
     /** 브라우저로 여는 구글 로그인 주소 */
     startUrl: (port: number, state: string, challenge: string) => {
       const u = new URL(`${base}/auth/google/start`);

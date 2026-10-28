@@ -362,6 +362,9 @@ export function createServer(o: {
   ipcMain.handle(FRIENDS.share, (e, to: unknown, on: unknown) =>
     ok(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
   );
+  ipcMain.handle(FRIENDS.shareTitle, (e, to: unknown, on: unknown) =>
+    ok(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
+  );
   ipcMain.handle(FRIENDS.busy, (e, to: unknown) => (ok(e) && code(to) ? friends.busy(code(to)) : refused));
   ipcMain.handle(FRIENDS.copyCode, (e) => {
     const me = ok(e) ? friends.state().list?.me.code : undefined;
