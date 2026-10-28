@@ -811,6 +811,9 @@ const FEATURE_SHORT: Record<string, string> = {
 const AI_CHAT_HINT =
   '1장 = 질문 1번. 허용 목록 모드에서는 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번 받아요.';
 
+/** 표의 상태 배지 글 (자세한 뜻은 영향 칸에) */
+const SWITCH_TAG_KO: Record<string, string> = { off: '끔', allowlist: '허용 목록', everyone: '모두' };
+
 /** 이 모드면 누가 쓰는가 (표의 "영향" 칸). n 은 허용 목록의 계정 수 */
 function switchImpact(key: string, mode: string, n: number): string {
   if (mode === 'off') return '아무도 쓸 수 없어요';
@@ -855,7 +858,7 @@ ${confirmBox(`${o.name} 을 이전 값 ${modeKo(last.before)} 으로 되돌릴�
   return `<tr class="sw" data-key="${esc(o.key)}">
 <td class="name" data-l="기능">${esc(o.name)}<br><code>${esc(o.key)}</code></td>
 <td data-l="설명">${esc(FEATURE_SHORT[o.key] ?? '')}<details><summary>자세히</summary><p class="hint">${esc(o.hint)}</p></details></td>
-<td data-l="상태"><span class="tag ${o.mode === 'off' ? 'ended' : o.mode === 'everyone' ? 'live' : 'soon'}">${esc(modeKo(o.mode))}</span>${o.env ? '<br><small>서버 설정 기본값</small>' : ''}${prev}</td>
+<td data-l="상태"><span class="tag nowrap ${o.mode === 'off' ? 'ended' : o.mode === 'everyone' ? 'live' : 'soon'}">${esc(SWITCH_TAG_KO[o.mode] ?? o.mode)}</span>${o.env ? '<br><small>서버 설정 기본값</small>' : ''}${prev}</td>
 <td data-l="영향">${esc(switchImpact(o.key, o.mode, o.allowCount))}</td>
 <td class="act" data-l="바꾸기">${change}${undo}</td></tr>`;
 }
@@ -2119,6 +2122,8 @@ table.posts td.name small { font-weight: 400; color: var(--muted); }
 .preview.event .badge { background: var(--accent); color: var(--on-accent); }
 table.plain-table { max-width: 560px; margin-bottom: 12px; }
 table.switches td.name { font-weight: 600; }
+table.switches td.act { white-space: normal; }
+.tag.nowrap { white-space: nowrap; }
 table.switches details { margin: 4px 0 0; }
 table.switches details summary { margin: 0; font-size: 12px; }
 table.switches small.prev { color: var(--muted); }
@@ -2150,7 +2155,7 @@ details.allow { border: 1px solid var(--line); border-radius: 8px; padding: 2px 
   table.switches td, table.switches form.sw-form, table.switches form.sw-form label { min-width: 0; max-width: 100%; }
   table.switches { table-layout: fixed; }
   form.sw-form { align-items: stretch; }
-  form.sw-form label.confirm { align-items: flex-start; }
+  form.sw-form label.confirm { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; overflow-wrap: anywhere; }
   form.sw-form button, form.sw-form select { width: 100%; }
   section { padding: 12px; }
   .tabs a { flex: 1 1 42%; text-align: center; }

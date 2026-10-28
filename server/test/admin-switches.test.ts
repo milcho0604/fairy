@@ -181,6 +181,75 @@ describe('기능 스위치 한 표', () => {
     assert.ok(r.ok, r.text);
   });
 
+  test('되돌리기(revert=1)는 from 이 없으면 거절한다', async () => {
+    const r = await admin.act('/admin/features/mode', {
+      key: 'friend_gift_passes',
+      mode: 'off',
+      revert: '1',
+      confirm: 'yes',
+    });
+    assert.equal(r.ok, false);
+    assert.match(r.text, /from/);
+    assert.equal(
+      (await h.pool.query("SELECT 1 FROM feature_flag WHERE key = 'friend_gift_passes'")).rowCount,
+      0,
+    );
+  });
+
+  test('같은 from 으로 동시에 바꾸면 하나만 성공한다 (채팅 이용권)', async () => {
+    const cur =
+      (await h.pool.query<{ mode: string }>("SELECT mode FROM feature_flag WHERE key = 'ai_chat'")).rows[0]
+        ?.mode ?? 'off';
+    const targets = ['off', 'allowlist', 'everyone'].filter((m) => m !== cur);
+    const before = (await h.pool.query("SELECT 1 FROM admin_log WHERE action = 'ai.mode'")).rowCount ?? 0;
+    const rs = await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        admin.act('/admin/ai/mode', {
+          key: 'ai_chat',
+          mode: targets[i % 2] ?? 'off',
+          from: cur,
+          confirm: 'yes',
+        }),
+      ),
+    );
+    assert.equal(rs.filter((r) => r.ok).length, 1);
+    assert.equal(
+      ((await h.pool.query("SELECT 1 FROM admin_log WHERE action = 'ai.mode'")).rowCount ?? 0) - before,
+      1,
+    );
+  });
+
+  test('같은 from 으로 동시에 바꾸면 하나만 성공한다 (줄이 없는 서버 설정 기본값, 줄이 있는 경우)', async () => {
+    const key = 'friend_calendar';
+    assert.equal((await h.pool.query('SELECT 1 FROM feature_flag WHERE key = $1', [key])).rowCount, 0);
+    const run = (from: string, modes: string[]) =>
+      Promise.all(
+        Array.from({ length: 12 }, (_, i) =>
+          admin.act('/admin/features/mode', { key, mode: modes[i % 2] ?? 'off', from, confirm: 'yes' }),
+        ),
+      );
+    const first = await run('allowlist', ['off', 'everyone']);
+    assert.equal(first.filter((r) => r.ok).length, 1);
+    const cur = (await h.pool.query<{ mode: string }>('SELECT mode FROM feature_flag WHERE key = $1', [key]))
+      .rows[0]?.mode as string;
+    const second = await run(cur, ['allowlist', cur === 'off' ? 'everyone' : 'off']);
+    assert.equal(second.filter((r) => r.ok).length, 1);
+  });
+
+  test('줄이 없는 스위치는 거절되거나 읽기만 해서는 줄이 생기지 않는다 (서버 설정 기본값 표시 유지)', async () => {
+    await admin.act('/admin/features/mode', {
+      key: 'friend_gift_passes',
+      mode: 'off',
+      from: 'everyone',
+      confirm: 'yes',
+    });
+    assert.equal(
+      (await h.pool.query("SELECT 1 FROM feature_flag WHERE key = 'friend_gift_passes'")).rowCount,
+      0,
+    );
+    assert.match(rowOf((await admin.page()).text, 'friend_gift_passes'), /서버 설정 기본값/);
+  });
+
   test('휴대폰 폭에서 표가 카드로 접히는 규칙이 있다', async () => {
     const css = (await api('GET', '/admin/admin.css')).text;
     assert.match(css, /table\.cards thead \{ display: none; \}/);

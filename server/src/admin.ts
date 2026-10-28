@@ -52,7 +52,7 @@ import {
   postFilterOf,
   queryPosts,
 } from './admin-posts';
-import { AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
+import { AI_FEATURE, AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
 import { CONFIG } from './app.tokens';
 import { AuthGuard } from './auth.guard';
 import type { Config } from './config';
@@ -412,8 +412,14 @@ const isAiMode = (v: unknown): v is AiMode =>
  */
 function staleSwitch(f: FormFields, now: string): void {
   const from = (f.from ?? '').trim();
+  if (f.revert === '1' && !from) throw new Refused('되돌리기에는 화면에 보인 값(from)이 필요해요', 'stale');
   if (from && from !== now)
     throw new Refused(`다른 곳에서 먼저 바꿨어요 (지금 ${now}). 화면을 다시 열어 주세요`, 'stale');
+}
+
+/** 같은 스위치를 동시에 바꾸는 요청을 한 줄로 세운다 (feature_flag 줄이 없어도 걸리도록 트랜잭션 잠금을 쓴다) */
+async function lockSwitch(c: PoolClient, key: string): Promise<void> {
+  await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`switch:${key}`]);
 }
 
 /** 되돌리기 단추로 보낸 요청이면 운영 기록에 표시한다 */
@@ -1806,6 +1812,7 @@ export class AdminService {
     const mode = (f.mode ?? '') as AiMode;
     if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
     return this.write(actor, async (c) => {
+      await lockSwitch(c, AI_FEATURE);
       const r = await this.aiAdmin.setSettings(c, { mode });
       staleSwitch(f, r.before.mode);
       return {
@@ -1831,10 +1838,10 @@ export class AdminService {
     const mode = (f.mode ?? '') as AiMode;
     if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
     return this.write(actor, async (c) => {
-      // 보는 사이 다른 곳에서 바뀌었는지는 같은 트랜잭션 안의 DB 줄로 본다 (담아 둔 값은 5초 늦을 수 있다)
-      const row = await c.query<{ mode: string }>('SELECT mode FROM feature_flag WHERE key = $1 FOR UPDATE', [
-        key,
-      ]);
+      // 보는 사이 다른 곳에서 바뀌었는지는 같은 트랜잭션 안의 DB 줄로 본다 (담아 둔 값은 5초 늦을 수 있다).
+      // 줄이 아직 없어도(서버 설정 기본값) 같은 기능의 동시 요청이 한 줄로 서도록 기능 키로 잠근다
+      await lockSwitch(c, key);
+      const row = await c.query<{ mode: string }>('SELECT mode FROM feature_flag WHERE key = $1', [key]);
       const dbMode = row.rows[0]?.mode;
       const before = isAiMode(dbMode) ? dbMode : await this.features.featureMode(key);
       staleSwitch(f, before);
