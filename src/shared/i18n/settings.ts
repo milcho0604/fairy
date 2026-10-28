@@ -391,6 +391,8 @@ export const ko = {
   'settings.shortcutEasyHint': '켜면 Option/Alt 없이 세 키로 눌러. 끄면 기본 네 키로 돌아가.',
   'settings.shortcutEasyApplied': '쉬운 키 묶음을 켰어',
   'settings.shortcutEasyOff': '쉬운 키 묶음을 껐어. 기본 키로 돌아갔어',
+  'settings.shortcutEasyMoved':
+    '쉬운 키 묶음을 껐어. 다른 단축키와 겹친 키({names})는 기본 키로 바꾸거나 꺼 뒀어',
   'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 페어리 위에 있을 때)',
   'settings.shortcut.hide': '숨기기, 다시 보이기',
   'settings.shortcut.quickAdd': '할 일 한 줄 넣기 (어디서든)',
@@ -870,6 +872,8 @@ export const en: Translation<typeof ko> = {
   'settings.shortcutEasyHint': 'On: three keys, no Option/Alt. Off: back to the default four keys.',
   'settings.shortcutEasyApplied': 'Easy shortcuts on',
   'settings.shortcutEasyOff': 'Easy shortcuts off. Back to the default keys',
+  'settings.shortcutEasyMoved':
+    'Easy shortcuts off. Keys that clashed with another shortcut ({names}) were reset to default or turned off',
   'settings.zoomKeys': 'Bigger, smaller, reset (mouse over your fairy)',
   'settings.shortcut.hide': 'Hide and show',
   'settings.shortcut.quickAdd': 'Quick add a to-do (anywhere)',

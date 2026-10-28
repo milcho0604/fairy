@@ -37,6 +37,8 @@ export function OnboardingApp() {
   /** 만나는 시간 칸 아래 한 줄 (시작과 끝이 같을 때) */
   const [routineNote, setRoutineNote] = useState('');
   const [preferenceError, setPreferenceError] = useState('');
+  /** 쉬운 키 묶음을 끌 때 겹쳐서 바꾼 키가 있으면 한 줄 안내 */
+  const [keyNote, setKeyNote] = useState('');
   /** 설치된 AI 확인은 몇 초 걸릴 수 있어 따로 받는다. 오기 전에는 원래 안내를 보인다 */
   const [ai, setAi] = useState<OnboardAi>();
 
@@ -389,15 +391,31 @@ export function OnboardingApp() {
                 aria-checked={isEasyShortcuts(s.shortcuts)}
                 aria-label={t('settings.shortcutEasy')}
                 className={isEasyShortcuts(s.shortcuts) ? 'on' : ''}
-                onClick={() =>
-                  void setPreferences(
-                    easyShortcutsPatch(!isEasyShortcuts(s.shortcuts), s.shortcuts, s.shortcutsKept),
-                  )
-                }
+                onClick={() => {
+                  const { changed, ...patch } = easyShortcutsPatch(
+                    !isEasyShortcuts(s.shortcuts),
+                    s.shortcuts,
+                    s.shortcutsKept,
+                  );
+                  void setPreferences(patch).then(() =>
+                    setKeyNote(
+                      changed.length
+                        ? t('settings.shortcutEasyMoved', {
+                            names: changed.map((id) => t(`settings.shortcut.${id}`)).join(', '),
+                          })
+                        : '',
+                    ),
+                  );
+                }}
               >
                 <i />
               </button>
             </label>
+            {keyNote && (
+              <small className="name-note" role="status">
+                {keyNote}
+              </small>
+            )}
             <dl className="tips">
               {/* 끈 단축키(빈 키)는 보이지 않는다 */}
               {s.shortcuts.quickAdd && (

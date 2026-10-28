@@ -38,9 +38,12 @@ export function EaseTab({ snap, update, flash }: TabProps) {
         return;
       }
     }
+    const { changed, ...patch } = easyShortcutsPatch(on, s.shortcuts, s.shortcutsKept);
     void update(
-      easyShortcutsPatch(on, s.shortcuts, s.shortcutsKept),
-      t(on ? 'settings.shortcutEasyApplied' : 'settings.shortcutEasyOff'),
+      patch,
+      changed.length
+        ? t('settings.shortcutEasyMoved', { names: changed.map((id) => SHORTCUT_LABEL[id]).join(', ') })
+        : t(on ? 'settings.shortcutEasyApplied' : 'settings.shortcutEasyOff'),
     );
   };
   return (
