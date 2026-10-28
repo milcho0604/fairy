@@ -9,6 +9,7 @@ import { CalendarView } from './CalendarView.tsx';
 import { useDraft } from './draft.ts';
 import { endFromInput, lengthLabel, timeInputValue } from './event-end.ts';
 import { eventFindDestination } from './event-find.ts';
+import { eventPreview } from './event-preview.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
 import { gcalBadge } from './gcal-badge.ts';
 import { PinIcon } from './icons.tsx';
@@ -90,6 +91,17 @@ export function EventTab({
   // 반복 문장을 시각 일정으로 읽지 못했으면 같은 글을 반복 할 일로 바꿀 수 있게 한다.
   const [asTodo, setAsTodo] = useState(false);
   const now = Date.now();
+  // 쓰는 동안 해석 한 줄 (글자마다 읽지 않게 잠깐 멈추면 읽는다. 일정을 넣을 때와 같은 해석기)
+  const [preview, setPreview] = useState<string | null>(null);
+  const previewDay = calendar ? day : undefined;
+  useEffect(() => {
+    if (!text.trim()) {
+      setPreview(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setPreview(eventPreview(text, Date.now(), previewDay)), 120);
+    return () => window.clearTimeout(timer);
+  }, [text, previewDay]);
 
   useEffect(() => {
     if (!findTarget) return;
@@ -201,6 +213,11 @@ export function EventTab({
         </p>
       )}
       {clash && <p className="hint clash">{clash}</p>}
+      {preview && !error && text.trim() && (
+        <p className="hint event-preview" data-event-preview>
+          {preview}
+        </p>
+      )}
       {calendar ? (
         <div className="scroll cal-scroll" ref={calScroll}>
           <CalendarView

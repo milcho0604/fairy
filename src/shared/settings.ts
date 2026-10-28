@@ -112,6 +112,8 @@ export interface Settings {
   osNotify: boolean;
   /** 전역 단축키 (v2 단축키 바꾸기) */
   shortcuts: Record<ShortcutId, string>;
+  /** 쉬운 키 묶음을 켜기 직전의 키. 끄면 이 값으로 돌린다 (없으면 기본 키) */
+  shortcutsKept: Record<ShortcutId, string> | null;
   /** 가져올 캘린더 주소 (.ics, 구글 캘린더 비공개 주소). 비밀 주소라 이 컴퓨터에만 둔다 (v2) */
   icsUrl?: string;
   /** 채팅에서 내 AI 의 MCP 도구(노션, 슬랙 등)를 쓴다 (v2 외부 MCP). 격리를 끈 claude 에서만 */
@@ -483,6 +485,7 @@ export const DEFAULT_SETTINGS: Settings = {
   review: true,
   osNotify: true,
   shortcuts: { ...SHORTCUT_DEFAULTS },
+  shortcutsKept: null,
   myMcp: false,
   friends: [],
   lang: 'auto',
@@ -723,6 +726,10 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     review: typeof r.review === 'boolean' ? r.review : r.chatter === 'quiet' ? false : base.review,
     osNotify: bool(r.osNotify, base.osNotify),
     shortcuts: shortcutsOf(r.shortcuts, base.shortcuts),
+    shortcutsKept:
+      typeof r.shortcutsKept === 'object' && r.shortcutsKept !== null
+        ? shortcutsOf(r.shortcutsKept, SHORTCUT_DEFAULTS)
+        : null,
     ...icsOf(r.icsUrl, base.icsUrl),
     myMcp: bool(r.myMcp, base.myMcp),
     friends: Array.isArray(r.friends) ? friendsOf(r.friends) : base.friends,

@@ -28,6 +28,51 @@ export const SHORTCUT_EASY: Record<ShortcutId, string> = {
   pet: 'CommandOrControl+Shift+U',
 };
 
+/** 지금 단축키가 쉬운 키 묶음 그대로인지 (큰 창 열기 키는 묶음에 들지 않는다) */
+export function isEasyShortcuts(keys: Record<ShortcutId, string>): boolean {
+  return (Object.keys(SHORTCUT_EASY) as ShortcutId[]).every(
+    (id) => id === 'home' || keys[id].toLowerCase() === SHORTCUT_EASY[id].toLowerCase(),
+  );
+}
+
+/**
+ * 쉬운 키 묶음을 켜거나 끈 설정 조각. 켤 때 지금 키(사용자 값)를 kept 에 적어 두고, 끄면 그 값으로 돌린다
+ * (적어 둔 것이 없으면 기본 키). 큰 창 열기 키는 묶음에 들지 않아 그대로 둔다.
+ * 끄기는 반드시 성공한다: 켠 동안 큰 창 키를 복원할 키와 같게 바꿨다면 겹친 복원 키만 기본 키로,
+ * 기본 키도 겹치면 키 없음으로 둔다. 그렇게 바뀐 단축키는 changed 로 알려 화면이 한 번 안내한다
+ */
+export function easyShortcutsPatch(
+  on: boolean,
+  keys: Record<ShortcutId, string>,
+  kept: Record<ShortcutId, string> | null | undefined,
+): {
+  shortcuts: Record<ShortcutId, string>;
+  shortcutsKept: Record<ShortcutId, string> | null;
+  changed: ShortcutId[];
+} {
+  if (on)
+    return {
+      shortcuts: { ...SHORTCUT_EASY, home: keys.home },
+      shortcutsKept: kept && isEasyShortcuts(keys) ? kept : { ...keys },
+      changed: [],
+    };
+  const want = kept ?? SHORTCUT_DEFAULTS;
+  const out = { ...want, home: keys.home };
+  const taken = new Set<string>(keys.home ? [keys.home.toLowerCase()] : []);
+  const changed: ShortcutId[] = [];
+  for (const id of Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]) {
+    if (id === 'home') continue;
+    let pick = want[id];
+    if (pick !== NO_SHORTCUT && taken.has(pick.toLowerCase())) {
+      pick = taken.has(SHORTCUT_DEFAULTS[id].toLowerCase()) ? NO_SHORTCUT : SHORTCUT_DEFAULTS[id];
+      changed.push(id);
+    }
+    out[id] = pick;
+    if (pick !== NO_SHORTCUT) taken.add(pick.toLowerCase());
+  }
+  return { shortcuts: out, shortcutsKept: null, changed };
+}
+
 /** 화면에 늘어놓는 순서 (설정 단축키 칸) */
 export const SHORTCUT_IDS = Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[];
 

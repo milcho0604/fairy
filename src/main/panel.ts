@@ -14,15 +14,14 @@ import { dayWatch } from '../shared/day-watch.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { isPanelDraftKind } from '../shared/draft-store.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
+import { resolveEventLine } from '../shared/event-line.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
   allDaySpan,
   allDayTimes,
   type CalEvent,
-  dayStartMs,
   type EventStore,
   hasTimeRange,
-  parseEventInput,
   parseQuickEventInfo,
 } from '../shared/event-store.ts';
 import { findAll } from '../shared/find-all.ts';
@@ -668,39 +667,15 @@ export function createPanel(o: PanelOptions) {
     saving((e, line: string, day?: unknown) => {
       if (!ours(e) || typeof line !== 'string') return { ok: false };
       const now = Date.now();
-      // 달력에서 고른 날(day)이 있으면 그날을 기준으로 읽는다 ("3시 회의" 는 그날 3시, "내일" 은 그다음 날).
-      // 오늘이 아닌 날은 0시로 보고 읽는다: 지금 시각보다 이른 시각을 다음 날로 미루지 않게
-      const picked =
-        typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) && localDay(dayStartMs(day)) === day
-          ? day
-          : undefined;
-      const base = picked ?? localDay(now);
-      const minute = base === localDay(now) ? minuteOfDay(now) : 0;
-      // 알림 말("1시간 전에 알려줘")은 먼저 뗀다
-      const { rest: text, remind } = splitRemind(line);
-      // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
-      // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
-      const repeatTodo = parseTodoLine(text, base, minute);
-      const repeat =
-        repeatTodo.dueMin !== null &&
-        (repeatTodo.repeat === 'daily' || repeatTodo.repeat === 'weekdays' || repeatTodo.repeat === 'weekly')
-          ? repeatTodo.repeat
-          : undefined;
-      // 달력에서 고른 날이면 날짜도 시각도 없는 글("장보기")은 그날 종일. "오늘" 을 붙여 읽어
-      // 시각처럼 보이는 말("25시 회의")은 종일로 넣지 않고 되묻는 규칙을 그대로 쓴다
-      const eventText = repeat
-        ? `${String(Math.floor((repeatTodo.dueMin ?? 0) / 60)).padStart(2, '0')}:${String((repeatTodo.dueMin ?? 0) % 60).padStart(2, '0')} ${repeatTodo.title}`
-        : text;
-      const eventBase = repeat ? (repeatTodo.due ?? base) : base;
-      const ev =
-        parseEventInput(eventText, eventBase, repeat ? 0 : minute) ??
-        (!repeat && picked ? parseEventInput(`오늘 ${text}`, base, minute) : null);
-      if (!ev || (repeat && 'allDay' in ev) || (repeatTodo.repeat && !repeat))
+      // 읽는 규칙은 화면의 입력 미리보기와 같은 resolveEventLine 하나다
+      const parsed = resolveEventLine(line, now, day);
+      if (!parsed.ok)
         return {
           ok: false,
-          error: repeatTodo.repeat ? t('panel.event.noRepeat') : t('panel.event.needTime'),
-          asTodo: !!repeatTodo.repeat,
+          error: parsed.repeatWord ? t('panel.event.noRepeat') : t('panel.event.needTime'),
+          asTodo: parsed.repeatWord,
         };
+      const { ev, repeat, remind } = parsed;
       let event: ReturnType<EventStore['add']>;
       if ('allDay' in ev) {
         const times = allDayTimes(ev.day, ev.lastDay);

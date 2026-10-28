@@ -172,6 +172,10 @@ input {
   color: var(--muted);
 }
 
+.hint.event-preview {
+  overflow-wrap: anywhere;
+}
+
 .hint.hungry,
 .hint.error {
   color: var(--warn);

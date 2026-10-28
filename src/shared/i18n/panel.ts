@@ -71,6 +71,8 @@ export const ko = {
   'panel.retry': '다시 해 줘.',
   'panel.day.heading': (v: { y: number; m: number; d: number }) =>
     `${v.m}월 ${v.d}일 (${['일', '월', '화', '수', '목', '금', '토'][new Date(Date.UTC(v.y, v.m - 1, v.d)).getUTCDay()]})`,
+  'panel.day.headingYear': (v: { y: number; m: number; d: number }) =>
+    `${v.y}년 ${v.m}월 ${v.d}일 (${['일', '월', '화', '수', '목', '금', '토'][new Date(Date.UTC(v.y, v.m - 1, v.d)).getUTCDay()]})`,
   'panel.ago.now': '방금',
   'panel.ago.min': '{n}분 전',
   'panel.ago.hour': (v: { n: number }) => `${v.n}시간 전`,
@@ -194,6 +196,7 @@ export const ko = {
   'panel.remind.hour': '{n}시간 전',
   'panel.event.add': '일정 추가',
   'panel.event.placeholder': '일정 추가 (예: 내일 3시 회의)',
+  'panel.event.preview': '이렇게 넣을게: {text}',
   'panel.event.empty': '2주 안에 일정이 없어. 위에 날짜나 시각과 같이 적어 봐.',
   'panel.event.allDay': '종일',
   'panel.event.range': '{m1}/{d1}~{m2}/{d2}',
@@ -316,6 +319,14 @@ export const en: Translation<typeof ko> = {
   'panel.day.heading': (v: { y: number; m: number; d: number }) =>
     new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    }).format(Date.UTC(v.y, v.m - 1, v.d)),
+  'panel.day.headingYear': (v: { y: number; m: number; d: number }) =>
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      year: 'numeric',
       month: 'short',
       day: 'numeric',
       timeZone: 'UTC',
@@ -445,6 +456,7 @@ export const en: Translation<typeof ko> = {
   'panel.remind.hour': '{n} h before',
   'panel.event.add': 'Add an event',
   'panel.event.placeholder': 'Add event (e.g. gym 3pm)',
+  'panel.event.preview': 'Will add: {text}',
   'panel.event.empty': 'No events in the next 2 weeks. Write one above with a date or time.',
   'panel.event.allDay': 'All day',
   'panel.event.range': '{m1}/{d1}-{m2}/{d2}',
