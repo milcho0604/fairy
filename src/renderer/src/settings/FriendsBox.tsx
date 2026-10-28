@@ -12,6 +12,7 @@ import {
   type FriendsBridge,
   type FriendsState,
   titlesByDay,
+  type VisitInfo,
 } from '../../../shared/server-friends.ts';
 import './friends.css';
 
@@ -86,7 +87,30 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
   const [giftTo, setGiftTo] = useState<string | null>(null);
   const [busyOf, setBusyOf] = useState<({ code: string } & BusyView) | null>(null);
   const boxRef = useRef<HTMLElement>(null);
+  const [vi, setVi] = useState<VisitInfo>();
   const b = bridge();
+
+  // 오늘 놀러 온 친구 펫 수와 "오늘은 그만" (손님 창을 맡은 메인이 답한다). 상태가 바뀔 때마다 다시 읽는다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: s?.list 는 읽지 않지만 목록이 바뀔 때 다시 읽으려고 넣었다
+  useEffect(() => {
+    if (!b || !s?.visit) return;
+    let live = true;
+    void b
+      .visitInfo()
+      .then((v) => live && setVi(v))
+      .catch(() => undefined);
+    // 창이 다시 앞에 오면 다시 읽는다 (트레이, 펫 메뉴에서 "오늘은 그만"을 눌렀을 수 있다)
+    const again = () =>
+      void b
+        .visitInfo()
+        .then((v) => live && setVi(v))
+        .catch(() => undefined);
+    window.addEventListener('focus', again);
+    return () => {
+      live = false;
+      window.removeEventListener('focus', again);
+    };
+  }, [b, s?.visit, s?.list]);
 
   // 초대 링크(fairy://friend/<코드>)로 열었으면 코드를 칸에 넣고 이 칸이 보이게 내린다
   useEffect(() => {
@@ -152,6 +176,21 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
       <h2>{t('friends.title')}</h2>
       <div className="card">
         <small>{t('friends.hint')}</small>
+        {s.visit && vi && (
+          <div className="friends-visitbar">
+            <small className="friends-visitinfo">
+              {vi.paused ? t('friends.visitPaused') : t('friends.visitToday', { n: vi.today, max: vi.max })}
+            </small>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => void b.visitPause(!vi.paused).then((v) => v && setVi(v))}
+            >
+              {vi.paused ? t('friends.visitResume') : t('friends.visitPause')}
+            </button>
+            <small className="friends-note">{t('friends.visitMeeting')}</small>
+          </div>
+        )}
         {list && (
           <div className="action-row friends-me">
             <small className="friends-code">{t('friends.myCode', { code: list.me.code })}</small>

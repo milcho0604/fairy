@@ -23,6 +23,8 @@ export interface TrayActions {
   reloadPet(): void;
   /** 컴퓨터 상태 줄들 (system-monitor.ts) */
   stats(): MenuItemConstructorOptions[];
+  /** 놀러 온 친구 펫 항목 (오늘은 그만). 펫 놀러 가기가 꺼졌으면 빈 배열 */
+  visitItems(): MenuItemConstructorOptions[];
   /** 메뉴 막대(윈도우는 알림 영역)에 CPU 와 달리는 펫 보이기 (설정 sysMonitor) */
   sysMonitorOn(): boolean;
   setSysMonitor(on: boolean): void;
@@ -96,6 +98,7 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
         ],
       },
       { type: 'separator' },
+      ...(actions.visitItems().length > 0 ? [...actions.visitItems(), { type: 'separator' as const }] : []),
       { label: t('tray.reload', { name: petName() }), click: () => actions.reloadPet() },
       { label: t('tray.quit'), role: 'quit' },
     ]);

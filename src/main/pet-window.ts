@@ -157,6 +157,8 @@ export interface PetActions {
   grabbed?(): void;
   /** 우클릭 메뉴 맨 위에 흐리게 보일 한 줄 (토라지면 대답이 짧다). 없으면 안 보인다 */
   menuNote?(): string | undefined;
+  /** 놀러 온 친구 펫 항목 (main/visitors.ts: 오늘은 그만, 돌려보내기). 펫 놀러 가기가 꺼졌으면 빈 배열 */
+  visitItems?(): Electron.MenuItemConstructorOptions[];
   /** 짝꿍이 아는 것 창 (main/knows.ts). 없으면 메뉴에 안 보인다 */
   openKnows?(): void;
   /** 질문 칩 (main/pet-chips.ts, 이슈 #124). 없으면 메뉴에 안 보인다 */
@@ -340,6 +342,11 @@ export interface PetWindowOptions {
   onHideHint?: (message: string, shortMessage: string) => void;
   /** 미리 만든 창 (친구 펫을 기본 펫 화면 프로세스에서 연 것, openPetWindowIn). 없으면 새로 만든다 */
   win?: BrowserWindow;
+  /**
+   * 마우스를 늘 통과시키고(쓰다듬기, 끌기, 우클릭 메뉴가 없다) 자리를 저장하지 않는다. 놀러 온 친구 펫(#141, main/visitors.ts)이 쓴다:
+   * 손님은 쓰는 사람의 입력을 받지도 가로채지도 않는다
+   */
+  ghost?: boolean;
 }
 
 /** 펫 창 옵션 (자리는 빼고). 기본 펫과 친구 펫, 미리 만드는 창이 같이 쓴다 */
@@ -464,6 +471,7 @@ export function createPetWindow({
   onRestHeld,
   onHideHint,
   win: prebuilt,
+  ghost = false,
 }: PetWindowOptions): PetWindow {
   const positionFile = id ? `${POSITION_FILE}-${id}` : POSITION_FILE;
   const saved = readJson(positionFile) ?? (initial ? { ...initial, scale: 1 } : undefined);
@@ -584,7 +592,7 @@ export function createPetWindow({
   const fromThisWindow = (e: IpcMainEvent) => e.sender === win.webContents;
 
   const onHover = (e: IpcMainEvent, over: boolean) => {
-    if (!fromThisWindow(e)) return;
+    if (!fromThisWindow(e) || ghost) return;
     overPet = over;
     setShortcuts(over);
     if (dragTimer || looking || Date.now() < passWheelUntil) return;
@@ -689,6 +697,7 @@ export function createPetWindow({
 
   function save() {
     clearTimeout(saveTimer);
+    if (ghost) return;
     const { x, y } = peek?.base ?? pet;
     // 휠은 반올림 안 한 작업 배율로 굴린다(size.ts scaleByWheel). 저장은 0.01 단위로
     const kept = { x, y, scale: clampScale(scale) };
@@ -799,6 +808,7 @@ export function createPetWindow({
             checked: settings.get().typeAlong,
             click: (item) => settings.set({ typeAlong: item.checked }),
           },
+          ...(actions.visitItems?.() ?? []),
           { type: 'separator' },
           { label: t('pet.menu.reload'), click: () => reload() },
           {
@@ -2128,7 +2138,8 @@ export function createPetWindow({
     if (win.isDestroyed()) return;
     win.webContents.send(IPC.env, env);
     // 바빠지는 순간에 한 번만 말한다.
-    if (env.systemBusy && !wasBusy) void say({ kind: 'system', text: voiced('pet.busyCpu') });
+    // 손님(ghost)은 말을 걸지 않는다: 컴퓨터가 바쁘면 조용히 있는다
+    if (env.systemBusy && !wasBusy && !ghost) void say({ kind: 'system', text: voiced('pet.busyCpu') });
     wasBusy = env.systemBusy;
   }, log);
   win.webContents.on('did-finish-load', () => applyLayout());

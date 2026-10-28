@@ -207,6 +207,19 @@
   accent-color: var(--accent);
 }
 
+.friends-visitbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.friends-visitbar .friends-note {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+
 .friends-visit {
   display: flex;
   align-items: center;
