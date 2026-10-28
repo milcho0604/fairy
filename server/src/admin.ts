@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomBytes, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
   Controller,
   ForbiddenException,
   Get,
@@ -289,7 +290,8 @@ const trailOf = (x: TrailRow): GrantTrail => ({
 /** 쓰기의 결과 글과 운영 기록 (행동, 대상, 자세히) */
 interface Written {
   text: string;
-  log: [string, string | null, Record<string, unknown>?];
+  /** null 이면 운영 기록을 남기지 않는다 (같은 요청 번호로 이미 한 쓰기를 다시 받았을 때) */
+  log: [string, string | null, Record<string, unknown>?] | null;
   /** 앱에 넘길 값 (쿠폰 코드) */
   data?: Record<string, string | number>;
 }
@@ -317,6 +319,55 @@ function decimalText(v: unknown, what: string): string {
   return m[1] as string;
 }
 
+/**
+ * 칸은 글자 하나만 받는다 (같은 이름을 두 번 보내 배열이 되거나 JSON 으로 배열, 객체를 보내면 거절).
+ * 여러 값이 정말 필요한 칸(reasons)만 글자 배열을 받는다
+ */
+const MULTI_FIELDS: readonly string[] = ['reasons'];
+function onlySingleFields(f: FormFields): void {
+  for (const [k, v] of Object.entries(f as Record<string, unknown>)) {
+    if (v === undefined || typeof v === 'string') continue;
+    if (MULTI_FIELDS.includes(k) && Array.isArray(v) && v.every((x) => typeof x === 'string')) continue;
+    throw new Refused(`${k} 칸은 값 하나만 받아요`);
+  }
+}
+
+/**
+ * 요청 번호(request_id, 8~64자 영문, 숫자, _ -)가 있으면 이 쓰기를 한 번만 하게 자리를 잡는다. 처음이면 true.
+ * 같은 번호가 이미 있으면 false (먼저 온 트랜잭션이 끝날 때까지 기다린 뒤 본다). 번호가 없으면 항상 true (예전 동작).
+ * 트랜잭션 안에서 불러야 한다: 뒤에서 거절되면 자리도 함께 되돌려져 같은 번호로 다시 보낼 수 있다
+ */
+async function claimRequest(c: PoolClient, actor: string, action: string, f: FormFields): Promise<boolean> {
+  const raw = f.request_id;
+  if (raw === undefined || raw.trim() === '') return true;
+  const id = raw.trim();
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id))
+    throw new Refused('요청 번호는 8~64자의 영문, 숫자, _, - 만 쓸 수 있어요', 'request_id');
+  await c.query(`DELETE FROM admin_request WHERE created_at < now() - interval '30 days'`);
+  // 같은 번호에 다른 내용이면 거절하려고 내용 해시를 함께 둔다 (번호, 확인 칸, 웹 흐름 칸은 뺀다)
+  const body = Object.entries(f as Record<string, unknown>)
+    .filter(
+      ([k]) => !['request_id', 'csrf', 'confirm', 'flow', 'people', 'expect_ids', 'expect_base'].includes(k),
+    )
+    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+  const hash = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  const r = await c.query(
+    'INSERT INTO admin_request (actor, action, request_id, body_hash) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+    [actor.slice(0, 40), action, id, hash],
+  );
+  if ((r.rowCount ?? 0) > 0) return true;
+  const old = await c.query<{ body_hash: string }>(
+    'SELECT body_hash FROM admin_request WHERE actor = $1 AND action = $2 AND request_id = $3',
+    [actor.slice(0, 40), action, id],
+  );
+  if (old.rows[0]?.body_hash !== hash)
+    throw new Refused(
+      '같은 요청 번호로 다른 내용을 보냈어요. 새 요청 번호로 다시 보내 주세요',
+      'request_conflict',
+    );
+  return false;
+}
+
 export interface GrantInput {
   refs: string[];
   coins: number;
@@ -327,6 +378,7 @@ export interface GrantInput {
 
 /** DB 작업과 분리한 지급 폼 검사. 웹과 단위 시험이 같은 상한을 쓴다. */
 export function grantInput(f: FormFields): GrantInput {
+  onlySingleFields(f);
   if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (지급)', 'confirm');
   const raw = (f.accounts ?? f.account ?? '').trim();
   const refs = raw
@@ -952,6 +1004,7 @@ export class AdminService {
   private write(actor: string, fn: (c: PoolClient) => Promise<Written>): Promise<AdminDone> {
     return this.db.tx(async (c) => {
       const out = await fn(c);
+      if (!out.log) return { text: out.text, code: 'duplicate', ...(out.data ? { data: out.data } : {}) };
       const old = confirmCtx.getStore()?.unconfirmed;
       await adminLog(
         c,
@@ -1129,6 +1182,8 @@ export class AdminService {
     if (coins + passes === 0 && !message) throw new Refused('글이나 코인, 채팅 이용권 중 하나는 넣어 주세요');
     const days = int(f.days, 1, 365, '만료 날수') || 30;
     return this.write(actor, async (c) => {
+      if (!(await claimRequest(c, actor, 'notes', f)))
+        return { text: '같은 요청 번호로 이미 보낸 쪽지예요. 다시 보내지 않았어요', log: null };
       const id = await findAccount(c, ref);
       if (!id) throw new Refused('없는 계정이에요 (계정 번호나 기기 코드)', 'no_account');
       const a = await lockAccount(c, id);
@@ -1160,6 +1215,12 @@ export class AdminService {
     const { refs, coins, passes, reason, days } = grantInput(f);
 
     return this.db.tx(async (c) => {
+      if (!(await claimRequest(c, actor, 'grants/batch', f)))
+        return {
+          text: '같은 요청 번호로 이미 보낸 지급이에요. 다시 보내지 않았어요',
+          code: 'duplicate',
+          data: { recipients: 0 },
+        };
       const found: string[] = [];
       for (const ref of refs) {
         const id = await findAccount(c, ref);
@@ -2087,9 +2148,11 @@ export class AdminService {
   /** 쓰기 하나를 이름으로 (웹 폼과 앱의 /v1/admin/* 가 같이 쓴다) */
   run(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
     // 칸은 글자 하나만 받는다 (같은 이름을 두 번 보내 배열이 되면 거절)
-    for (const k of ['id', 'account', 'key', 'confirm'])
-      if (typeof (f as Record<string, unknown>)[k] !== 'undefined' && typeof f[k] !== 'string')
-        return Promise.reject(new Refused(`${k} 칸은 값 하나만 받아요`));
+    try {
+      onlySingleFields(f);
+    } catch (err) {
+      return Promise.reject(err);
+    }
     return confirmCtx.run({ unconfirmed: false, legacyOk: actor.startsWith('account:') }, () =>
       this.dispatch(action, actor, f),
     );
@@ -2970,7 +3033,9 @@ export class AdminApiController {
       return { ok: true, ...(await this.admin.run(name, actor, fieldsOf(req.body))) };
     } catch (err) {
       if (err instanceof Refused)
-        throw new BadRequestException({ error: 'refused', code: err.code, text: err.message });
+        throw err.code === 'request_conflict'
+          ? new ConflictException({ error: 'refused', code: err.code, text: err.message })
+          : new BadRequestException({ error: 'refused', code: err.code, text: err.message });
       throw err;
     }
   }
