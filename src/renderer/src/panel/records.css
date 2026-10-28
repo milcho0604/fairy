@@ -275,3 +275,59 @@
     background: color-mix(in srgb, var(--panel) 52%, var(--ok));
   }
 }
+
+/* ---- 큰 창 기록 구역 (#166, RecordsTab.tsx) ----
+   좁음과 보통(<860)은 한 열로 쌓고(가운데에 묶어 줄이 끝없이 길지 않게), 넓음(>=860)은 두 열.
+   구성요소의 줄(.achieve, .trash)은 작은 패널 것을 그대로 쓴다 */
+.records-tab .records-col-title {
+  display: none;
+}
+
+.records-col > * + * {
+  margin-top: 14px;
+}
+
+.records-tab .trash {
+  border-top: 0;
+}
+
+.records-tab .trash-body {
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+@container (min-width: 520px) {
+  .records-cols {
+    max-width: 680px;
+    margin: 0 auto;
+  }
+}
+
+@container (min-width: 860px) {
+  .records-tab {
+    padding: 18px 28px 22px;
+  }
+
+  .records-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 0 36px;
+    align-items: start;
+    max-width: 1180px;
+  }
+
+  .records-col {
+    min-width: 0;
+  }
+
+  .records-tab .records-col-title {
+    display: block;
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+}

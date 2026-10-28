@@ -1,5 +1,5 @@
 // 큰 창 사이드바의 구역과 창 안 단축키 (이슈 #161, 큰 창 설계 #159).
-// 구역은 본문 탭(오늘, 할 일, 일정, 메모, 상점)과 채팅(창 안에 품음), 따로 창을 여는 것(친구)이 섞여 있다. 순서가 곧 Cmd/Ctrl+1~ 단축키다.
+// 구역은 본문 탭(오늘, 할 일, 일정, 메모, 상점, 기록)과 채팅(창 안에 품음), 따로 창을 여는 것(친구)이 섞여 있다. 순서가 곧 Cmd/Ctrl+1~ 단축키다.
 import type { I18nKey } from '../../../shared/i18n/index.ts';
 import type { PanelTab } from '../../../shared/ipc.ts';
 import { type ModKeyLike, tabByKey } from '../panel/keys.ts';
@@ -18,6 +18,8 @@ export const HOME_SECTIONS: readonly HomeSection[] = [
   { id: 'note', kind: 'tab', label: 'panel.tab.note' },
   { id: 'chat', kind: 'chat', label: 'home.nav.chat' },
   { id: 'shop', kind: 'tab', label: 'panel.tab.shop' },
+  // 집중 월간 잔디, 이번 주, 일기, 휴지통을 한 구역에 (#166). 작은 패널에는 없다
+  { id: 'records', kind: 'tab', label: 'home.nav.records' },
   // 서버 모드, 로그인, 친구 기능이 켜졌을 때만
   { id: 'friends', kind: 'window', label: 'home.nav.friends' },
 ];

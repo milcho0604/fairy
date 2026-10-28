@@ -27,6 +27,8 @@ export const ko = {
   'records.trash.eventWhen': (v: { date: string }) => `일정: ${v.date}`,
 
   // ---- 집중 월간 잔디 ----
+  'records.col.focus': '집중과 한 주',
+  'records.col.keep': '일기와 휴지통',
   'records.month.title': '집중 달력',
   'records.month.hint': '색이 진할수록 그날 집중한 시간이 길어. 날짜를 누르면 자세한 기록을 볼 수 있어.',
   'records.month.summary': (v: { min: string; days: number }) => `${v.min}, ${v.days}일`,
@@ -121,6 +123,8 @@ export const en: Translation<typeof ko> = {
   'records.trash.eventWhen': (v: { date: string }) => `Event: ${v.date}`,
 
   // ---- Focus calendar ----
+  'records.col.focus': 'Focus and this week',
+  'records.col.keep': 'Diary and trash',
   'records.month.title': 'Focus calendar',
   'records.month.hint': 'Darker days mean more focus time. Select a day to see its details.',
   'records.month.summary': (v: { min: string; days: number }) =>

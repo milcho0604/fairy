@@ -1295,7 +1295,8 @@ export interface NoteHit {
   mark?: [number, number];
 }
 
-export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop'] as const;
+// records 는 큰 창 사이드바에만 있다 (이슈 #166). 작은 패널의 탭 줄(renderer panel/tabs.ts)에는 없다
+export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop', 'records'] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 export const isPanelTab = (v: unknown): v is PanelTab => PANEL_TABS.includes(v as PanelTab);
 

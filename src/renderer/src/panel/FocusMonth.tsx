@@ -32,7 +32,7 @@ const monthLabel = (ym: string): string => {
  * 색만으로 구분하지 않게 칸에 분 숫자를 쓰고 칸마다 툴팁(title)과 읽기 글(aria-label)이 있다.
  * 날짜를 누르면 그날 총 시간과 가장 길게 이어 간 집중이 아래에 나온다
  */
-export function FocusMonth({ s }: { s: PanelState }) {
+export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
   const thisMonth = monthOf(s.today);
   const [month, setMonth] = useState(thisMonth);
   // 패널을 연 채 달이 바뀌면(자정) 이번 달을 보고 있던 사람은 새 달로 따라간다
@@ -70,7 +70,7 @@ export function FocusMonth({ s }: { s: PanelState }) {
   const picked = pick ? weeks.flat().find((c) => c.day === pick) : undefined;
 
   return (
-    <details className="achieve focus-month">
+    <details className="achieve focus-month" open={open}>
       <summary>
         {t('records.month.title')}
         <small>{t('records.month.summary', { min: fmtMinutes(totals.min), days: totals.days })}</small>
