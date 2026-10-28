@@ -114,10 +114,17 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   const q = query.trim();
   // "새 메모"를 두 번 누르거나(더블클릭) Enter 를 두 번 치면 메모가 둘 생겨, 하나는 열리고 다른 하나는 "빈 메모"로
   // 목록에 남았다. 만든 메모가 열려 목록이 사라질 때까지 누름을 버린다
+  const [newError, setNewError] = useState('');
   const [newNote] = useState(() =>
     singleFlight(async (text?: string) => {
       openTurn.current++;
-      const n = await bridge.noteAdd(text);
+      const n = await bridge.noteAdd(text).catch(() => undefined);
+      // 디스크가 가득 차면 못 만든다: 말없이 두지 않고 이유를 보인다
+      if (!n || 'ok' in n) {
+        setNewError((n && 'error' in n && n.error) || t('panel.retry'));
+        return false;
+      }
+      setNewError('');
       setOpen(n);
       return true;
     }, NEW_NOTE_HOLD_MS),
@@ -218,6 +225,11 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
           {t('panel.note.new')}
         </button>
       </div>
+      {newError && (
+        <p className="hint error" role="alert">
+          {newError}
+        </p>
+      )}
       <ul className="notes scroll" ref={listRef}>
         {list.length === 0 && (
           <li className="empty">

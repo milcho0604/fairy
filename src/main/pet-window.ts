@@ -48,7 +48,7 @@ import { CrashGuard } from '../shared/crash-guard.ts';
 import { type CarryToy, fromBox, toBox } from '../shared/fetch.ts';
 import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
 import { clampIntoAreas, type Point, type Rect, snapRect } from '../shared/geometry.ts';
-import type { GestureEvent } from '../shared/gesture.ts';
+import { isGesture } from '../shared/gesture.ts';
 import { approachMs, doorFrame, OUT_MS, STRETCH_MS } from '../shared/house-rest.ts';
 import { type HouseSprites, parseSprites } from '../shared/house-room.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -590,9 +590,11 @@ export function createPetWindow({
   ];
 
   const fromThisWindow = (e: IpcMainEvent) => e.sender === win.webContents;
+  /** 화면이 알려 준 크기(px)가 쓸 수 있는 수인지 */
+  const isSize = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
-  const onHover = (e: IpcMainEvent, over: boolean) => {
-    if (!fromThisWindow(e) || ghost) return;
+  const onHover = (e: IpcMainEvent, over: unknown) => {
+    if (!fromThisWindow(e) || ghost || typeof over !== 'boolean') return;
     overPet = over;
     setShortcuts(over);
     if (dragTimer || looking || Date.now() < passWheelUntil) return;
@@ -612,8 +614,9 @@ export function createPetWindow({
     }
   }
 
-  const onGesture = (e: IpcMainEvent, event: GestureEvent) => {
-    if (!fromThisWindow(e)) return;
+  const onGesture = (e: IpcMainEvent, raw: unknown) => {
+    if (!fromThisWindow(e) || !isGesture(raw)) return;
+    const event = raw;
     log('pet', event.type);
     if (event.type === 'click') {
       actions.click(pet);
@@ -667,9 +670,9 @@ export function createPetWindow({
     }
   };
 
-  const onWheel = (e: IpcMainEvent, deltaY: number, zoom: boolean) => {
-    if (!fromThisWindow(e)) return;
-    if (zoom) {
+  const onWheel = (e: IpcMainEvent, deltaY: unknown, zoom: unknown) => {
+    if (!fromThisWindow(e) || typeof deltaY !== 'number' || !Number.isFinite(deltaY)) return;
+    if (zoom === true) {
       resize(scaleByWheel(scale, deltaY));
       return;
     }
@@ -1999,14 +2002,15 @@ export function createPetWindow({
     bubbleAnchor = next;
     applyLayout();
   };
-  const onBubbleSize = (e: IpcMainEvent, id: string, width: number, height: number) => {
-    if (!fromThisWindow(e) || bubble?.id !== id) return;
+  const onBubbleSize = (e: IpcMainEvent, id: unknown, width: unknown, height: unknown) => {
+    if (!fromThisWindow(e) || typeof id !== 'string' || bubble?.id !== id) return;
+    if (!isSize(width) || !isSize(height)) return;
     bubble.size = { width, height };
     applyLayout();
   };
 
-  const onBubbleClosed = (e: IpcMainEvent, id: string, action: string) => {
-    if (!fromThisWindow(e) || bubble?.id !== id) return;
+  const onBubbleClosed = (e: IpcMainEvent, id: unknown, action: unknown) => {
+    if (!fromThisWindow(e) || bubble?.id !== id || typeof action !== 'string') return;
     closeBubble(action);
   };
 

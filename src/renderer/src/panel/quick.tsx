@@ -94,9 +94,12 @@ function QuickAdd() {
   const submit = async (value: string, stay: boolean) => {
     if (busy.current || !value.trim()) return;
     busy.current = true;
-    const r = await bridge.add(value, { quick: true }).finally(() => {
-      busy.current = false;
-    });
+    const r = await bridge
+      .add(value, { quick: true })
+      .catch((): PanelAddResult => ({ ok: false, error: t('panel.add.failed') }))
+      .finally(() => {
+        busy.current = false;
+      });
     if (!r.ok) {
       // 실패하면 붙인 목록은 그대로 둔다 (줄여서 다시 넣을 수 있게)
       setError(r.error ?? t('panel.add.failed'));
@@ -187,8 +190,9 @@ function QuickAdd() {
           };
         else setError(r.error ?? t('panel.add.failed'));
       } else {
-        const n = await bridge.noteAdd(from.text);
-        made = { kind: 'note', id: n.id, text: from.text, msg: t('keep.quick.note') };
+        const n = await bridge.noteAdd(from.text).catch(() => undefined);
+        if (n && !('ok' in n)) made = { kind: 'note', id: n.id, text: from.text, msg: t('keep.quick.note') };
+        else setError((n && 'error' in n && n.error) || t('panel.add.failed'));
       }
       if (made) {
         removeItem(from.kind, from.id);
@@ -196,6 +200,8 @@ function QuickAdd() {
         setRes(made);
       }
       armClose(CLOSE_MS);
+    } catch {
+      setError(t('panel.add.failed'));
     } finally {
       busy.current = false;
     }

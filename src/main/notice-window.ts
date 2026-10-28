@@ -7,6 +7,7 @@ import { NOTICE, type NoticeView } from '../shared/notice-ipc.ts';
 import { onActiveSpace } from './active-space.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { langArg } from './lang.ts';
+import { reviveOnCrash } from './revive.ts';
 
 const WIDTH = 400;
 const MIN_HEIGHT = 180;
@@ -28,6 +29,7 @@ export function createNoticeWindow(o: {
   let view: NoticeView | undefined;
   let answer: ((id: string | undefined) => void) | undefined;
   let quitting = false;
+  let reviveWin: (() => void) | undefined;
   app.once('before-quit', () => {
     quitting = true;
     // 닫을 수 없게 한 창(강제)이 있으면 맥은 끝내기 전체를 취소한다 (2026-10-15 시험: 끝내기를 눌러도 앱이 남음)
@@ -94,6 +96,7 @@ export function createNoticeWindow(o: {
     });
     w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     w.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    reviveWin = reviveOnCrash(w.webContents, 'notice', o.log);
     w.once('ready-to-show', () => reveal(w));
     const devUrl = devRendererUrl();
     if (devUrl) void w.loadURL(`${devUrl}/notice.html`);
@@ -122,6 +125,7 @@ export function createNoticeWindow(o: {
       if (!win || win.isDestroyed()) {
         win = create();
       } else {
+        reviveWin?.();
         win.webContents.send(NOTICE.changed, next);
         if (!win.isVisible()) reveal(win);
       }

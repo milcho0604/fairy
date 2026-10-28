@@ -7,6 +7,18 @@ export type GestureEvent =
   | { type: 'drag-start'; offset: { x: number; y: number }; petRelative?: boolean }
   | { type: 'drag-end' };
 
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** 화면이 보낸 값이 몸짓 알림 모양인지 (잘못된 값은 메인이 만지다 던지지 않게 버린다) */
+export function isGesture(v: unknown): v is GestureEvent {
+  if (typeof v !== 'object' || v === null) return false;
+  const g = v as Record<string, unknown>;
+  if (g.type === 'click' || g.type === 'double-click' || g.type === 'drag-end') return true;
+  if (g.type !== 'drag-start') return false;
+  const o = g.offset as Record<string, unknown> | null | undefined;
+  return typeof o === 'object' && o !== null && finite(o.x) && finite(o.y);
+}
+
 /** 이만큼(px) 움직이면 클릭이 아니라 드래그로 본다. */
 export const DRAG_THRESHOLD = 4;
 

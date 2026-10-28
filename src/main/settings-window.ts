@@ -46,6 +46,7 @@ import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
 import { library } from './pet-library.ts';
+import { reviveOnCrash } from './revive.ts';
 import { settings } from './settings.ts';
 import { removeModel, storedModels } from './storage.ts';
 import { openRemembered } from './window-bounds.ts';
@@ -403,6 +404,8 @@ export function createSettingsWindow({
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    // 열려 있는 채로 죽어도 저절로 다시 읽는다 (여러 번 죽으면 멈춘다)
+    reviveOnCrash(win.webContents, 'settings', log);
     load(win, section);
   }
 

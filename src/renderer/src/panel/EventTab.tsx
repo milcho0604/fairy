@@ -136,7 +136,9 @@ export function EventTab({
   }, [findTarget, onFindTargetHandled, s.events, s.pinnedEvents, view]);
 
   const add = async () => {
-    const r = await bridge.eventAdd(text, calendar ? day : undefined);
+    const r = await bridge
+      .eventAdd(text, calendar ? day : undefined)
+      .catch(() => ({ ok: false as const, error: t('panel.add.failed'), asTodo: false }));
     if (!r.ok) {
       setError(r.error ?? t('panel.add.failed'));
       setAsTodo(!!r.asTodo);
