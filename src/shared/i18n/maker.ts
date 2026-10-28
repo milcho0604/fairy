@@ -334,6 +334,16 @@ export const ko = {
     `바탕 조각이 많이 남았어. 그림이나 만화면 그림용으로 다시 지워 볼까? (도구를 처음 한 번 받아, ${v.mb}MB)`,
   'maker.edit.kindTry': '그림용으로 다시 지우기',
   'maker.edit.kindLose': '방식을 바꾸면 다시 지워서 지금까지 다듬은 것이 사라져. 바꿀까?',
+  'maker.edit.paper': '종이 색 지우기',
+  'maker.edit.paperHint':
+    '종이 색을 재서 옅은 선과 칠을 살려. 줄 공책이나 틀 있는 그림에서는 줄이 남을 수 있어.',
+  'maker.edit.paperDone': '종이 색으로 다시 지웠어. 마음에 안 들면 되돌리기를 눌러 줘.',
+  'maker.edit.paperFail': '종이 색이 고르지 않아서 못 지웠어. 사진 배경이면 지우개로 칠해 줘.',
+  'maker.edit.paperSimilar': '몸 색이 종이와 비슷해서 못 지웠어. 흰 몸은 지우개와 복원 붓으로 다듬어 줘.',
+  'maker.edit.applySame': '더 바꿀 곳이 없어.',
+  'maker.edit.fur': '털 다듬기',
+  'maker.edit.furHint': '사진 색을 보고 털 끝 가장자리를 다듬어. 흰 털 둘레는 옅게 번질 수 있어.',
+  'maker.edit.furDone': '털 끝을 다듬었어. 마음에 안 들면 되돌리기를 눌러 줘.',
   'maker.edit.eraser': '지우개',
   'maker.edit.restore': '복원 붓',
   'maker.edit.size': '굵기',
@@ -692,6 +702,19 @@ export const en: Translation<typeof ko> = {
     `Lots of background pieces are left. If this is a drawing or cartoon, try the drawing remover? (one-time download, ${v.mb}MB)`,
   'maker.edit.kindTry': 'Redo for drawing',
   'maker.edit.kindLose': 'Switching redoes the cutout and your brush edits will be lost. Switch?',
+  'maker.edit.paper': 'Erase paper color',
+  'maker.edit.paperHint':
+    'Measures the paper color to keep faint lines and fills. Ruled paper or framed drawings may leave lines behind.',
+  'maker.edit.paperDone': 'Redone with the paper color. Press Undo if you do not like it.',
+  'maker.edit.paperFail':
+    'The paper color is not even, so nothing was erased. For a photo background, paint with the eraser.',
+  'maker.edit.paperSimilar':
+    'The body color is close to the paper, so nothing was erased. Touch up a white body with the eraser and restore brush.',
+  'maker.edit.applySame': 'Nothing more to change.',
+  'maker.edit.fur': 'Smooth fur',
+  'maker.edit.furHint':
+    'Uses the photo colors to refine the fur edge. Around white fur it can leave a faint haze.',
+  'maker.edit.furDone': 'Fur edge smoothed. Press Undo if you do not like it.',
   'maker.edit.eraser': 'Eraser',
   'maker.edit.restore': 'Restore brush',
   'maker.edit.size': 'Size',

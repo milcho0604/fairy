@@ -168,6 +168,10 @@ section {
   flex-wrap: wrap;
 }
 
+.tools.refine {
+  gap: 8px;
+}
+
 .segmented {
   display: flex;
   margin: 0;
