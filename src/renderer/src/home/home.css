@@ -263,3 +263,17 @@ html.home-win body {
   flex: 1;
   min-height: 0;
 }
+
+/* 사이드바 쪽지함 구역의 안 읽음 숫자 (숫자와 이름이 따로 있어 색에만 기대지 않는다) */
+.home-nav .mail-badge {
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}

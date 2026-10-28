@@ -99,7 +99,7 @@ import { createServerInbox, type ServerInbox } from './server-inbox.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { watchSiteEvents } from './site-events.ts';
-import { onJsonTrouble, readJson, writeJson } from './store.ts';
+import { onJsonTrouble, readJson, renameJson, writeJson } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { testKeychainSwitches } from './test-keychain.ts';
 import { createTogether } from './together.ts';
@@ -405,6 +405,8 @@ ready
         focusRunning: () => planner.focus.phase !== 'idle',
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
         openKnows: () => knows.open(),
+        openMailbox: () => openMailbox(),
+        mailUnread: () => dailyNotes.unread(),
         whatFirst: () => sayWhatFirst(),
         askChips: () => void petChips?.ask(),
         // 집 숨기기, 다시 보이기 (shared/house-stow.ts). 집을 숨기면 집 우클릭을 못 하니 펫 메뉴에 둔다
@@ -567,6 +569,7 @@ ready
       store,
       stats,
       notes,
+      mail,
       events,
       gcalLinks,
       life,
@@ -1788,16 +1791,37 @@ ready
       reward: (coins, reason, now) => store.reward(coins, reason, now),
       surface: () => panel.activeSurface(),
       fromSurface: (wc) => panel.fromSurface(wc),
-      openToday: () => panel.openTab('today'),
+      mail,
+      readLegacy: () => readJson('daily-note'),
+      doneLegacy: () => renameJson('daily-note', '.migrated'),
+      openMailbox: () => openMailbox(),
+      openLink: (url) => openLink(url, log),
       onChange: () => panel.refresh(),
       log,
     });
+    // 쪽지함 열기: 큰 창이면 쪽지함 구역, 작은 패널이면 쪽지함 덮개 (패널 쪽이 탭 이름 mail 을 알아본다)
+    function openMailbox() {
+      panel.openTab('mail');
+    }
+    // 휴지통에 30일 지난 쪽지는 켤 때와 하루에 한 번 영구 삭제한다 (할 일 휴지통과 같다)
+    const tidyMail = () => {
+      try {
+        const r = mail.tidy(Date.now());
+        if (r.purged + r.trashed > 0) log('mail', '쪽지함 정리', r.purged, r.trashed);
+      } catch (err) {
+        log('mail', '쪽지함 정리 못 함', err instanceof Error ? err.message : String(err));
+      }
+    };
+    tidyMail();
+    setInterval(tidyMail, 24 * 3_600_000).unref();
     // 서버 쪽지함 (#101): 운영자 쪽지와 정기 지급 쪽지. 매일 쪽지와 같은 펫 손, 같은 쪽지함에 섞인다
     serverInbox = createServerInbox({
       core: () => server.core,
+      mail,
       say: (o) => pet.say(o),
       react: (kind) => pet.react(kind),
       canTalk,
+      openMailbox: () => openMailbox(),
       onChange: () => dailyNotes.changed(),
       onGot: () => panel.refresh(),
       openFriends: () => settingsWindow.open('friends'),
@@ -1900,6 +1924,7 @@ ready
       newerAvailable: () => updates.newerAvailable(),
       setMinVersion: (min) => updates.setNoticeMin(min),
       install: () => void updates.install(),
+      onShown: (n) => dailyNotes.announce(n),
     });
     const updates = watchUpdates({ say: (o) => pet.say(o), log, askForce: notices.askForce });
     updateSink = { min: (m) => updates.setServerMin(m), install: () => void updates.install() };
@@ -2183,6 +2208,8 @@ ready
           dayTools,
           // 고친 펫 대사 (#125)
           lines: debugLines(),
+          // 쪽지함 저장 (feat/mailbox)
+          mail,
           habits,
           whatFirst,
           sayWhatFirst,

@@ -325,6 +325,29 @@ export const MIGRATIONS: readonly string[] = [
   create unique index event_repeat_slot on event(repeat_series, start_at)
     where repeat_series is not null and deleted_at is null;
   `,
+  // 22판: 쪽지함 (feat/mailbox). 펫 쪽지, 서버 쪽지, 공지를 한 표에. 읽음, 보관, 지움, 고정은 이 기기 안에서만 정한다
+  `
+  create table mail (
+    id text primary key,        -- 펫 쪽지는 날짜(저녁 쪽지는 날짜~e), 서버 쪽지는 inbox:번호, 공지는 notice:번호
+    source text not null,       -- local, server, notice
+    kind text not null,         -- daily, letter, week, evening, grant, notice, subscription, gift, friend, gift_back, announce
+    day text not null,          -- 받은 날 (현지)
+    at integer not null,        -- 받은 시각 (정렬)
+    look text not null default 'note',
+    milestone integer,
+    coins integer,
+    payload text not null,      -- 줄 글과 값 (펫 쪽지), 서버 쪽지 원본, 공지 글 (JSON)
+    read_at integer,
+    archived_at integer,
+    deleted_at integer,
+    pinned_at integer
+  );
+  create index mail_at on mail(at);
+  create table mail_meta (
+    key text primary key,
+    value text not null
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -2468,3 +2468,9 @@ li:is(.todo, .event) .tools .extra .due.none {
 .title > .repeat-badge {
   margin-inline-start: 6px;
 }
+
+/* 머리줄 쪽지함 봉투: 안 읽은 쪽지가 있으면 점 (feat/mailbox) */
+.panel header .mail-btn .mail-dot {
+  fill: var(--accent);
+  stroke: var(--panel);
+}

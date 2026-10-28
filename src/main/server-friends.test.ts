@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
+import { type Db, migrate } from '../shared/db-schema.ts';
 import { setLang } from '../shared/i18n/index.ts';
+import { MailStore } from '../shared/mail-store.ts';
 import type { ServerStatus } from '../shared/server-account.ts';
 import {
   busyByDay,
@@ -10,6 +13,7 @@ import {
   titlesByDay,
 } from '../shared/server-friends.ts';
 import { parseJjUrl } from '../shared/url-scheme.ts';
+import { serverLines, serverTitle } from './mail-view.ts';
 import { friendsListOf, inboxItemOf } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
 import {
@@ -21,7 +25,7 @@ import {
   shareableTitle,
   titledBlocks,
 } from './server-friends.ts';
-import { createServerInbox, inboxLines, inboxTitle } from './server-inbox.ts';
+import { createServerInbox } from './server-inbox.ts';
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 9, 16, 1);
@@ -121,14 +125,15 @@ test('서버 대답 읽기: 친구 목록과 친구 쪽지 (옛 앱이 모르는
   });
   assert.ok(gift);
   setLang('ko');
-  assert.equal(inboxTitle(gift), '친구가 보낸 선물');
-  assert.ok(inboxLines(gift).some((x) => x.includes('콩')));
+  // 제목은 종류와 들어 있는 것 (열기 전에 구분된다)
+  assert.equal(serverTitle(gift), '친구 선물: 코인 50개, 채팅 이용권 1장 (콩)');
+  assert.ok(serverLines(gift).some((x) => x.includes('콩')));
   const left = inboxItemOf({ id: 10, kind: 'friend', sender: { code: null, nickname: null } });
   assert.ok(left);
   assert.equal(left.sender?.code, null);
-  assert.ok(inboxLines(left)[0]?.includes('떠난 친구'));
+  assert.ok(serverLines(left)[0]?.includes('떠난 친구'));
   setLang('en');
-  assert.ok(!/[가-힣]/.test(inboxLines(left).join(' ')), '영어판에 한글이 없다');
+  assert.ok(!/[가-힣]/.test(serverLines(left).join(' ')), '영어판에 한글이 없다');
   setLang('ko');
   assert.equal(inboxItemOf({ id: 11, kind: 'party' }), undefined);
 });
@@ -280,6 +285,13 @@ test('선물: 끊겨 답을 못 받으면 같은 요청 번호로 한 번 더, �
   assert.ok(f.calls.includes('run'));
 });
 
+/** 시험용 쪽지함 저장 (메모리 저장 파일) */
+const memoryMail = () => {
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  migrate(db);
+  return new MailStore(db);
+};
+
 test('칸이 숨은 때 받기가 바로 끝나도 다음 받기는 돈다 (끝난 약속이 남지 않는다)', async () => {
   const f = fakeCore({ features: { friends: false }, replies: { friends: LIST } });
   const friends = createServerFriends({
@@ -306,6 +318,7 @@ test('칸이 숨은 때 받기가 바로 끝나도 다음 받기는 돈다 (끝�
           return { items: [], next: null, unopened: 0 };
         },
       }) as unknown as ServerCore,
+    mail: memoryMail(),
     say: async () => undefined,
     react: () => {},
     canTalk: () => false,
@@ -329,6 +342,7 @@ test('쪽지를 열 때 410 이 받을 수 없게 된 것이면 돌려줬다고 
         inbox: async () => ({ items: [], next: null, unopened: 0 }),
         openInbox: async () => ({ ok: false, status: 410, error, body: {} }),
       }) as unknown as ServerCore,
+    mail: memoryMail(),
     say: async (s) => {
       said.push(s.text ?? '');
       return undefined;

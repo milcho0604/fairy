@@ -1446,7 +1446,7 @@ const body = async () => {
   const navNames = await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
   check(
     '사이드바 구역 순서 (친구는 꺼져 있으면 없음)',
-    navNames === tx('오늘|할 일|메모|일정|채팅|상점|기록', 'Today|To-dos|Notes|Events|Chat|Shop|Records'),
+    navNames === tx('오늘|할 일|메모|일정|채팅|상점|기록|쪽지함', 'Today|To-dos|Notes|Events|Chat|Shop|Records|Mailbox'),
     navNames,
   );
   check('사이드바 머리: 이름, 코인, 배부름 줄', await h.ev(`!!document.querySelector('.home-head strong') && !!document.querySelector('.home-head .coins') && !!document.querySelector('.home-fullness .track')`));

@@ -52,6 +52,13 @@ export function watchNotices(o: {
   setMinVersion: (min: string | undefined) => void;
   /** 권장 공지의 업데이트 단추 */
   install: () => void;
+  /** 공지를 띄웠다 (쪽지함에 모은다). 강제 업데이트 창은 아니다 */
+  onShown?: (n: {
+    id: string;
+    title: { ko: string; en: string };
+    body: { ko: string; en: string };
+    link?: string;
+  }) => void;
 }) {
   const url = noticesUrl(process.env.JJ_NOTICES_URL, app.isPackaged);
   let file: NoticeFile | undefined;
@@ -200,6 +207,7 @@ export function watchNotices(o: {
     busy = true;
     try {
       shownThisRun.add(n.id);
+      o.onShown?.({ id: n.id, title: n.title, body: n.body, ...(n.link ? { link: n.link } : {}) });
       seen = markShown(seen, n, localDay(now));
       save();
       const answer = await win.show(viewOf(n));

@@ -47,8 +47,9 @@ import {
 } from '../shared/ipc.ts';
 import { LINES, type LinesBridge } from '../shared/lines-ipc.ts';
 import type { LookMotion } from '../shared/look-motion.ts';
+import type { MailBox } from '../shared/mail.ts';
 import type { MoveAsk } from '../shared/moves.ts';
-import { NOTES, type NoteBox, type NoteBridge } from '../shared/note-ipc.ts';
+import { NOTES, type NoteBridge } from '../shared/note-ipc.ts';
 import { NOTICE, type NoticeBridge, type NoticeView } from '../shared/notice-ipc.ts';
 import { SERVER, type ServerBridge, type ServerStatus } from '../shared/server-account.ts';
 import { FRIENDS, type FriendsBridge, type FriendsState } from '../shared/server-friends.ts';
@@ -459,13 +460,17 @@ if (kind === 'panel' || kind === 'home' || kind === 'settings' || kind === 'know
   contextBridge.exposeInMainWorld('jjakkungBond', bond);
 }
 
-// 매일 쪽지함 (shared/daily-note.ts). 패널과 큰 창의 오늘 탭만
+// 쪽지함 (shared/mail.ts, main/daily-note.ts). 작은 패널의 덮개와 큰 창 쪽지함 구역, 오늘 탭의 새 쪽지 카드
 if (kind === 'panel' || kind === 'home') {
   const notes: NoteBridge = {
     list: () => ipcRenderer.invoke(NOTES.list),
-    read: (day) => ipcRenderer.send(NOTES.read, day),
+    read: (id) => ipcRenderer.send(NOTES.read, id),
+    act: (id, what) => ipcRenderer.invoke(NOTES.act, id, what),
+    readAll: () => ipcRenderer.invoke(NOTES.readAll),
+    more: () => ipcRenderer.invoke(NOTES.more),
+    openLink: (id) => ipcRenderer.send(NOTES.link, id),
     onChange: (listener) => {
-      ipcRenderer.on(NOTES.changed, (_e, box: NoteBox) => listener(box));
+      ipcRenderer.on(NOTES.changed, (_e, box: MailBox) => listener(box));
     },
   };
   contextBridge.exposeInMainWorld('jjakkungNotes', notes);
