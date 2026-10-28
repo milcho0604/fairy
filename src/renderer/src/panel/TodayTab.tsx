@@ -463,24 +463,7 @@ export function TodayTab({
             {/* 매일 쪽지함 (shared/daily-note.ts). 쪽지가 없고 꺼져 있으면 그리지 않는다 */}
             <NoteBox />
 
-            <details className="achieve diary" open={wide}>
-              <summary>{t('diary.title', { name: s.petName })}</summary>
-              {s.diary.length === 0 ? (
-                <p className="empty-line">{t('diary.empty')}</p>
-              ) : (
-                <ul>
-                  {s.diary.map((d) => (
-                    <li key={d.day}>
-                      <small className="diary-day">
-                        {d.today ? t('diary.today') : dayHeading(d.day, s.today)}
-                        {d.ai && <span className="diary-ai">AI</span>}
-                      </small>
-                      <span className="diary-text">{d.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </details>
+            <DiaryBox s={s} open={wide} />
           </div>
         </div>
       </div>
@@ -521,7 +504,7 @@ const moveKey = () => Date.now() * 1000 + (moveSeq++ % 1000);
 const MORE_SLACK = 12;
 
 /** 이번 주 (shared/week.ts): 요일 막대(끝낸 일), 끝낸 수와 집중 시간, 지난주 이맘때와 견줌, 다음 7일 마감 */
-function WeekBox({
+export function WeekBox({
   week,
   today,
   open,
@@ -568,6 +551,30 @@ function WeekBox({
         {week.dueSoon > 0 && <li>{t('assist.week.dueSoon', { n: week.dueSoon })}</li>}
       </ul>
       {children}
+    </details>
+  );
+}
+
+/** 짝꿍 일기 (오늘 탭 "나와 펫" 열과 큰 창 기록 구역이 같이 쓴다) */
+export function DiaryBox({ s, open }: { s: PanelState; open?: boolean }) {
+  return (
+    <details className="achieve diary" open={open}>
+      <summary>{t('diary.title', { name: s.petName })}</summary>
+      {s.diary.length === 0 ? (
+        <p className="empty-line">{t('diary.empty')}</p>
+      ) : (
+        <ul>
+          {s.diary.map((d) => (
+            <li key={d.day}>
+              <small className="diary-day">
+                {d.today ? t('diary.today') : dayHeading(d.day, s.today)}
+                {d.ai && <span className="diary-ai">AI</span>}
+              </small>
+              <span className="diary-text">{d.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </details>
   );
 }

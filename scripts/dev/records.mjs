@@ -2,6 +2,9 @@
 //
 //   npm run build && OUT=/tmp/fairy-125 LANG_UNDER_TEST=ko node scripts/dev/records.mjs
 //
+// 4번째 묶음 home (#166): 큰 창 사이드바 "기록" 구역에 같은 구성요소(위 1~2번과 같은 선택자)가 한곳에 펼쳐지는지,
+// 큰 창 기본 폭(1100)과 좁은 폭(760)에서 배치와 넘침, 작은 패널은 그대로인지(탭 줄에 기록 없음, 줄이 접힌 채)를 본다.
+//
 // CLAUDE.md 시험 창 규칙: JJ_NO_FOCUS=1, 빈 JJ_USER_DATA(끝나면 지운다), 맥북 화면, 입력은 CDP 로만 넣는다
 // (마우스 누르기는 Input.dispatchMouseEvent, 글은 Input.insertText). 진짜 AI CLI 가 잡히지 않게 환경 변수는 비우고
 // PATH 는 /usr/bin:/bin 과 node 만 둔다. 포트는 무작위(JJ_INSPECT_PORT, JJ_PAGE_PORT 로 바꿀 수 있다).
@@ -28,7 +31,7 @@ const freePort = () =>
   });
 const INSPECT = Number(process.env.JJ_INSPECT_PORT ?? (await freePort()));
 const PAGE = Number(process.env.JJ_PAGE_PORT ?? (await freePort()));
-const ONLY = process.env.ONLY ?? 'trash,focus,lines';
+const ONLY = process.env.ONLY ?? 'trash,focus,lines,home';
 const KEEP = process.env.KEEP === '1';
 const ko = LANG === 'ko';
 const tx = (koText, enText) => (ko ? koText : enText);
@@ -554,6 +557,105 @@ const body = async () => {
   check('전부 기본값으로', (await main(`Object.keys(__jj.lines.overrides().${LANG}).length`)) === 0);
   check('영어 칸은 따로 (다른 언어 덮어쓰기는 건드리지 않음)', (await main(`Object.keys(__jj.lines.overrides().${LANG === 'ko' ? 'en' : 'ko'}).length`)) === 0);
   await st2.shots('lines-after-reset', `document.querySelector('.lines-sheet')`);
+
+  }
+  // ===================== 4. 큰 창 기록 구역 (#166) =====================
+  if (ONLY.includes('home')) {
+  const rec = (label) => ko ? label[0] : label[1];
+  // 기록 재료: 집중(오늘 75분, 사흘 전 130분), 휴지통 둘 (하나는 끝낸 일)
+  const todayStr2 = await main(`new Date().toLocaleDateString('sv-SE')`);
+  const [hy, hm, hd] = todayStr2.split('-').map(Number);
+  // 2번(focus)이 같은 실행에서 이미 오늘 75분을 넣었으면 다시 넣지 않는다
+  if (!ONLY.includes('focus')) await main(`(() => { const s = __jj.stats; s.addFocus(${new Date(hy, hm - 1, hd, 9, 0).getTime()}, 25); s.addFocus(${new Date(hy, hm - 1, hd, 11, 0).getTime()}, 50); return 1; })()`);
+  const tA = tx('큰 창 휴지통 가', 'Home trash a');
+  const tB = tx('큰 창 휴지통 나', 'Home trash b');
+  const tC = tx('큰 창 휴지통 다', 'Home trash c');
+  await main(`(() => { for (const title of ${JSON.stringify([tA, tB, tC])}) { __jj.store.add({ title }, Date.now()); } return 1; })()`);
+  await main(`(() => { const l = __jj.store.list(Date.now()).open; for (const t of l.filter((x) => ${JSON.stringify([tA, tB])}.includes(x.title))) __jj.store.remove(t.id, Date.now()); return 1; })()`);
+  await main('__jj.panel.refresh(); 1');
+
+  // --- 작은 패널은 그대로: 탭 줄에 기록이 없고, 오늘 탭 줄은 접힌 채 ---
+  await main("__jj.panel.openTab('today'); 1");
+  await sleep(1500);
+  let pc = await page('panel');
+  await main("__jj.panel.window.removeAllListeners('blur'); 1");
+  check('작은 패널 탭 줄에는 기록이 없다 (다섯 탭)', (await pc.ev(`document.querySelectorAll('.tabs [role="tab"]').length`)) === 5 && !(await pc.ev(`!!document.getElementById('ptab-records')`)));
+  check('작은 패널 오늘 탭: 집중 달력, 일기는 접힌 채', await pc.ev(`!document.querySelector('.focus-month').open && !document.querySelector('details.diary').open`));
+  await pc.click(`document.querySelector('.focus-month summary')`);
+  check('작은 패널: 집중 달력 줄을 눌러 여는 동작 그대로', await pc.until(() => pc.ev(`!!document.querySelector('.focus-month[open] .fm-cell')`)));
+  await pc.click(`document.querySelector('.focus-month summary')`);
+  await main("__jj.panel.openTab('todo'); 1");
+  await sleep(700);
+  check('작은 패널 할 일 탭: 휴지통 줄은 닫힌 채 (휴지통 2개)', await pc.until(() => pc.ev(`document.querySelector('.trash-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.trash-toggle').innerText.includes('2')`)));
+  await main('__jj.panel.window.close(); 1');
+  await sleep(500);
+
+  // --- 큰 창 기록 구역 ---
+  await main("__jj.home.open('records'); 1");
+  let hw;
+  for (let i = 0; i < 40 && !(await main('!!__jj.home.window && !__jj.home.window.isDestroyed()')); i++) await sleep(200);
+  await sleep(1200);
+  await main('__jj.home.window.setBounds({ x: 40, y: 40, width: 1100, height: 760 }); 1');
+  await sleep(800);
+  hw = await page('home');
+  const nav = await hw.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
+  check('사이드바에 기록 항목 (상점 다음)', nav.split('|').at(-1) === rec(['기록', 'Records']) && nav.split('|').at(-2) === rec(['상점', 'Shop']), nav);
+  check('기록 항목이 지금 구역으로 표시되고 본문 이름표가 맞음', await hw.ev(`document.getElementById('ptab-records').getAttribute('aria-current') === 'page' && document.getElementById('ptab-panel').getAttribute('aria-labelledby') === 'ptab-records'`));
+  check('구역 제목줄이 기록', (await hw.ev(`document.querySelector('.home-bar h2').textContent`)) === rec(['기록', 'Records']));
+  check('집중 월간 잔디가 펼쳐져 있다 (.focus-month[open] .fm-cell)', await hw.until(() => hw.ev(`!!document.querySelector('.focus-month[open] .fm-cell')`)));
+  check('이번 주가 펼쳐져 있다 (details.week[open] .week-bar)', await hw.ev(`!!document.querySelector('details.week[open] .week-bar')`));
+  check('일기가 펼쳐져 있다 (details.diary[open])', await hw.ev(`!!document.querySelector('details.diary[open] .diary-text')`));
+  check('휴지통이 펼쳐져 있고 지운 둘이 보인다 (.trash-item)', await hw.until(() => hw.ev(`document.querySelectorAll('.trash-item').length === 2`)));
+  const area = (sel) => hw.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom, w: r.width }; })()`);
+  let fm = await area('.focus-month');
+  let wk = await area('details.week');
+  let dr = await area('details.diary');
+  let tr = await area('.trash');
+  check('기본 폭(1100): 두 열 (잔디와 이번 주가 왼쪽, 일기와 휴지통이 오른쪽)', !!fm && !!dr && !!tr && !!wk && dr.x > fm.r - 1 && tr.x > fm.r - 1 && Math.abs(wk.x - fm.x) < 2 && wk.y > fm.y && tr.y > dr.y, JSON.stringify({ fm, wk, dr, tr }));
+  check('기본 폭: 열 제목 둘이 보인다', (await hw.ev(`[...document.querySelectorAll('.records-col-title')].filter((e) => e.offsetParent).map((e) => e.textContent).join('|')`)) === tx('집중과 한 주|일기와 휴지통', 'Focus and this week|Diary and trash'));
+  check('기본 폭: 가로 넘침 없음', !(await hw.ev(`[...document.querySelectorAll('.records-tab *')].some((e) => e.getBoundingClientRect().right > innerWidth + 1) || document.documentElement.scrollWidth > innerWidth`)));
+  await hw.shots('home-records-1100', `document.querySelector('.surface.home')`);
+
+  // --- 위 1~2번과 같은 선택자로 같은 동작 (회귀) ---
+  const cell = (day) => hw.ev(`(() => { const c = document.querySelector('.fm-cell[data-day="${day}"]'); return c ? { cls: c.className, text: c.innerText.replace(/\s+/g, ' ').trim(), title: c.title } : null; })()`);
+  await hw.until(async () => (await cell(todayStr2))?.cls.includes('lv3'));
+  const hc = await cell(todayStr2);
+  check('큰 창 잔디: 오늘 칸 75분은 3단계, 숫자 75, 툴팁', !!hc?.cls.includes('lv3') && hc.text.includes('75') && !!hc.title, JSON.stringify(hc));
+  await hw.click(`document.querySelector('.fm-cell[data-day="${todayStr2}"]')`);
+  const hd2 = await hw.ev(`document.querySelector('.fm-detail')?.innerText ?? ''`);
+  check('큰 창 잔디: 날짜를 누르면 총 1시간 15분, 가장 길게 50분', hd2.includes(tx('1시간 15분', '1h 15m')) && hd2.includes(tx('50분', '50m')), hd2.replace(/\n/g, ' '));
+  check('큰 창 잔디: 이번 달에서 다음 달 단추가 막힘', await hw.ev(`document.querySelectorAll('.fm-nav .fm-step')[1]?.disabled`));
+  check('큰 창 이번 주: 끝낸 일과 집중 요약 줄', (await hw.ev(`document.querySelector('details.week summary')?.innerText ?? ''`)).length > 0);
+  // 휴지통: 되살리기 -> 영구 삭제 -> 비우기 (확인 먼저)
+  await hw.until(() => hw.ev(`document.querySelectorAll('.trash-item').length === 2`));
+  await hw.click(`document.querySelector('.trash-item button.link:not(.danger)')`);
+  check('큰 창 휴지통: 되살리면 할 일에 돌아오고 목록이 하나로', await hw.until(async () => (await main('__jj.store.trashCount()')) === 1 && (await hw.ev(`document.querySelectorAll('.trash-item').length === 1`))));
+  await hw.shots('home-records-restored', `document.querySelector('.surface.home')`);
+  await hw.click(`document.querySelector('.trash-empty-all')`);
+  check('큰 창 휴지통 비우기: 확인 문구가 먼저', await hw.until(() => hw.ev(`!!document.querySelector('.trash-confirm')`)) && (await main('__jj.store.trashCount()')) === 1);
+  await hw.click(`document.querySelector('.trash-confirm button.danger')`);
+  check('큰 창 휴지통 비우기 확인 뒤 비고, 비어도 줄은 남는다', await hw.until(async () => (await main('__jj.store.trashCount()')) === 0 && (await hw.ev(`!!document.querySelector('.trash-empty') && !!document.querySelector('.trash-toggle')`))));
+
+  // --- 좁은 폭 (큰 창 하한 760): 한 열 ---
+  await main('__jj.home.window.setBounds({ x: 40, y: 40, width: 760, height: 760 }); 1');
+  await sleep(800);
+  hw = await page('home');
+  fm = await area('.focus-month');
+  dr = await area('details.diary');
+  tr = await area('.trash');
+  check('좁은 폭(760): 한 열 (잔디, 일기, 휴지통이 위에서 아래로 같은 왼쪽 선)', !!fm && !!dr && !!tr && dr.y > fm.y && tr.y > dr.y && Math.abs(dr.x - fm.x) < 2 && Math.abs(tr.x - fm.x) < 2, JSON.stringify({ fm, dr, tr }));
+  check('좁은 폭: 열 제목은 숨김', (await hw.ev(`[...document.querySelectorAll('.records-col-title')].filter((e) => e.offsetParent).length`)) === 0);
+  check('좁은 폭: 가로 넘침 없음', !(await hw.ev(`[...document.querySelectorAll('.records-tab *')].some((e) => e.getBoundingClientRect().right > innerWidth + 1) || document.documentElement.scrollWidth > innerWidth`)));
+  check('좁은 폭: 잔디 칸이 읽을 만하다 (칸 너비 24px 이상)', (await hw.ev(`document.querySelector('.fm-cell')?.getBoundingClientRect().width ?? 0`)) >= 24);
+  await hw.shots('home-records-760', `document.querySelector('.surface.home')`);
+  // 구역 옮겨 다녀도 이 구역 스크롤이 남는다
+  await hw.click(`document.getElementById('ptab-today')`);
+  await sleep(300);
+  await hw.click(`document.getElementById('ptab-records')`);
+  check('다른 구역에 다녀와도 기록 구역이 그대로 그려진다', await hw.until(() => hw.ev(`!!document.querySelector('.focus-month[open] .fm-cell') && !!document.querySelector('details.diary[open]')`)));
+  check('Dock 은 한 번도 안 불렀다 (JJ_NO_FOCUS)', (await main('__jj.dock.stats().shows')) === 0);
+  await main('__jj.home.window.close(); 1');
+  await sleep(500);
 
   }
   // 글이 바뀌었는지 확인할 수 있게 마지막 정리: 시험이 만든 할 일 모두 지우기

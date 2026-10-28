@@ -1446,7 +1446,7 @@ const body = async () => {
   const navNames = await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
   check(
     '사이드바 구역 순서 (친구는 꺼져 있으면 없음)',
-    navNames === tx('오늘|할 일|일정|메모|채팅|상점', 'Today|To-dos|Events|Notes|Chat|Shop'),
+    navNames === tx('오늘|할 일|일정|메모|채팅|상점|기록', 'Today|To-dos|Events|Notes|Chat|Shop|Records'),
     navNames,
   );
   check('사이드바 머리: 이름, 코인, 배부름 줄', await h.ev(`!!document.querySelector('.home-head strong') && !!document.querySelector('.home-head .coins') && !!document.querySelector('.home-fullness .track')`));
@@ -1461,6 +1461,7 @@ const body = async () => {
     ['event', 'event'],
     ['note', 'note'],
     ['shop', 'shop'],
+    ['records', 'records'],
   ]) {
     await h.click(`document.getElementById('ptab-${id}')`);
     await sleep(350);
@@ -1477,7 +1478,10 @@ const body = async () => {
   check('Cmd+6 은 상점', (await sectionNow(h)) === 'ptab-shop');
   await h.ev(keyEvent({ ...mod, key: '7', code: 'Digit7' }));
   await sleep(300);
-  check('Cmd+7 은 친구가 꺼져 있으면 아무 일도 없다', (await sectionNow(h)) === 'ptab-shop');
+  check('Cmd+7 은 기록', (await sectionNow(h)) === 'ptab-records');
+  await h.ev(keyEvent({ ...mod, key: '8', code: 'Digit8' }));
+  await sleep(300);
+  check('Cmd+8 은 친구가 꺼져 있으면 아무 일도 없다', (await sectionNow(h)) === 'ptab-records');
 
   // 채팅은 큰 창 안(본문 칸 자리에 view, 이슈 #165, 자세한 시험은 home-chat.mjs), 설정은 따로 창, 큰 창은 그대로
   await h.click(`document.getElementById('ptab-chat')`);
@@ -1494,9 +1498,9 @@ const body = async () => {
 
   // 친구: 서버 모드, 로그인, 기능 키가 켜졌을 때만 보인다 (메인의 friendsAvailable 을 손잡이로 켠다)
   await main('__jj.debugFriendsOn(true); 1');
-  check('친구 기능이 켜지면 사이드바에 "친구" 가 생긴다 (일곱째)', await h.until(async () => (await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).at(-1)`)) === tx('친구', 'Friends'), 4000));
-  await h.ev(keyEvent({ ...mod, key: '7', code: 'Digit7' }));
-  check('Cmd+7 은 친구: 설정 창의 친구 칸을 연다 (큰 창은 그대로)', (await waitFor(async () => main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed()'))) && (await homeAlive()));
+  check('친구 기능이 켜지면 사이드바에 "친구" 가 생긴다 (여덟째)', await h.until(async () => (await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).at(-1)`)) === tx('친구', 'Friends'), 4000));
+  await h.ev(keyEvent({ ...mod, key: '8', code: 'Digit8' }));
+  check('Cmd+8 은 친구: 설정 창의 친구 칸을 연다 (큰 창은 그대로)', (await waitFor(async () => main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed()'))) && (await homeAlive()));
   await main('__jj.settingsWindow.window?.close(); 1');
   await sleep(400);
   await main('__jj.debugFriendsOn(false); 1');

@@ -27,6 +27,7 @@ import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
 import { openNoteById, revealRow } from './open-target.ts';
 import { planTodosKey } from './plan-refresh.ts';
+import { RecordsTab } from './RecordsTab.tsx';
 import { ResizeGrips } from './ResizeGrips.tsx';
 import { ShopTab } from './ShopTab.tsx';
 import { SurfaceProvider } from './surface.tsx';
@@ -47,14 +48,18 @@ const MAC = navigator.userAgent.includes('Mac');
 /** 탭 풀이와 설정 단축키 칸에 보이는 수식키 */
 const MOD = MAC ? 'Cmd' : 'Ctrl';
 
+/** 이 면에서 열 수 있는 탭인가: 작은 패널은 탭 줄에 있는 것만, 큰 창은 기록 구역도 (#166) */
+const usable = (kind: SurfaceKind, v: unknown): v is PanelTab =>
+  isTab(v) || (kind === 'home' && v === 'records');
+
 /** 마지막에 본 탭 (창은 열 때마다 새로 만들어서 브라우저 저장소에 둔다). 못 읽으면 오늘. */
 function savedTab(kind: SurfaceKind): PanelTab {
   // 펫 메뉴 "상점"처럼 탭을 정해서 열면 주소 뒤에 붙어 온다
   const asked = location.hash.slice(1);
-  if (isTab(asked)) return asked;
+  if (usable(kind, asked)) return asked;
   try {
     const v = localStorage.getItem(tabKeyOf(kind));
-    return isTab(v) ? v : 'today';
+    return usable(kind, v) ? v : 'today';
   } catch {
     return 'today';
   }
@@ -169,6 +174,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
     bridge.onTab((next) => {
+      if (!usable(kind, next)) return;
       setChatOn(false);
       setTabState(next);
     });
@@ -470,6 +476,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
         )}
         {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
         {tab === 'shop' && <ShopTab s={s} />}
+        {tab === 'records' && kind === 'home' && <RecordsTab s={s} />}
         {tab === 'event' && (
           <EventTab
             s={s}

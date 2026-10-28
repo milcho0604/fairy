@@ -8,10 +8,11 @@ const bridge = window.jjakkungPanel;
 
 /**
  * 할 일·메모·일정 휴지통. 30일 동안 보관한 뒤 자동 삭제한다. 열 때마다 목록을 새로 읽고,
- * 패널 상태의 trashCount 가 바뀌면 열려 있는 목록도 다시 읽는다
+ * 패널 상태의 trashCount 가 바뀌면 열려 있는 목록도 다시 읽는다.
+ * always: 큰 창 기록 구역(#166)은 비어 있어도 줄을 보이고 펼쳐 둔다
  */
-export function TrashBox({ s }: { s: PanelState }) {
-  const [open, setOpen] = useState(false);
+export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
+  const [open, setOpen] = useState(!!always);
   const [items, setItems] = useState<TrashRecord[]>([]);
   const [kind, setKind] = useState<TrashKind | 'all'>('all');
   const [confirmAll, setConfirmAll] = useState(false);
@@ -34,7 +35,7 @@ export function TrashBox({ s }: { s: PanelState }) {
   }, [open, s.trashCount, load]);
 
   // 휴지통에 아무것도 없고 닫혀 있으면 줄을 그리지 않는다
-  if (s.trashCount === 0 && !open) return null;
+  if (s.trashCount === 0 && !open && !always) return null;
 
   const restore = async (item: TrashRecord) => {
     const res = await bridge.trashRestore(item.kind, item.id);
