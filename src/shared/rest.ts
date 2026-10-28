@@ -81,7 +81,12 @@ export class RestCoach {
     this.#workedMs += dt;
     this.#streakMs += dt;
     const every = REST_EVERY_MIN[level];
-    if (every === undefined || this.#accepted !== undefined) return undefined;
+    // 권유를 안 하는 때(조용히, 말 안 하는 시간)는 일한 시간을 쌓지 않는다: 그 시간이 끝나는 순간 쌓인 시간으로 바로 권유하지 않게
+    if (every === undefined) {
+      this.#workedMs = 0;
+      return undefined;
+    }
+    if (this.#accepted !== undefined) return undefined;
     if (this.#workedMs >= every * 60_000) {
       this.#workedMs = 0;
       return 'suggest';

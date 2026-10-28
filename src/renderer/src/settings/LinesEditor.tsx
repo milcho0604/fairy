@@ -82,6 +82,10 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
       onMsg(t('records.lines.saved'));
     } else setErrors((e) => ({ ...e, [line.key]: errorText(r) }));
   };
+  const mute = async (line: LineView, on: boolean) => {
+    const v = await lines().mute(lang, line.key, on);
+    if (v) setState(v);
+  };
   const reset = async (key?: string) => {
     const v = await lines().reset(lang, key);
     if (!v) return;
@@ -171,6 +175,11 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
           {state && (
             <div className="lines-count">
               <small>{t('records.lines.count', { n: state.edited })}</small>
+              {state.mutedCount > 0 && (
+                <small title={t('records.lines.muteHint')}>
+                  {t('records.lines.mutedCount', { n: state.mutedCount })}
+                </small>
+              )}
               {state.edited > 0 &&
                 (confirmAll ? (
                   <span className="lines-confirm" role="alertdialog" aria-label={t('records.lines.resetAll')}>
@@ -206,7 +215,11 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
                   const value = drafts[l.key] ?? l.text;
                   const err = errors[l.key];
                   return (
-                    <div key={l.key} className={`lines-row${l.edited ? ' edited' : ''}`} data-key={l.key}>
+                    <div
+                      key={l.key}
+                      className={`lines-row${l.edited ? ' edited' : ''}${l.muted ? ' muted' : ''}`}
+                      data-key={l.key}
+                    >
                       <textarea
                         rows={2}
                         value={value}
@@ -235,6 +248,17 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
                           {t('records.lines.vars', { vars: l.vars.map((v) => `{${v}}`).join(', ') })}
                         </small>
                       )}
+                      <button
+                        type="button"
+                        className="link lines-mute"
+                        aria-pressed={l.muted}
+                        aria-label={t(l.muted ? 'records.lines.unmuteOf' : 'records.lines.muteOf', {
+                          line: l.base,
+                        })}
+                        onClick={() => void mute(l, !l.muted)}
+                      >
+                        {t(l.muted ? 'records.lines.unmute' : 'records.lines.mute')}
+                      </button>
                       {l.edited && (
                         <span className="lines-edited">
                           <small>

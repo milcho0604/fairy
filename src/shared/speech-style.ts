@@ -8,14 +8,47 @@ export type SpeechLevel = 'banmal' | 'haeyo' | 'hapsyo' | 'hao';
 export type EmojiLevel = 'many' | 'some' | 'none';
 export type BangLevel = 'soft' | 'normal' | 'strong';
 export type CallKind = 'none' | 'butler' | 'master' | 'name' | 'custom';
-export const MOMENTS = ['morning', 'praise', 'rest', 'night'] as const;
+export const MOMENTS = [
+  'morning',
+  'praise',
+  'rest',
+  'night',
+  'lunch',
+  'done',
+  'focusEnd',
+  'back',
+  'hungry',
+  'evening',
+] as const;
 export type Moment = (typeof MOMENTS)[number];
+
+/** 펫이 자기를 부르는 말: name 은 이름(콩이는), me 는 나, custom 은 직접 (이 몸, 저) */
+export type SelfKind = 'name' | 'me' | 'custom';
+/** 말마다 얼마나 자주 적용하는가 (말끝, 부르는 말, 직접 쓴 말) */
+export type RateLevel = 'always' | 'often' | 'sometimes';
+export const RATES: readonly RateLevel[] = ['always', 'often', 'sometimes'];
+const RATE_P: Record<RateLevel, number> = { always: 1, often: 0.6, sometimes: 0.3 };
+/** 이번 말에 적용할지 (always 는 난수를 쓰지 않는다) */
+export const passes = (rate: RateLevel, rand: () => number = Math.random): boolean =>
+  rate === 'always' || rand() < RATE_P[rate];
 
 export interface SpeechStyle {
   /** 말 높이. 내 말투에서는 반말, 해요체, 합쇼체만 고른다 (하오체는 선비 말투 프리셋) */
   level: SpeechLevel;
-  /** 문장 끝에 붙이는 말 (냥, 멍). 빈 글이면 없음. 세 글자까지 */
+  /** 문장 끝에 붙이는 말 (냥, 멍). 빈 글이면 없음. 세 글자까지. 말끝이 여러 개면 첫째 (endings 의 앞) */
   ending: string;
+  /** 말끝 버릇 (최대 ENDINGS_MAX 개). 비면 ending 하나. 여러 개면 말마다 하나를 고른다 */
+  endings: string[];
+  /** 말끝을 얼마나 자주 붙이는가 */
+  endingRate: RateLevel;
+  /** 펫이 자기를 부르는 말 (한국어만. 영어는 이름으로) */
+  self: SelfKind;
+  /** self 가 custom 일 때 그 말 */
+  selfText: string;
+  /** 나를 부르는 말을 얼마나 자주 쓰는가 */
+  callRate: RateLevel;
+  /** 직접 쓴 말을 얼마나 자주 쓰는가 (아니면 원래 말) */
+  ownRate: RateLevel;
   /** 나를 부르는 말 */
   call: CallKind;
   /** call 이 name(내 이름), custom(직접) 일 때 그 말 */
@@ -28,18 +61,42 @@ export interface SpeechStyle {
 
 /** 세 글자, 부르는 말 열 글자, 직접 쓴 말 한 때에 다섯 줄, 한 줄 80자 */
 export const ENDING_MAX = 3;
+export const ENDINGS_MAX = 3;
+export const SELF_MAX = 6;
 export const CALL_MAX = 10;
 export const LINES_MAX = 5;
 export const LINE_MAX = 80;
 
+function emptyLines(): Record<Moment, string[]> {
+  return Object.fromEntries(MOMENTS.map((m) => [m, [] as string[]])) as Record<Moment, string[]>;
+}
+
+/** 이 말투의 말끝들 (endings 가 있으면 그것, 없으면 ending 하나) */
+export const endingsOf = (s: Pick<SpeechStyle, 'ending' | 'endings'>): string[] =>
+  s.endings.length > 0 ? s.endings : s.ending ? [s.ending] : [];
+
+/** 펫이 자기를 부르는 말. 이름 그대로면 undefined (영어는 늘 이름) */
+export function selfWord(s: Pick<SpeechStyle, 'self' | 'selfText'>, lang: 'ko' | 'en'): string | undefined {
+  if (lang !== 'ko') return undefined;
+  if (s.self === 'me') return '나';
+  return s.self === 'custom' && s.selfText ? s.selfText : undefined;
+}
+
+/** 새로 만든 내 말투는 직접 쓴 말을 자주(60%) 쓴다. 옛 설정(ownRate 가 없는 저장 값)은 항상이라 parseStyle 이 따로 본다 */
 export const DEFAULT_STYLE: SpeechStyle = {
   level: 'banmal',
   ending: '',
+  endings: [],
+  endingRate: 'always',
+  self: 'name',
+  selfText: '',
+  callRate: 'always',
+  ownRate: 'often',
   call: 'none',
   callText: '',
   emoji: 'some',
   bang: 'normal',
-  lines: { morning: [], praise: [], rest: [], night: [] },
+  lines: emptyLines(),
 };
 
 /** 내 말투 칸에서 고르는 말끝 */
@@ -72,10 +129,30 @@ export function parseStyle(raw: unknown): SpeechStyle {
       .filter(Boolean)
       .slice(0, LINES_MAX);
   }
+  const cleanEnding = (v: unknown) => cleanText(v, ENDING_MAX).replace(/[.!?~,]/g, '');
+  const listed = (Array.isArray(r.endings) ? (r.endings as unknown[]) : [])
+    .slice(0, ENDINGS_MAX * 2)
+    .map(cleanEnding)
+    .filter((e, i, a) => e !== '' && a.indexOf(e) === i)
+    .slice(0, ENDINGS_MAX);
+  // 옛 설정은 말끝 하나(ending) 뿐이다
+  const single = cleanEnding(r.ending);
+  const endings = listed.length > 0 ? listed : single ? [single] : [];
   return {
     // 내 말투는 하오체를 고르지 않는다 (선비 말투 프리셋만)
     level: pick(r.level, ['banmal', 'haeyo', 'hapsyo'] as const, DEFAULT_STYLE.level),
-    ending: cleanText(r.ending, ENDING_MAX).replace(/[.!?~,]/g, ''),
+    ending: endings[0] ?? '',
+    endings,
+    endingRate: pick(r.endingRate, RATES, DEFAULT_STYLE.endingRate),
+    self: pick(r.self, ['name', 'me', 'custom'] as const, DEFAULT_STYLE.self),
+    selfText: cleanText(r.selfText, SELF_MAX),
+    callRate: pick(r.callRate, RATES, DEFAULT_STYLE.callRate),
+    // 직접 쓴 말 비율이 없던 옛 설정은 지금까지처럼 항상 (새 내 말투의 기본은 자주)
+    ownRate: pick(
+      r.ownRate,
+      RATES,
+      typeof raw === 'object' && raw !== null ? 'always' : DEFAULT_STYLE.ownRate,
+    ),
     call: pick(r.call, ['none', 'butler', 'master', 'name', 'custom'] as const, DEFAULT_STYLE.call),
     callText: cleanText(r.callText, CALL_MAX),
     emoji: pick(r.emoji, ['many', 'some', 'none'] as const, DEFAULT_STYLE.emoji),
@@ -313,6 +390,8 @@ export interface StyleContext {
   greet?: boolean;
   /** 이모지를 많이 고를 때 붙일 그림 (때마다) */
   emoji?: string;
+  /** 말끝, 부르는 말 비율과 말끝 고르기에 쓰는 난수 (기본 Math.random) */
+  rand?: () => number;
 }
 
 /** 나를 부르는 말 (집사, 주인님, 내 이름) */
@@ -357,9 +436,16 @@ const HAS_EMOJI = /\p{Extended_Pictographic}/u;
 export function applyStyle(base: string, style: SpeechStyle, ctx: StyleContext): string {
   const ko = ctx.lang === 'ko';
   let text = base;
-  if (ko && ctx.me && style.level === 'banmal') text = replaceYou(text, ctx.me);
+  const rand = ctx.rand ?? Math.random;
+  // 부르는 말과 말끝은 말마다 비율로 (always 면 늘). 말끝이 여럿이면 말 하나에 하나만
+  const useCall = Boolean(ctx.me) && passes(style.callRate, rand);
+  if (ko && ctx.me && useCall && style.level === 'banmal') text = replaceYou(text, ctx.me);
   const parts = sentences(text);
-  const ending = endingFor(style.ending, ctx.lang);
+  const choices = endingsOf(style);
+  const picked = passes(style.endingRate, rand)
+    ? (choices[choices.length > 1 ? Math.floor(rand() * choices.length) : 0] ?? '')
+    : '';
+  const ending = endingFor(picked, ctx.lang);
   // 영어 말끝(meow)은 문장마다 붙이면 시끄럽다: 말 하나에 한 번, 마지막 낱말로 끝나는 문장에만
   const enAt = ko
     ? -1
@@ -399,7 +485,8 @@ export function applyStyle(base: string, style: SpeechStyle, ctx: StyleContext):
         .replace(/([?…])\.+/g, '$1')
         .replace(/\.{4,}/g, '...');
     else if (style.bang === 'strong' && pred && /^\.(\s|$)/.test(tail)) tail = tail.replace('.', '!');
-    if (ko && idx === 0 && ctx.greet && ctx.me) body = `${vocative(ctx.me, style, ctx.lang)}, ${body}`;
+    if (ko && idx === 0 && ctx.greet && ctx.me && useCall)
+      body = `${vocative(ctx.me, style, ctx.lang)}, ${body}`;
     return body + after + tail;
   });
   let result = out.join('');
@@ -473,6 +560,8 @@ export function fillLine(line: string, v: { name: string; me: string; todo: stri
 /** AI 성격 지시에 넣을 내 말투 설명 (채팅 답도 같은 말투가 되게). 직접 쓴 말은 예로 셋까지 */
 export function describeStyle(style: SpeechStyle, lang: 'ko' | 'en'): string {
   const me = callWord(style, lang);
+  const endings = endingsOf(style);
+  const self = selfWord(style, lang);
   const examples = MOMENTS.flatMap((m) => style.lines[m])
     .slice(0, 3)
     .map((x) => `"${x.replace(/"/g, "'")}"`);
@@ -481,7 +570,7 @@ export function describeStyle(style: SpeechStyle, lang: 'ko' | 'en'): string {
       style.level === 'banmal' ? 'You talk casually and warmly.' : 'You talk politely and neatly.';
     return [
       level,
-      style.ending ? `End some sentences with "${style.ending}".` : '',
+      endings.length ? `End some sentences with ${endings.map((e) => `"${e}"`).join(' or ')}.` : '',
       me ? `Call the user "${me}".` : '',
       style.bang === 'strong' ? 'Sound upbeat, with exclamation marks.' : '',
       style.bang === 'soft' ? 'Keep a calm tone and avoid exclamation marks.' : '',
@@ -500,9 +589,10 @@ export function describeStyle(style: SpeechStyle, lang: 'ko' | 'en'): string {
           : '하오체로 점잖게 말한다 (…하오, …소).';
   return [
     level,
-    style.ending
-      ? `문장 끝마다 ${withParticle(`"${style.ending}"`, '을')} 붙인다 (예: 좋아${style.ending}).`
+    endings.length
+      ? `문장 끝마다 ${endings.map((e) => `"${e}"`).join(' 또는 ')} 같은 말끝을 붙인다 (예: 좋아${endings[0]}).`
       : '',
+    self ? `자기 자신을 "${self}"(이)라고 부른다.` : '',
     me ? `사용자를 "${me}"(이)라고 부른다.` : '',
     style.bang === 'strong' ? '느낌표를 자주 써서 힘차게 말한다.' : '',
     style.bang === 'soft' ? '느낌표 없이 차분하게 말한다.' : '',

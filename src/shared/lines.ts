@@ -274,12 +274,51 @@ export function overrideOf(o: LineOverrides, lang: LineLang, key: string): strin
   return Object.hasOwn(o[lang], key) ? o[lang][key] : undefined;
 }
 
+/** 안 쓰기로 한 대사: {ko: [키], en: [키]} */
+export type MutedLines = { ko: string[]; en: string[] };
+export const emptyMuted = (): MutedLines => ({ ko: [], en: [] });
+
+/** 파일에서 읽은 안 쓰기 목록을 걸러 낸다: 대사 키 꼴의 글만, 언어마다 최대 MUTED_MAX 개 */
+export const MUTED_MAX = 2000;
+export function parseMuted(raw: unknown): MutedLines {
+  const out = emptyMuted();
+  if (typeof raw !== 'object' || raw === null) return out;
+  for (const lang of ['ko', 'en'] as const) {
+    const part = (raw as Record<string, unknown>)[lang];
+    if (!Array.isArray(part)) continue;
+    out[lang] = [
+      ...new Set(
+        part.filter((k): k is string => typeof k === 'string' && k.length < 120 && groupOf(k) !== undefined),
+      ),
+    ].slice(0, MUTED_MAX);
+  }
+  return out;
+}
+
+/** 사전에서 사라졌거나 대사가 아니게 된 키는 버린다 */
+export function pruneMuted(current: MutedLines, dicts: Record<LineLang, Dict>): MutedLines {
+  const next = emptyMuted();
+  for (const lang of ['ko', 'en'] as const)
+    next[lang] = current[lang].filter((k) => !isVariant(k) && groupOf(k) !== undefined && k in dicts[lang]);
+  return next;
+}
+
+/** 안 쓰기 켜고 끄기 */
+export function setMuted(current: MutedLines, lang: LineLang, key: string, on: boolean): MutedLines {
+  const next: MutedLines = { ko: [...current.ko], en: [...current.en] };
+  const has = next[lang].includes(key);
+  if (on && !has) next[lang].push(key);
+  if (!on && has) next[lang] = next[lang].filter((k) => k !== key);
+  return next;
+}
+
 /** 설정 화면에 보낼 목록: 상황 묶음별 대사, 기본 틀, 지금 틀, 고친 칸 표시 */
 export function buildLinesState(
   dict: Dict,
   lang: LineLang,
   overrides: LineOverrides,
   petName: string,
+  muted: MutedLines = emptyMuted(),
 ): LinesState {
   const catalog = buildCatalog(dict);
   const groups = LINE_GROUPS.map((g) => ({
@@ -288,9 +327,17 @@ export function buildLinesState(
       .filter((d) => d.group === g.id)
       .map((d) => {
         const mine = overrideOf(overrides, lang, d.key);
-        return { key: d.key, base: d.base, text: mine ?? d.base, edited: mine !== undefined, vars: d.vars };
+        return {
+          key: d.key,
+          base: d.base,
+          text: mine ?? d.base,
+          edited: mine !== undefined,
+          muted: muted[lang].includes(d.key),
+          vars: d.vars,
+        };
       }),
   })).filter((g) => g.lines.length > 0);
   const edited = groups.reduce((n, g) => n + g.lines.filter((l) => l.edited).length, 0);
-  return { lang, petName, edited, groups };
+  const mutedCount = groups.reduce((n, g) => n + g.lines.filter((l) => l.muted).length, 0);
+  return { lang, petName, edited, mutedCount, groups };
 }

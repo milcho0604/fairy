@@ -184,7 +184,7 @@ export const ko = {
   'voice.polite.idle.friend.2.3': '우리 사이에 말이 많이 필요하지는 않죠?',
   'voice.polite.idle.friend.2.4': '함께 있으면 {name:은} 마음이 놓여요.',
   'voice.polite.idle.friend.2.5': '벌써 이만큼이나 함께했네요. 감사해요.',
-  'voice.polite.idle.friend.2.6': '옆자리는 {name} 지정석이에요.',
+  'voice.polite.idle.friend.2.6': '옆자리는 {name:의} 지정석이에요.',
   'voice.polite.idle.friend.3.2': '{name:은} 함께한 모든 순간을 기억해 두고 있어요.',
   'voice.polite.idle.friend.3.3': '{name}에게 정말 소중한 분이에요.',
   'voice.polite.idle.friend.3.4': '우리 둘이면 어떤 하루도 괜찮아요.',

@@ -1,7 +1,7 @@
 // 같은 상황의 여러 말 (변형). 사전에 `pet.rest.1`, `pet.rest.2`, ... 또는 `pet.fed`, `pet.fed.2`, `pet.fed.3`, ... 로 둔다.
 // 기본 열쇠(번호 없이 쓰던 열쇠)는 첫째 변형이고, 새 변형은 .2 부터 이어 붙인다. 사전에 번호만 더하면 코드를 고치지 않아도
 // 고르는 곳(variantsOf, VariantPicker)이 센다. 사용자가 고친 대사(#125)는 열쇠마다라 변형마다 따로 고칠 수 있다.
-import { dicts } from './i18n/index.ts';
+import { dicts, isMutedLine } from './i18n/index.ts';
 
 let exact: Set<string> | undefined;
 let numbered: Map<string, string[]> | undefined;
@@ -58,7 +58,9 @@ export class VariantPicker {
   }
 
   pick(base: string, rand: () => number = this.#rand): string {
-    const list = variantsOf(base);
+    const all = variantsOf(base);
+    // 안 쓰기로 한 변형은 빼고 (모두 안 쓰기로 했으면 그래도 하나는 말한다)
+    const list = all.some((k) => !isMutedLine(k)) ? all.filter((k) => !isMutedLine(k)) : all;
     if (list.length === 0) return base;
     if (list.length === 1) return list[0] as string;
     const last = this.#last.get(base);

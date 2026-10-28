@@ -18,6 +18,8 @@ export const PET_STATE_FILES = [
   'knows.json',
   // 사용자가 고친 펫 대사 (#125). 고친 칸만 든다. 읽을 때 사전에 맞춰 정리한다 (main/lines.ts)
   'speech-lines.json',
+  // 안 쓰기로 한 펫 대사 (main/lines.ts)
+  'speech-muted.json',
 ] as const;
 
 /**

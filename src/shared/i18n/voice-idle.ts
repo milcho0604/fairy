@@ -95,7 +95,7 @@ export const ko = {
   'voice.polite.idle.mouse.1': () => '마우스가 정말 바쁘네요!',
   'voice.polite.idle.mouse.2': (v: N) => `커서를 따라가다 ${withParticle(v.name, '이')} 어지러워졌어요.`,
   'voice.polite.idle.mouse.3': () => '손목 괜찮으세요? 살살 돌려 주세요.',
-  'voice.polite.idle.hungry.1': (v: N) => `${v.name} 배에서 꼬르륵 소리가 나요.`,
+  'voice.polite.idle.hungry.1': (v: N) => `${withParticle(v.name, '의')} 배에서 꼬르륵 소리가 나요.`,
   'voice.polite.idle.hungry.2': () => '밥을 주시면 더 힘낼 수 있을 것 같아요.',
   'voice.polite.idle.hungry.3': (v: N) =>
     `혹시 간식 있으세요? ${withParticle(v.name, '이')} 그냥 여쭤보는 거예요.`,

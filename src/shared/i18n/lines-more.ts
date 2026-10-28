@@ -179,7 +179,7 @@ export const ko = {
   'idle.friend.2.3': '우리 사이에 말이 많이 필요하지는 않지?',
   'idle.friend.2.4': '너랑 있으면 {name:은} 마음이 놓여.',
   'idle.friend.2.5': '벌써 이만큼이나 함께했네. 고마워.',
-  'idle.friend.2.6': '네 옆자리는 {name} 지정석이야.',
+  'idle.friend.2.6': '네 옆자리는 {name:의} 지정석이야.',
   'idle.friend.3.2': '{name:은} 너와 함께한 모든 순간을 기억해 두고 있어.',
   'idle.friend.3.3': '너는 {name}에게 정말 소중한 사람이야.',
   'idle.friend.3.4': '우리 둘이면 어떤 하루도 괜찮아.',

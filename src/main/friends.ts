@@ -10,6 +10,7 @@ import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
 import { friendSpot } from '../shared/placement.ts';
 import { HideReasons } from '../shared/presence.ts';
+import { isQuietNow } from '../shared/quiet-hours.ts';
 import { type Friend, pickedStand } from '../shared/settings.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
@@ -145,7 +146,9 @@ export function createFriends(o: {
    */
   let lastTalk: number | undefined;
   function chat(main: PetWindow, l: { pet: PetWindow; friend: Friend }, force = false) {
-    if (settings.get().chatter !== 'chatty' || (!force && Math.random() > FRIEND_TALK_CHANCE)) return;
+    // 말 안 하는 시간에는 친구끼리 수다도 쉰다 (만나서 인사하고 하트를 띄우는 것은 그대로)
+    if (settings.get().chatter !== 'chatty' || isQuietNow(settings.get().quietHours, Date.now())) return;
+    if (!force && Math.random() > FRIEND_TALK_CHANCE) return;
     const pair = friendTalk(Math.random, lastTalk);
     const vars = { name: settings.get().petName, friend: l.friend.name };
     setTimeout(() => {
@@ -155,6 +158,7 @@ export function createFriends(o: {
       void main.say({ kind: 'idle-talk', text: t(pair.a, vars), ttlMs: FRIEND_TALK_MS }).then((a) => {
         // 그사이 숨기거나(발표 포함) 조용히로 바꿨으면 대답하지 않는다 ('answer' 는 숨김 동안 붙잡아 뒀다가 엉뚱할 때 띄운다)
         if (a !== 'timeout' || !live.has(l.friend.id) || settings.get().chatter !== 'chatty') return;
+        if (isQuietNow(settings.get().quietHours, Date.now())) return;
         if (main.isHidden() || l.pet.isHidden()) return;
         void l.pet.say({ kind: 'answer', text: t(pair.b, vars), ttlMs: FRIEND_TALK_MS });
       });
