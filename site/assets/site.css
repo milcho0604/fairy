@@ -538,6 +538,7 @@ main > :last-child { padding-bottom: clamp(88px, 10vw, 128px); }
 .ai-note p { margin: 0; }
 /* privacy policy page */
 .pv-date { margin: -16px 0 0; font-size: 15px; color: var(--muted); }
+.pv-date + .pv-date { margin-top: 4px; }
 .policy { max-width: 46em; padding-bottom: clamp(56px, 8vw, 96px); }
 .policy > section { margin-top: 48px; }
 .policy > section:first-child { margin-top: 0; }
