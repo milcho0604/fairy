@@ -6,8 +6,10 @@
 export const NICKNAME_MIN = 2;
 export const NICKNAME_MAX = 12;
 
-/** 줄바꿈과 제어 문자, 보이지 않는 서식 문자(폭 0 글자, 방향 바꾸기 등) */
-const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/** 줄바꿈과 제어 문자, 보이지 않는 서식 문자(폭 0 글자, 방향 바꾸기 등), 글자인데 빈칸으로 그려지는 채움 문자(한글 채움 U+3164 U+115F U+1160 U+FFA0, 점자 빈칸 U+2800, 크메르 U+17B4 U+17B5) */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115F\u1160\u17B4\u17B5\u2800\u3164\uFFA0]/u;
+/** 눈에 보이는 글자(글자, 숫자, 기호, 문장 부호)가 하나라도 있어야 한다 */
+const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
 /** 주소처럼 보이는 것: 스킴(https://), www., 흔한 도메인 끝 (.com, .kr 등). "Mr.Kim" 같은 이름은 된다 */
 const URLISH =
   /([a-z][a-z0-9+.-]*:\/\/|www\.|\.(com|net|org|kr|io|me|gg|xyz|app|dev|co|ly|to|link|site|shop)\b)/i;
@@ -23,7 +25,7 @@ export function checkNickname(
 ): { ok: true; value: string } | { ok: false; error: NicknameError } {
   if (typeof raw !== 'string' || raw.length > 100) return { ok: false, error: 'length' };
   const v = raw.normalize('NFC').trim();
-  if (INVISIBLE.test(v)) return { ok: false, error: 'chars' };
+  if (INVISIBLE.test(v) || !VISIBLE.test(v)) return { ok: false, error: 'chars' };
   const n = [...v].length;
   if (n < NICKNAME_MIN || n > NICKNAME_MAX) return { ok: false, error: 'length' };
   if (v.includes('@') || v.includes('＠')) return { ok: false, error: 'at' };

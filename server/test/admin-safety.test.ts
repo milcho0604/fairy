@@ -419,3 +419,24 @@ describe('처리 중 표시와 스크립트', () => {
     assert.doesNotMatch(anon.text, /<script/i);
   });
 });
+
+describe('로그인 실패 합계는 막지 않는다 (사냥)', () => {
+  test('여러 곳에서 틀린 로그인이 25번 와도 진짜 운영자는 로그인된다. 한 곳은 5번이면 막힌다', async () => {
+    const wrong = (from: string) =>
+      api('POST', '/admin/login', {
+        body: new URLSearchParams({ token: `wrong-${randomUUID()}` }).toString(),
+        ip: from,
+        headers: { 'content-type': 'application/x-www-form-urlencoded', origin: h.base },
+      });
+    for (let i = 0; i < 25; i++) await wrong(`10.77.${i}.1`);
+    const fresh = new AdminBrowser(
+      () => h,
+      api,
+      () => ADMIN_TOKEN,
+    );
+    assert.equal((await fresh.login()).status, 303, '합계 때문에 진짜 운영자가 막힘');
+    const same = '10.78.0.1';
+    for (let i = 0; i < 5; i++) assert.equal((await wrong(same)).status, 401);
+    assert.equal((await wrong(same)).status, 429);
+  });
+});

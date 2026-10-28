@@ -232,6 +232,21 @@ describe('기기 계정', () => {
     assert.equal(account.nickname, null);
   });
 
+  test('보이지 않는 글자만으로 된 닉네임은 거절한다', async () => {
+    const U = (...n: number[]) => String.fromCharCode(...n);
+    for (const nick of [
+      U(0x3164, 0x3164),
+      U(0x2800, 0x2800),
+      U(0x115f, 0x115f),
+      U(0x1160, 0x1160),
+      U(0xffa0, 0xffa0),
+      U(97, 0x3164, 0x3164, 0x3164, 98),
+    ]) {
+      const r = await api('POST', '/v1/device', { body: { age: '18+', nickname: nick }, ip: ip() });
+      assert.equal(r.status, 400, JSON.stringify(nick));
+    }
+  });
+
   test('같은 곳에서 기기 계정을 너무 많이 만들면 429', async () => {
     const from = ip();
     const codes: number[] = [];

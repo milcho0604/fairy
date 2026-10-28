@@ -1,12 +1,13 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CONFIG } from './app.tokens';
 import { adminEnabled, type Config } from './config';
 import { LIMITS, RateLimiter } from './rate-limit';
 
 // 운영자 로그인 (기획서 10절, 이슈 #101). 브라우저에서 운영자 토큰(ADMIN_TOKEN)을 한 번 넣으면 짧은 세션 쿠키를 준다.
 // - 토큰 비교는 sha256 끼리 상수 시간 (길이로도 새지 않게)
-// - 틀린 시도는 같은 곳에서 15분 5번, 서버 전체 15분 20번까지. 넘으면 맞는 토큰도 그 창 동안 받지 않는다
+// - 틀린 시도는 같은 곳에서 15분 5번까지. 넘으면 맞는 토큰도 그 창 동안 받지 않는다
+// - 서버 전체 합계(15분 20번)는 막지 않고 세기만 한다. 넘으면 로그에 경고를 한 번 남긴다 (여러 곳에서 틀려도 진짜 운영자가 막히지 않게)
 // - 쿠키: __Host-, HttpOnly, Secure, SameSite=Strict, Path=/ (웹 화면과 /v1/admin/* 가 같이 쓴다), 30분. 세션은 메모리에만 (서버를 다시 켜면 다시 로그인)
 // - 쓰기마다 세션의 CSRF 토큰을 폼에 숨겨 보내고 상수 시간으로 비교한다
 
@@ -89,6 +90,8 @@ export type LoginOutcome =
 @Injectable()
 export class AdminAuth {
   #sessions = new Map<string, AdminSession>();
+  #warnedAt = 0;
+  readonly #log = new Logger('AdminAuth');
 
   constructor(
     @Inject(CONFIG) private readonly config: Config,
@@ -103,15 +106,11 @@ export class AdminAuth {
   login(token: unknown, ip: string): LoginOutcome {
     if (!this.enabled) return { ok: false, error: 'off' };
     const ipKey = `admin-fail:${ip}`;
-    if (
-      this.limiter.over(ipKey, LIMITS.adminFailByIp) ||
-      this.limiter.over('admin-fail:all', LIMITS.adminFailAll)
-    )
-      return { ok: false, error: 'rate_limited' };
+    if (this.limiter.over(ipKey, LIMITS.adminFailByIp)) return { ok: false, error: 'rate_limited' };
     const given = typeof token === 'string' ? token.trim() : '';
     if (given.length > 200 || !sameSecret(given, this.config.adminToken ?? '')) {
       this.limiter.take(ipKey, LIMITS.adminFailByIp);
-      this.limiter.take('admin-fail:all', LIMITS.adminFailAll);
+      if (!this.limiter.take('admin-fail:all', LIMITS.adminFailAll)) this.warnFloods();
       return { ok: false, error: 'bad_token' };
     }
     this.sweep();
@@ -128,6 +127,16 @@ export class AdminAuth {
     };
     this.#sessions.set(session.key, session);
     return { ok: true, cookie: sessionCookie(value), session };
+  }
+
+  /** 서버 전체 틀린 로그인이 한도를 넘었다: 막지 않고 창마다 한 번 경고만 남긴다 (토큰과 주소는 적지 않는다) */
+  private warnFloods(): void {
+    const now = this.now();
+    if (now - this.#warnedAt < LIMITS.adminFailAll.windowMs) return;
+    this.#warnedAt = now;
+    this.#log.warn(
+      `운영자 로그인 실패가 15분에 ${LIMITS.adminFailAll.max}번을 넘었어요 (여러 곳에서 토큰을 찍어 보는 중일 수 있어요). 곳마다 5번 한도는 그대로 지켜요`,
+    );
   }
 
   /** 쿠키로 세션을 찾는다. 끝났으면 지우고 undefined */

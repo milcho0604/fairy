@@ -46,7 +46,7 @@ export const LIMITS = {
   giftByAccount: { max: 20, windowMs: 60_000 },
   /** 바쁜 시간대 올리기: 계정마다 한 시간 30번 (앱은 몇 분마다, 바뀌었을 때만) */
   busyByAccount: { max: 30, windowMs: 3_600_000 },
-  /** 운영자 로그인 실패: 같은 곳에서 15분 5번, 서버 전체 15분 20번 (넘으면 맞는 토큰도 받지 않는다) */
+  /** 운영자 로그인 실패: 같은 곳에서 15분 5번 (넘으면 맞는 토큰도 받지 않는다). 서버 전체 15분 20번은 막지 않고 경고만 */
   adminFailByIp: { max: 5, windowMs: 900_000 },
   adminFailAll: { max: 20, windowMs: 900_000 },
   /** 운영자 화면 요청: 세션마다 1분 120번 */

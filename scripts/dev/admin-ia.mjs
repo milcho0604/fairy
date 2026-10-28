@@ -228,13 +228,26 @@ const PLACES = [
   ['users', ['table.users', 'form[action="/admin#users/list"]']],
   ['users/grants', ['form[action="/admin/grants/preview"]']],
   ['reports', ['#reports-list']],
-  ['announce', ['form[action="/admin/versions"]', 'form[action="/admin/notices/preview"]']],
-  ['announce/events', ['form[action="/admin/events"]']],
-  ['announce/coupons', ['form[action="/admin/coupons"]', 'form[action="/admin/rewards/policy"]']],
+  ['announce', ['.posts-find', 'form[action="/admin/rewards/policy"]']],
+  ['announce/new', ['form[action="/admin/notices/preview"]']],
   ['settings', ['form[action="/admin/features/mode"]', 'form[action="/admin/ai/mode"]', 'form[action="/admin/features/allow"]']],
   ['settings/ai', ['form[action="/admin/ai/limits"]', 'form[action="/admin/ai/policy"]']],
   ['settings/log', ['table.log:not(#cell-home table)', 'form[action="/admin#settings/log"]']],
 ];
+
+/** 지급 확정 폼: 확인 칸을 체크하고, 받는 사람 수를 숫자로 다시 적는다 */
+const sureGrant = `(() => { const f = document.querySelector('form[action="/admin/grants/batch"]'); f.querySelector('input[type=checkbox]').checked = true; const p = f.querySelector('input[name=people]'); if (p) p.value = p.getAttribute('pattern'); return true; })()`;
+
+/** 미리보기를 거치는 만들기 (이벤트, 쿠폰): 미리보기 뒤 확정 폼의 숨은 칸에 작성 값을 덮어 보낸다 */
+async function adminConfirm(path, fields) {
+  const first = await adminPost(`${path}/preview`, fields);
+  const page = await adminPage();
+  const m = new RegExp(`<form method="post" action="${path}"[^>]*>([\\s\\S]*?)</form>`).exec(page);
+  if (!m) return first;
+  const hidden = {};
+  for (const x of m[1].matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)) if (x[1] !== 'csrf') hidden[x[1]] = x[2].replaceAll('&#10;', '\n');
+  return adminPost(path, { ...hidden, ...fields, flow: hidden.flow ?? '' });
+}
 
 async function webPart() {
   const chromePort = await pick();
@@ -354,7 +367,7 @@ async function webPart() {
   check('주소에 해시가 없으면 홈', first.cells.join() === 'home' && first.navCurrent.join() === 'home', JSON.stringify(first));
 
   // ---- 2. 자리마다 보이는 것은 그곳뿐 (옛 여덟 탭의 기능이 한 군데도 안 빠졌다) ----
-  const canon = (p) => ({ users: 'users/list', announce: 'announce/notices', settings: 'settings/features' })[p] ?? p;
+  const canon = (p) => ({ users: 'users/list', announce: 'announce/posts', settings: 'settings/features' })[p] ?? p;
   for (const [place, selectors] of PLACES) {
     const [cell, sub] = place.split('/');
     await nav(`${apiUrl}/admin#${place}`);
@@ -465,12 +478,12 @@ async function webPart() {
   const todoEmpty = await ev(`document.querySelector('#cell-home section .empty')?.textContent ?? ''`);
   check('홈: 확인할 것이 없으면 빈 상태 글', todoEmpty.includes('지금 확인할 것이 없어요'), todoEmpty);
   sql(`INSERT INTO ai_report (account_id, question, answer) SELECT id, '비밀질문본문', '비밀답변본문' FROM account WHERE code = 'F-ABCD-0001'`);
-  await adminPost('/admin/events', { id: 'ia-soon', kind: 'gift', title_ko: '곧 끝나는 선물', title_en: 'Ending soon', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 30 });
-  await adminPost('/admin/coupons', { label: '곧 끝나는 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
+  await adminConfirm('/admin/events', { id: 'ia-soon', kind: 'gift', title_ko: '곧 끝나는 선물', title_en: 'Ending soon', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 30 });
+  await adminConfirm('/admin/coupons', { label: '곧 끝나는 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
   await adminPost('/admin/notes', { account: 'F-ABCD-0001', coins: 3, chat_passes: 0, message: '기록 하나', days: 30 });
   await nav(`${apiUrl}/admin#home`);
   const todo = await ev(`[...document.querySelectorAll('#cell-home ul.todo li')].map((x) => ({ text: x.textContent, href: x.querySelector('a')?.getAttribute('href') }))`);
-  check('홈 할 일 카드: 신고, 끝나는 이벤트, 끝나는 쿠폰이 각자 자리 링크와 함께', todo.some((x) => x.text.includes('신고가 1건') && x.href === '#reports') && todo.some((x) => x.text.includes('이벤트가 1개') && x.href === '#announce/events') && todo.some((x) => x.text.includes('쿠폰이 1개') && x.href === '#announce/coupons'), JSON.stringify(todo));
+  check('홈 할 일 카드: 신고, 끝나는 이벤트, 끝나는 쿠폰이 각자 자리 링크와 함께', todo.some((x) => x.text.includes('신고가 1건') && x.href === '#reports') && todo.some((x) => x.text.includes('이벤트가 1개') && x.href === '#announce/posts') && todo.some((x) => x.text.includes('쿠폰이 1개') && x.href === '#announce/posts'), JSON.stringify(todo));
   await ev(`document.querySelector('#cell-home ul.todo a[href="#reports"]').click(); true`);
   await sleep(200);
   check('할 일 카드를 누르면 그 칸으로 간다', (await where()).cells.join() === 'reports');
@@ -510,7 +523,7 @@ async function webPart() {
     await ev(`document.querySelector('form[action="/admin/grants/batch"]').requestSubmit(); true`);
     await sleep(500);
     check(`[${w}] 확인 칸을 체크하지 않으면 확정되지 않는다`, sql(`SELECT count(*) FROM admin_log`) === logBefore && sql(`SELECT count(*) FROM inbox`) === notesBefore);
-    await ev(`document.querySelector('form[action="/admin/grants/batch"] input[type=checkbox]').checked = true; true`);
+    await ev(sureGrant);
     // 눌린 자리 가까이 진행 표시: 제출 사건이 일어난 직후 단추 옆에 상태 글이 생긴다
     await ev(`window.__stop = (e) => e.preventDefault(); document.addEventListener('submit', window.__stop); true`);
     await submit('form[action="/admin/grants/batch"]');
@@ -522,7 +535,7 @@ async function webPart() {
     await c.send('Page.reload');
     await c.once('Page.loadEventFired');
     await sleep(200);
-    await ev(`document.querySelector('form[action="/admin/grants/batch"] input[type=checkbox]').checked = true; true`);
+    await ev(sureGrant);
     await submitAndWait('form[action="/admin/grants/batch"]');
     const res = await ev(`(() => { const s = document.querySelector('#sub-users-grants'); const ok = document.getElementById('form-ok'); const r = ok?.getBoundingClientRect(); return { step: s.querySelector('li[aria-current=step]')?.textContent, text: ok?.textContent ?? '', inSub: !!ok && s.contains(ok), inView: !!r && r.top >= 0 && r.bottom <= innerHeight, link: s.querySelector('.flow-result a')?.getAttribute('href'), topFlash: !!document.querySelector('main > p.flash'), count: document.querySelectorAll('#form-ok').length, hash: location.hash }; })()`);
     check(`[${w}] 결과 확인: 5단계, 성공 글이 폼 자리에서 보이고 한 번만 나온다`, res.step === '5. 결과 확인' && res.text.includes('2명에게 지급 쪽지') && res.inSub && res.inView && !res.topFlash && res.count === 1 && res.hash === '#users/grants', JSON.stringify(res));
@@ -546,7 +559,7 @@ async function webPart() {
   await submitAndWait('form[action="/admin/grants/preview"]');
   const staleForm = await ev(`new URLSearchParams(new FormData(document.querySelector('form[action="/admin/grants/batch"]'))).toString() + '&confirm=yes'`);
   const inboxBefore = sql(`SELECT count(*) FROM inbox`);
-  await ev(`document.querySelector('form[action="/admin/grants/batch"] input[type=checkbox]').checked = true; true`);
+  await ev(sureGrant);
   await submitAndWait('form[action="/admin/grants/batch"]');
   // 뒤로 가기로 되돌아온 옛 확정 폼을 그대로 다시 보낸다 (CSP 가 fetch 를 막으니 폼으로)
   await ev(`(() => { const f = document.createElement('form'); f.method = 'post'; f.action = '/admin/grants/batch'; for (const [k, v] of new URLSearchParams(${JSON.stringify(staleForm)})) { const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v; f.append(i); } document.body.append(f); window.__replay = f; return true; })()`);
@@ -567,33 +580,35 @@ async function webPart() {
   await sleep(61_000);
   // ---- 8. 공지 흐름 + 오류와 성공이 누른 자리 가까이 ----
   const notice = { id: 'ia-notice', kind: 'important', title_ko: '점검 안내', title_en: 'Maintenance', body_ko: '내일 새벽 점검이 있어요', body_en: 'Maintenance tomorrow' };
-  await nav(`${apiUrl}/admin#announce/notices`);
+  await nav(`${apiUrl}/admin#announce/new`);
   await fill('form[action="/admin/notices/preview"]', notice);
   await submitAndWait('form[action="/admin/notices/preview"]');
-  const np = await ev(`(() => { const s = document.querySelector('#sub-announce-notices'); return { step: s.querySelector('li[aria-current=step]')?.textContent, previews: s.querySelectorAll('.preview').length, same: s.textContent.includes('없음 (새로 넣어요)'), saved: false }; })()`);
-  await shotEl('ia-flow-6-notice-preview-1280', '#sub-announce-notices');
-  check('공지 미리보기: 3단계, 공지 창 모양 ko와 en 둘, 같은 id 없음', np.step === '3. 미리보기' && np.previews === 2 && np.same, JSON.stringify(np));
-  check('공지 미리보기까지는 저장하지 않았다', sql(`SELECT count(*) FROM site_doc WHERE name = 'notices'`) === '0');
+  const np = await ev(`(() => { const s = document.querySelector('#sub-announce-new'); return { step: s.querySelector('li[aria-current=step]')?.textContent, previews: s.querySelectorAll('.preview').length, same: s.textContent.includes('없음 (새로 넣어요)'), hash: location.hash }; })()`);
+  await shotEl('ia-flow-6-notice-preview-1280', '#sub-announce-new');
+  check('공지 미리보기: 3단계, 공지 창 모양 ko와 en 둘, 같은 id 없음, 만들기 자리 유지', np.step === '3. 미리보기' && np.previews === 2 && np.same && np.hash === '#announce/new', JSON.stringify(np));
+  check('공지 미리보기까지는 저장하지 않았다', sql(`SELECT count(*) FROM site_doc WHERE name = 'notices' AND body::text LIKE '%ia-notice%'`) === '0');
   await submitAndWait('form[action="/admin/notices"]');
-  const nr = await ev(`(() => { const s = document.querySelector('#sub-announce-notices'); const ok = s.querySelector('#form-ok'); const r = ok?.getBoundingClientRect(); return { step: s.querySelector('li[aria-current=step]')?.textContent, text: ok?.textContent ?? '', inView: !!r && r.top >= 0 && r.bottom <= innerHeight }; })()`);
+  const nr = await ev(`(() => { const s = document.querySelector('#sub-announce-new'); const ok = s.querySelector('#form-ok'); const r = ok?.getBoundingClientRect(); return { step: s.querySelector('li[aria-current=step]')?.textContent, text: ok?.textContent ?? '', inView: !!r && r.top >= 0 && r.bottom <= innerHeight }; })()`);
   check('공지 확정: 결과 확인 5단계와 성공 글이 폼 자리에서 보인다', nr.step === '5. 결과 확인' && nr.text.includes('ia-notice') && nr.inView, JSON.stringify(nr));
   check('공지가 서버에 저장됐다', sql(`SELECT body::text FROM site_doc WHERE name = 'notices'`).includes('ia-notice'));
-  // 지우기: 폼이 사라지는 동작의 성공 글은 그 칸 맨 위에서 보인다
+  // 지우기: 게시물 목록의 지우기. 폼이 사라져도 성공 글이 그 칸에서 보인다
+  await nav(`${apiUrl}/admin#announce/posts`);
   await ev(`(() => { const f = document.querySelector('form.sure input[name=id][value="ia-notice"]').form; f.querySelector('input[type=checkbox]').checked = true; return true; })()`);
   await submitAndWait('form.sure:has(input[name=id][value="ia-notice"])');
   const del = await ev(`(() => { const ok = document.getElementById('form-ok'); const r = ok?.getBoundingClientRect(); return { text: ok?.textContent ?? '', inCell: !!ok && document.getElementById('cell-announce').contains(ok), inView: !!r && r.top >= 0 && r.bottom <= innerHeight, hash: location.hash }; })()`);
-  check('공지 지우기: 폼이 사라져도 성공 글이 같은 칸에서 보인다', del.text.includes('지웠어요') && del.inCell && del.inView && del.hash === '#announce/notices', JSON.stringify(del));
-  // 오류가 누른 폼 안에 (쿠폰 상한 0)
+  check('공지 지우기: 폼이 사라져도 성공 글이 같은 칸에서 보인다', del.text.includes('지웠어요') && del.inCell && del.inView && del.hash === '#announce/posts', JSON.stringify(del));
+  // 오류가 누른 폼 안에 (쿠폰 상한 0): 미리보기 단계에서 거절된다
   await size(360, 780);
-  await nav(`${apiUrl}/admin#announce/coupons`);
-  await fill('form[action="/admin/coupons"]', { label: '오류 시험', coins: '0', tickets: '0', max_uses: '5', until: kstInput(Date.now() + 86_400_000) });
-  await submitAndWait('form[action="/admin/coupons"]');
-  const errNear = await ev(`(() => { const f = document.querySelector('form[action="/admin/coupons"]'); const e = f.querySelector('#form-error'); const r = e?.getBoundingClientRect(); return { inForm: !!e, text: e?.textContent ?? '', inView: !!r && r.top >= 0 && r.bottom <= innerHeight, label: f.elements.label.value }; })()`);
-  await shotEl('ia-error-near-360', 'form[action="/admin/coupons"]', 30);
+  await nav(`${apiUrl}/admin#announce/new`);
+  await ev(`document.getElementById('mk-coupons').click(); true`);
+  await fill('form[action="/admin/coupons/preview"]', { label: '오류 시험', coins: '0', tickets: '0', max_uses: '5', until: kstInput(Date.now() + 86_400_000) });
+  await submitAndWait('form[action="/admin/coupons/preview"]');
+  const errNear = await ev(`(() => { const f = document.querySelector('form[action="/admin/coupons/preview"]'); const e = f.querySelector('#form-error'); const r = e?.getBoundingClientRect(); return { inForm: !!e, text: e?.textContent ?? '', inView: !!r && r.top >= 0 && r.bottom <= innerHeight, label: f.elements.label.value }; })()`);
+  await shotEl('ia-error-near-360', 'form[action="/admin/coupons/preview"]', 30);
   check('[360] 오류가 누른 폼 안에 있고 화면에 보이며 쓴 값은 그대로', errNear.inForm && errNear.inView && errNear.label === '오류 시험', JSON.stringify(errNear));
-  // 성공도 누른 폼 안 (쿠폰 정책 저장)
+  // 성공도 누른 폼 안 (쿠폰 정책 저장, 게시물 자리)
   await size(1280);
-  await nav(`${apiUrl}/admin#announce/coupons`);
+  await nav(`${apiUrl}/admin#announce/posts`);
   await fill('form[action="/admin/rewards/policy"]', { login_only: '0' });
   await submitAndWait('form[action="/admin/rewards/policy"]');
   const okNear = await ev(`(() => { const f = document.querySelector('form[action="/admin/rewards/policy"]'); const e = f.querySelector('#form-ok'); const r = e?.getBoundingClientRect(); return { inForm: !!e, inView: !!r && r.top >= 0 && r.bottom <= innerHeight, top: !!document.querySelector('main > p.flash') }; })()`);
@@ -601,10 +616,10 @@ async function webPart() {
 
   // ---- 9. 이용자 칸: 표의 지급 단추는 지급 자리로 (대상이 채워진다) ----
   await nav(`${apiUrl}/admin#users`);
-  const payLink = await ev(`document.querySelector('table.users a.button-link')?.getAttribute('href') ?? ''`);
+  const payLink = await ev(`document.querySelector('table.users a.button-link[href*="users/grants"]')?.getAttribute('href') ?? ''`);
   await nav(`${apiUrl}${payLink}`);
   const prefilled = await ev(`({ place: location.hash, cells: [...document.querySelectorAll('.panel')].filter((x) => getComputedStyle(x).display !== 'none').map((x) => x.id), value: document.querySelector('form[action="/admin/grants/preview"] textarea[name=accounts]').value })`);
-  check('이용자 표의 지급 단추: 지급 자리가 열리고 대상 계정이 채워진다', prefilled.place === '#users/grants' && prefilled.value.startsWith('F-ABCD-'), JSON.stringify(prefilled));
+  check('이용자 표의 지급 단추: 지급 자리가 열리고 대상 계정(계정 번호)이 채워진다', prefilled.place === '#users/grants' && /^\d+$/.test(prefilled.value) && payLink.includes(`account=${prefilled.value}`), JSON.stringify(prefilled));
 
   // ---- 10. 스크립트 오류 없음 ----
   check('화면 스크립트 오류와 콘솔 오류가 없다', pageErrors.length === 0, pageErrors.join(' | '));
@@ -749,8 +764,8 @@ async function appPart() {
     await adminPost('/admin/login', { token: ADMIN_TOKEN });
     sql(`INSERT INTO account (age, nickname, code) VALUES ('18+', '신고자', 'F-ABCD-0009')`);
     sql(`INSERT INTO ai_report (account_id, question, answer) SELECT id, '질문', '답' FROM account WHERE code = 'F-ABCD-0009'`);
-    await adminPost('/admin/events', { id: 'ia-soon', kind: 'gift', title_ko: '곧 끝나는 선물', title_en: 'Ending soon', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 30 });
-    await adminPost('/admin/coupons', { label: '곧 끝나는 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
+    await adminConfirm('/admin/events', { id: 'ia-soon', kind: 'gift', title_ko: '곧 끝나는 선물', title_en: 'Ending soon', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 30 });
+    await adminConfirm('/admin/coupons', { label: '곧 끝나는 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
     await adminPost('/admin/notes', { account: 'F-ABCD-0009', coins: 3, chat_passes: 0, message: '기록', days: 30 });
     // #152: 백업 여섯(상한 0.001GB 의 81%), 최소 0.5.0 과 기능 제한 0.5.1, 판이 다른 계정
     mkdirSync(join(scratch, 'backups'), { recursive: true });

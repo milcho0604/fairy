@@ -98,6 +98,8 @@ export interface ReportRow {
 
 /** 본문을 연 신고 하나 */
 export interface ReportOpen extends ReportRow {
+  /** 이용자가 지금 만 18세 이상이 아니라 글을 열지 않았다 */
+  closed: boolean;
   question: string;
   answer: string;
   /** 같은 이용자의 다른 신고 */
@@ -1193,10 +1195,14 @@ function reportDetail(v: AdminView, o: ReportOpen): string {
 <div><dt>상태</dt><dd>${reportTag(o.status)}</dd></div>
 <div><dt>처리</dt><dd>${o.handledAt ? `${esc(o.handledName ?? o.handledBy ?? '')}, ${when(o.handledAt)}` : '아직 없어요'}</dd></div>
 </dl>
-<h3>질문</h3>
+${
+  o.closed
+    ? '<p class="flash error" role="alert">이 이용자는 지금 만 18세 이상이 아니라서 질문과 답을 열지 않아요. 처리 상태와 막기는 그대로 할 수 있어요</p>'
+    : `<h3>질문</h3>
 <pre class="convo">${esc(o.question || '(질문 없이 신고했어요)')}</pre>
 <h3>답</h3>
-<pre class="convo">${esc(o.answer)}</pre>
+<pre class="convo">${esc(o.answer)}</pre>`
+}
 ${others}
 <div class="row">${moves}<a class="button-link" href="${esc(userHref(o.code))}">이용자 보기</a></div>
 <div class="row">${block}</div>
