@@ -159,3 +159,19 @@ describe('운영자 다섯 칸과 지급 폼', () => {
     assert.match(html, /action="\/admin#users\/list"/);
   });
 });
+
+describe('운영자 화면 CSS 접근성 규칙', () => {
+  test('흐리게 하는 일은 opacity 대신 색 토큰으로 한다 (대비 4.5 대 1)', () => {
+    assert.doesNotMatch(adminCss, /tr\.off[^{]*\{[^}]*opacity/);
+    assert.doesNotMatch(adminCss, /button:disabled \{[^}]*opacity/);
+    assert.match(adminCss, /tr\.off td \{ color: var\(--muted\)/);
+  });
+
+  test('거친 포인터(손가락)에서는 누르는 곳이 44px 이상이다', () => {
+    const coarse = adminCss.slice(adminCss.indexOf('@media (pointer: coarse) {'));
+    assert.match(coarse, /\.subnav a/);
+    assert.match(coarse, /td a:not\(\.button-link\)/);
+    assert.match(coarse, /label\.confirm/);
+    assert.match(coarse, /min-height: 44px/);
+  });
+});
