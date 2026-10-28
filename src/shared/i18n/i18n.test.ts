@@ -8,7 +8,8 @@ const looseT = t as unknown as (key: string, vars?: Record<string, string | numb
 // 함수 값에 넣어 볼 값: 글처럼도 숫자처럼도 쓰인다 (String 객체 '2')
 const sample = new Proxy({}, { get: () => new String('2') }) as never;
 const render = (v: unknown) => (typeof v === 'function' ? (v as (vars: never) => string)(sample) : v);
-const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+// {이름} 과 {이름:은} 모두 같은 자리로 센다
+const placeholders = (s: string) => [...s.matchAll(/\{(\w+)(?::[^{}]*)?\}/g)].map((m) => m[1]).sort();
 
 test('영어 사전은 한국어 사전의 키를 모두 갖고 빈 값이 없다', () => {
   const ko = dicts.ko as Record<string, unknown>;

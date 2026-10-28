@@ -787,7 +787,7 @@ export function createPetWindow({
           { type: 'separator' },
           {
             label: t('pet.menu.bubbles'),
-            submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
+            submenu: (['quiet', 'normal', 'sometimes', 'chatty'] as const).map((level) => ({
               label: LEVEL_LABEL[level],
               type: 'radio' as const,
               checked: gate.level === level,

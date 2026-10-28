@@ -4,7 +4,8 @@ import { type I18nKey, t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { type Activity, type LifeState, type PetLife, SULK_LINES, UNLOCKS } from '../shared/pet-life.ts';
-import { REST, RestCoach, restLines } from '../shared/rest.ts';
+import { isQuietNow } from '../shared/quiet-hours.ts';
+import { REST, RestCoach, restLine } from '../shared/rest.ts';
 import { bodyClock, restDaysOf } from '../shared/routine.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
@@ -88,7 +89,11 @@ export function createPetLife(o: PetLifeOptions) {
   function restTick() {
     const now = Date.now();
     const idleSec = powerMonitor.getSystemIdleTime();
-    const event = coach.tick(now, idleSec, settings.get().chatter);
+    const event = coach.tick(
+      now,
+      idleSec,
+      isQuietNow(settings.get().quietHours, now) ? 'quiet' : settings.get().chatter,
+    );
     const e = watch.tick(new Date(now), coach.streakMin, idleSec, bodyMinute(new Date(now)));
     energy = e.energy;
     const rhythmOn = settings.get().dayRhythm;
@@ -117,8 +122,7 @@ export function createPetLife(o: PetLifeOptions) {
     }
     if (rhythmOn && e.fresh) refreshed();
     if (event === 'suggest' && !o.petHidden()) {
-      const lines = restLines();
-      const line = lines[Math.floor(Math.random() * lines.length)] ?? lines[0];
+      const line = restLine();
       void o
         .say({
           kind: 'system',

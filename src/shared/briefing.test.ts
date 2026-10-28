@@ -13,8 +13,11 @@ import {
 } from './briefing.ts';
 import { breakFor, focusCoins, focusedMinutes, IDLE, remainLabel, startFocus, tickFocus } from './focus.ts';
 import { setLang } from './i18n/index.ts';
+import { variants } from './variants.ts';
 
 const MIN = 60_000;
+// 인사는 여러 변형 가운데 고른다. 시험은 늘 첫째 변형(기본 말)으로
+variants.setRandom(() => 0);
 
 test('브리핑: 일정 하나, 여러 개, 마감, 아무것도 없을 때', () => {
   assert.equal(

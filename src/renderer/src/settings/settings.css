@@ -1894,3 +1894,10 @@ textarea.rules {
 .settings section[id] {
   scroll-margin-top: 42px;
 }
+
+/* 말 안 하는 시간: 시작과 끝 시각을 나란히 (좁은 창에서는 줄바꿈) */
+.quiet-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
