@@ -300,6 +300,29 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     lastToastAt.current = undoable(toasts).at(-1)?.at;
   }, [toasts]);
 
+  /** 같은 반복의 다른 회차 시각으로 옮기다 막혔다는 신호(번호가 오르면)를 안내 알림으로. 처음 받은 상태는 기준일 뿐 알리지 않는다 */
+  const slotSeen = useRef<number | null>(null);
+  const slotTaken = s === undefined ? undefined : (s.eventSlotTaken ?? 0);
+  useEffect(() => {
+    if (slotTaken === undefined) return;
+    const before = slotSeen.current;
+    slotSeen.current = slotTaken;
+    if (before === null || slotTaken <= before) return;
+    const now = Date.now();
+    const key = toastKey.current++;
+    setToasts((prev) =>
+      [
+        ...liveToasts(prev, now).filter((k) => k.toast.kind !== 'added'),
+        {
+          key,
+          at: now,
+          until: now + UNDO_MS,
+          toast: { kind: 'added' as const, text: t('panel.event.slotTaken') },
+        },
+      ].slice(-TOAST_KEEP_MAX),
+    );
+  }, [slotTaken]);
+
   if (!s) return kind === 'home' ? <div className="surface home" /> : <div className="card-window panel" />;
 
   const showToast = (next: Toast) => {

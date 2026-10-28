@@ -312,6 +312,23 @@ describe('펫 놀러 가기 (서버)', () => {
     assert.equal(await cardRows(d), 0, '켠 친구가 탈퇴로 모두 사라지면 카드를 지운다');
   });
 
+  test('11c 로그아웃하면 카드가 지워지고 놀러 가기 스위치도 모두 꺼진다 (로그인해야 쓰는 기능)', async () => {
+    const [a, b] = await pair();
+    assert.equal(await cardRows(a), 1);
+    assert.equal((await call(a, 'DELETE', '/v1/session')).status, 204);
+    assert.equal(await cardRows(a), 0, '로그아웃 뒤에도 카드가 남아 친구에게 계속 놀러 간다');
+    const on = await h.pool.query(
+      'SELECT count(*)::int AS n FROM friend WHERE account_id = $1 AND visit_on',
+      [a.id],
+    );
+    assert.equal(on.rows[0].n, 0);
+    // 상대 쪽 켬은 그대로: 다시 로그인해 켜면 바로 이어진다
+    assert.equal(
+      (await h.pool.query('SELECT count(*)::int AS n FROM friend WHERE account_id = $1 AND visit_on', [b.id]))
+        .rows[0].n,
+      1,
+    );
+  });
   test('12 14일 안 올린 카드는 정리되고, 13일 된 카드는 서빙된다 (14일 넘은 것은 정리 전에도 안 나간다)', async () => {
     const [a, b] = await pair();
     await h.pool.query("UPDATE pet_card SET updated_at = now() - interval '13 days' WHERE account_id = $1", [
