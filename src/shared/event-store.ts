@@ -369,15 +369,41 @@ export class EventStore {
     return this.get(id) as CalEvent;
   }
 
-  /** 다음 해까지 반복 회차를 실제 일정으로 만들어 알림과 달력에서 기존 일정처럼 읽힌다. */
+  /**
+   * 다음 해까지 반복 회차를 실제 일정으로 만들어 알림과 달력에서 기존 일정처럼 읽힌다.
+   * 앱과 MCP 가 같은 파일을 따로 열어 두므로 읽기부터 삽입까지 쓰기 잠금(begin immediate)으로 묶는다.
+   * 이미 바깥 묶음 안이면(begin 이 거절되면) 그 묶음을 따른다. 같은 (시리즈, 시각) 은 유일 색인이 마지막으로 막는다
+   */
   #extendSeries(seriesId: number, through: number): void {
+    let own = true;
+    try {
+      this.#db.exec('begin immediate');
+    } catch (err) {
+      if (!/within a transaction/i.test(String((err as Error).message))) throw err;
+      own = false;
+    }
+    try {
+      this.#extendSeriesIn(seriesId, through);
+      if (own) this.#db.exec('commit');
+    } catch (err) {
+      if (own) this.#db.exec('rollback');
+      throw err;
+    }
+  }
+
+  #extendSeriesIn(seriesId: number, through: number): void {
     const initial = this.#db.prepare('select * from event where id = ?').get(seriesId) as Row | undefined;
     const validInitial = initial && eventTimeOk(initial.start_at) ? initial : undefined;
-    const latest = this.#db
-      .prepare(
-        'select * from event where repeat_series = ? and start_at between ? and ? order by start_at desc limit 1',
-      )
-      .get(seriesId, -EVENT_TIME_MAX_MS, EVENT_TIME_MAX_MS) as Row | undefined;
+    // 사용자가 고친(옮긴) 회차는 이어 만들 기준에서 뺀다. 가장 늦은 회차를 먼 날짜로 옮겨도 확장이 멈추지 않는다.
+    // 고친 회차뿐이면 그중 가장 늦은 것을 쓴다
+    const latestSql = (edited: string) =>
+      `select * from event where repeat_series = ? and start_at between ? and ? ${edited} order by start_at desc limit 1`;
+    const latest = (this.#db
+      .prepare(latestSql('and user_edited = 0'))
+      .get(seriesId, -EVENT_TIME_MAX_MS, EVENT_TIME_MAX_MS) ??
+      this.#db.prepare(latestSql('')).get(seriesId, -EVENT_TIME_MAX_MS, EVENT_TIME_MAX_MS)) as
+      | Row
+      | undefined;
     const template = this.#db
       .prepare('select * from event_repeat_template where series_id = ?')
       .get(seriesId) as RepeatTemplate | undefined;
@@ -491,7 +517,7 @@ export class EventStore {
       if (!skipped) {
         const inserted = this.#db
           .prepare(
-            'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
+            'insert or ignore into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
           )
           .run(
             title,
@@ -503,12 +529,13 @@ export class EventStore {
             seriesId,
             repeatClock,
           );
-        this.#reminders.set(
-          Number(inserted.lastInsertRowid),
-          reminds,
-          eventAnchor({ startAt, allDay: false }),
-          { reset: true },
-        );
+        if (Number(inserted.changes) > 0)
+          this.#reminders.set(
+            Number(inserted.lastInsertRowid),
+            reminds,
+            eventAnchor({ startAt, allDay: false }),
+            { reset: true },
+          );
       }
       interval = startAt;
     }
@@ -643,6 +670,15 @@ export class EventStore {
         : allDay !== e.allDay
           ? defaultReminds(allDay)
           : e.reminds;
+    // 같은 반복의 다른 회차와 같은 시각으로는 옮기지 못한다 (유일 색인이 막는 자리를 먼저 알린다)
+    if (startAt !== e.startAt) {
+      const clash = this.#db
+        .prepare(
+          'select 1 from event where id != ? and start_at = ? and repeat_series = (select repeat_series from event where id = ?)',
+        )
+        .get(id, startAt, id);
+      if (clash) throw new Error('같은 반복의 그 시각에 이미 회차가 있다');
+    }
     const moved = startAt !== e.startAt || allDay !== e.allDay;
     const remindsChanged = reminds.join() !== e.reminds.join();
     // 제목이나 시각을 고치면 사용자 것으로 둔다: 가져온 일정이면 다음 가져오기가 덮지 않는다 (알림만 바꾼 것은 아니다)

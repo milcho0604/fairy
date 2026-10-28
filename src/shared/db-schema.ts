@@ -285,6 +285,22 @@ export const MIGRATIONS: readonly string[] = [
     value text not null
   );
   `,
+  // 21판: 같은 반복의 같은 시각 회차는 하나만. 앱과 MCP 가 동시에 이어 만들며 생긴 중복을 먼저 정리한다
+  // (살아 있는 것, 고친 것, 먼저 만든 것 순으로 남기고 지운 행의 알림도 지운다)
+  `
+  create temp table event_dup as
+    select id from (
+      select id, row_number() over (
+        partition by repeat_series, start_at
+        order by (deleted_at is null) desc, user_edited desc, id
+      ) as rn
+      from event where repeat_series is not null
+    ) where rn > 1;
+  delete from reminder where kind = 'event' and ref_id in (select id from event_dup);
+  delete from event where id in (select id from event_dup);
+  drop table event_dup;
+  create unique index event_repeat_slot on event(repeat_series, start_at) where repeat_series is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
