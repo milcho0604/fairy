@@ -7,18 +7,19 @@ import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { cutText } from '../shared/cut-text.ts';
+import { plusDays } from '../shared/day.ts';
 import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
-import { type I18nKey, locale, t } from '../shared/i18n/index.ts';
+import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, LANGUAGE, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { ownsLoginItem } from '../shared/login-item.ts';
 import { runnerLookOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
-import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
+import { setSpeechSource, setVoiceSource, voiced, voicedLive, voicedPick } from '../shared/persona-voice.ts';
 import { cardOf, isCustomPet } from '../shared/pet-card-of.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { DoingSet } from '../shared/pet-status.ts';
@@ -29,7 +30,6 @@ import { ownedCount } from '../shared/shop.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
-import { variants } from '../shared/variants.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { detectAi } from './ai/detect.ts';
 import { localModelReady, stopLocal } from './ai/local.ts';
@@ -850,14 +850,16 @@ ready
           }
           return ok;
         }
-        void pet.say({ kind: 'answer', text: voiced('pet.play.walkStart'), ttlMs: 2000 });
+        const walkHi = voicedLive('pet.play.walkStart');
+        if (walkHi !== undefined) void pet.say({ kind: 'answer', text: walkHi, ttlMs: 2000 });
         await new Promise((r) => setTimeout(r, 2200));
         const started = Date.now();
         const ok = await pet.stroll(walkMin);
         const minutes = Math.round((Date.now() - started) / 60_000);
         stats.addWalk(Date.now(), minutes);
         if (minutes > 0) petLife.activity('play');
-        if (ok) void pet.say({ kind: 'answer', text: voiced('pet.play.walkEnd'), ttlMs: 4000 });
+        const walkBye = voicedLive('pet.play.walkEnd');
+        if (ok && walkBye !== undefined) void pet.say({ kind: 'answer', text: walkBye, ttlMs: 4000 });
         return ok;
       } finally {
         playing = false;
@@ -890,7 +892,7 @@ ready
       busy: () => pet.isHidden() || playing || pet.held() || planner.focus.phase === 'focus',
       giggle: (text) => {
         pet.react('dance');
-        void pet.say({ kind: 'answer', text, ttlMs: 3000 });
+        if (text) void pet.say({ kind: 'answer', text, ttlMs: 3000 });
       },
       log,
     });
@@ -1130,12 +1132,8 @@ ready
         pet.react('fed');
         petLife.activity('feed');
         const image = food.image ? foodImageDataUrl(food.image) : undefined;
-        void pet.say({
-          kind: 'answer',
-          text: voiced(variants.pick('pet.fedWith') as I18nKey, { food: food.name }),
-          ttlMs: 3500,
-          image,
-        });
+        const fedWith = voicedPick('pet.fedWith', { food: food.name });
+        if (fedWith !== undefined) void pet.say({ kind: 'answer', text: fedWith, ttlMs: 3500, image });
         sendStatus();
       },
       openFoodMaker: () => maker.open('food'),
@@ -1180,7 +1178,10 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: voiced(variants.pick('pet.fed') as I18nKey), ttlMs: 3000 });
+        {
+          const fed = voicedPick('pet.fed');
+          if (fed !== undefined) void pet.say({ kind: 'answer', text: fed, ttlMs: 3000 });
+        }
       },
       onChanged: () => sendStatus(),
       openChat: () => chat.open(pet.bounds()),
@@ -1252,7 +1253,10 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: voiced(variants.pick('pet.fed') as I18nKey), ttlMs: 3000 });
+        {
+          const fed = voicedPick('pet.fed');
+          if (fed !== undefined) void pet.say({ kind: 'answer', text: fed, ttlMs: 3000 });
+        }
       } else {
         void pet.say({
           kind: 'answer',
@@ -1758,6 +1762,16 @@ ready
             : {}),
           ...(habit && habit.streak >= 2 ? { habit: { title: habit.title, streak: habit.streak } } : {}),
           facts: settings.get().petFacts,
+          yesterdayFocusMin: Math.round(stats.diaryFacts([plusDays(localDay(now), -1)])[0]?.focusMin ?? 0),
+          streak: companion.memoryFacts(now).streak ?? 0,
+        };
+      },
+      // 주간 편지와 저녁 쪽지: 그 날짜들에 끝낸 할 일 수와 집중한 분
+      totals: (days) => {
+        const rows = stats.diaryFacts(days);
+        return {
+          done: rows.reduce((n, r) => n + r.done, 0),
+          focusMin: rows.reduce((n, r) => n + r.focusMin, 0),
         };
       },
       canTalk,

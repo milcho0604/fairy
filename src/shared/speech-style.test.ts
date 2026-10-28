@@ -9,6 +9,7 @@ import {
   fillLine,
   LINE_MAX,
   LINES_MAX,
+  MOMENTS,
   parseStyle,
   type SpeechStyle,
 } from './speech-style.ts';
@@ -181,4 +182,78 @@ test('AI 성격 지시에 내 말투를 글로 적는다', () => {
   assert.match(d, /집사/);
   assert.match(d, /좋은 아침이에요 '집사'/);
   assert.match(describeStyle(DEFAULT_STYLE, 'en'), /casual/);
+});
+
+test('말투 2: 말끝 여럿, 말끝과 부르는 말과 직접 쓴 말의 빈도, 펫 1인칭 읽기', () => {
+  const s = parseStyle({
+    ending: '냥',
+    endings: ['뿌', '냥', '뿌', '용', '멍멍멍멍', ' '],
+    endingRate: 'sometimes',
+    callRate: 'often',
+    ownRate: 'sometimes',
+    self: 'custom',
+    selfText: '이 몸 이 몸 이 몸',
+  });
+  // 겹침 없이 세 개까지, 세 글자까지
+  assert.deepEqual(s.endings, ['뿌', '냥', '용']);
+  assert.equal(s.ending, '뿌');
+  assert.equal(s.endingRate, 'sometimes');
+  assert.equal(s.callRate, 'often');
+  assert.equal(s.ownRate, 'sometimes');
+  assert.equal(s.self, 'custom');
+  assert.ok([...s.selfText].length <= 6, s.selfText);
+  // 옛 설정은 말끝 하나, 직접 쓴 말은 항상, 나머지는 그대로
+  const old = parseStyle({ ending: '용', call: 'butler' });
+  assert.deepEqual(old.endings, ['용']);
+  assert.equal(old.endingRate, 'always');
+  assert.equal(old.ownRate, 'always');
+  assert.equal(old.self, 'name');
+  // 새 내 말투(저장 값 없음)의 기본은 직접 쓴 말을 자주
+  assert.equal(parseStyle(undefined).ownRate, 'often');
+  assert.equal(DEFAULT_STYLE.ownRate, 'often');
+  assert.equal(parseStyle({ self: 'robot', endingRate: 'never' }).self, 'name');
+  assert.equal(parseStyle({ endingRate: 'never' }).endingRate, 'always');
+});
+
+test('말투 2: 열 가지 때, 모든 때가 빈 목록으로 시작한다', () => {
+  assert.equal(MOMENTS.length, 10);
+  for (const m of MOMENTS) assert.deepEqual(DEFAULT_STYLE.lines[m], []);
+  const s = parseStyle({ lines: { lunch: ['점심이다'], hungry: ['꼬르륵'], weird: ['x'] } });
+  assert.deepEqual(s.lines.lunch, ['점심이다']);
+  assert.deepEqual(s.lines.hungry, ['꼬르륵']);
+  assert.deepEqual(s.lines.done, []);
+});
+
+test('말투 2: 말끝 빈도 sometimes 는 30%만 붙이고 always 는 늘 붙인다', () => {
+  const base = { ...DEFAULT_STYLE, ending: '냥', endings: ['냥'] };
+  const ctx = (v: number) => ({ lang: 'ko' as const, me: '', rand: () => v });
+  assert.equal(applyStyle('좋아.', { ...base, endingRate: 'always' }, ctx(0.99)), '좋아냥.');
+  assert.equal(applyStyle('좋아.', { ...base, endingRate: 'sometimes' }, ctx(0.1)), '좋아냥.');
+  assert.equal(applyStyle('좋아.', { ...base, endingRate: 'sometimes' }, ctx(0.5)), '좋아.');
+  assert.equal(applyStyle('좋아.', { ...base, endingRate: 'often' }, ctx(0.5)), '좋아냥.');
+  assert.equal(applyStyle('좋아.', { ...base, endingRate: 'often' }, ctx(0.7)), '좋아.');
+});
+
+test('말투 2: 말끝이 여럿이면 말 하나에 하나를 고른다', () => {
+  const style = { ...DEFAULT_STYLE, ending: '냥', endings: ['냥', '뿌'] };
+  const seen = new Set<string>();
+  for (const v of [0, 0.4, 0.6, 0.99])
+    seen.add(applyStyle('좋아. 해 보자.', style, { lang: 'ko', me: '', rand: () => v }));
+  // 문장마다가 아니라 말마다 하나: 두 문장에 같은 말끝
+  assert.deepEqual([...seen].sort(), ['좋아냥. 해 보자냥.', '좋아뿌. 해 보자뿌.']);
+});
+
+test('말투 2: 부르는 말 빈도 sometimes 는 가끔만 너를 바꾼다', () => {
+  const style = { ...DEFAULT_STYLE, call: 'butler' as const, callRate: 'sometimes' as const };
+  const on = applyStyle('너도 해 봐.', style, { lang: 'ko', me: '집사', rand: () => 0.1 });
+  const off = applyStyle('너도 해 봐.', style, { lang: 'ko', me: '집사', rand: () => 0.9 });
+  assert.equal(on, '집사도 해 봐.');
+  assert.equal(off, '너도 해 봐.');
+});
+
+test('AI 성격 지시에 말끝 여럿과 펫 1인칭도 적는다', () => {
+  const d = describeStyle({ ...DEFAULT_STYLE, endings: ['냥', '뿌'], self: 'me' }, 'ko');
+  assert.ok(d.includes('"냥" 또는 "뿌"'), d);
+  assert.ok(d.includes('자기 자신을 "나"'), d);
+  assert.ok(!describeStyle({ ...DEFAULT_STYLE, self: 'me' }, 'en').includes('나'));
 });

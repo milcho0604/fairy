@@ -15,10 +15,9 @@ import { plusDays } from '../shared/day.ts';
 import { dicts, type I18nKey } from '../shared/i18n/index.ts';
 import type { IdleFacts, IdleKey } from '../shared/idle-talk.ts';
 import type { ReactKind } from '../shared/ipc.ts';
-import { voiced } from '../shared/persona-voice.ts';
+import { voiced, voicedPick } from '../shared/persona-voice.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
-import { variants } from '../shared/variants.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -116,10 +115,12 @@ export function createCompanion(o: CompanionOptions) {
     const clear = cheer.kind === 'clear';
     if (clear && settings.get().chatter === 'quiet') return;
     setTimeout(() => {
+      // 칭찬은 고른 성격 말투로 (shared/persona-voice.ts). 모두 안 쓰기로 했으면 말하지 않는다
+      const text = voicedPick(cheer.key, { name: o.petName(), n: cheer.n });
+      if (text === undefined) return;
       void o.say({
         kind: clear ? 'answer' : 'system',
-        // 칭찬은 고른 성격 말투로 (shared/persona-voice.ts)
-        text: voiced(variants.pick(cheer.key) as I18nKey, { name: o.petName(), n: cheer.n }),
+        text,
         ttlMs: 5000,
       });
     }, CHEER_DELAY_MS).unref();

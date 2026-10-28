@@ -3,10 +3,9 @@
 
 import type { ChatterLevel } from './chatter.ts';
 import { timeLabel } from './event-store.ts';
-import { type I18nKey, t } from './i18n/index.ts';
-import { voiced } from './persona-voice.ts';
+import { t } from './i18n/index.ts';
+import { voiced, voicedPick } from './persona-voice.ts';
 import { localDay } from './todo-store.ts';
-import { variants } from './variants.ts';
 
 /** 이 시각(현지, 분) 전에는 브리핑하지 않는다. 새벽에 켠 컴퓨터에 "좋은 아침"을 하지 않게. */
 export const BRIEFING_FROM_MINUTE = 5 * 60;
@@ -110,14 +109,14 @@ export interface BriefingInput {
 }
 
 function greeting(minute: number): string {
-  // 인사는 고른 성격 말투로 (shared/persona-voice.ts)
-  if (minute < 11 * 60) return voiced(variants.pick('briefing.hi.morning') as I18nKey);
-  if (minute < 17 * 60) return voiced(variants.pick('briefing.hi.day') as I18nKey);
-  return voiced(variants.pick('briefing.hi.evening') as I18nKey);
+  // 인사는 고른 성격 말투로 (shared/persona-voice.ts). 인사를 모두 안 쓰기로 했으면 빈 글
+  const base =
+    minute < 11 * 60 ? 'briefing.hi.morning' : minute < 17 * 60 ? 'briefing.hi.day' : 'briefing.hi.evening';
+  return voicedPick(base) ?? '';
 }
 
 export function briefingText(b: BriefingInput): string {
-  return `${greeting(b.nowMinute)} ${briefingBody(b)}`;
+  return `${greeting(b.nowMinute)} ${briefingBody(b)}`.trim();
 }
 
 /**

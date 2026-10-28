@@ -117,3 +117,11 @@ test('받아들이고 30분 넘게 일하다 덮개를 닫으면 보상 없음',
   assert.equal(c.tick(45 * MIN, 5, 'normal'), undefined);
   assert.equal(c.tick(46 * MIN, 2, 'normal'), undefined);
 });
+
+test('권유를 안 하는 동안(말 안 하는 시간, 조용히)은 일한 시간을 쌓지 않아서, 끝나는 순간 바로 권하지 않는다', () => {
+  const c = new RestCoach();
+  // 3시간 동안 말 안 하는 시간 (앱은 그동안 level 'quiet' 로 부른다)
+  assert.deepEqual(run(c, 0, 180, 0, 'quiet'), []);
+  // 시간이 끝난 직후: 쌓인 시간이 없으니 첫 1분에 권하지 않고, 보통 기준 2시간을 새로 센다
+  assert.deepEqual(run(c, 180 * MIN, 130), [[120, 'suggest']]);
+});

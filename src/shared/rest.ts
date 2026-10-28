@@ -3,8 +3,8 @@
 import type { ChatterLevel } from './chatter.ts';
 import { REST_COINS } from './coin-rules.ts';
 import type { I18nKey } from './i18n/index.ts';
-import { voiced } from './persona-voice.ts';
-import { variants, variantsOf } from './variants.ts';
+import { voiced, voicedPick } from './persona-voice.ts';
+import { variantsOf } from './variants.ts';
 
 export const REST = {
   /** 이만큼 입력이 없으면 쉰 것으로 본다 (연속 작업 시간을 0 으로) */
@@ -27,7 +27,8 @@ export const REST_EVERY_MIN: Record<ChatterLevel, number | undefined> = {
 export const restLines = (): string[] => variantsOf('pet.rest').map((k) => voiced(k as I18nKey));
 
 /** 휴식 권유 대사 하나 (바로 앞에 한 말은 피한다) */
-export const restLine = (rand?: () => number): string => voiced(variants.pick('pet.rest', rand) as I18nKey);
+/** 쉬자는 말. 모두 안 쓰기로 했으면 undefined */
+export const restLine = (rand?: () => number): string | undefined => voicedPick('pet.rest', undefined, rand);
 
 export type RestEvent = 'suggest' | 'rested';
 
@@ -81,7 +82,12 @@ export class RestCoach {
     this.#workedMs += dt;
     this.#streakMs += dt;
     const every = REST_EVERY_MIN[level];
-    if (every === undefined || this.#accepted !== undefined) return undefined;
+    // 권유를 안 하는 때(조용히, 말 안 하는 시간)는 일한 시간을 쌓지 않는다: 그 시간이 끝나는 순간 쌓인 시간으로 바로 권유하지 않게
+    if (every === undefined) {
+      this.#workedMs = 0;
+      return undefined;
+    }
+    if (this.#accepted !== undefined) return undefined;
     if (this.#workedMs >= every * 60_000) {
       this.#workedMs = 0;
       return 'suggest';
