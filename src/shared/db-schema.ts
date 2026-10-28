@@ -278,6 +278,13 @@ export const MIGRATIONS: readonly string[] = [
     created_at integer not null
   );
   `,
+  // 20판: 마지막으로 켠 시간대 등 앱이 기억해 둘 작은 값 (시간대가 바뀐 때만 반복 회차를 맞추려고)
+  `
+  create table app_meta (
+    key text primary key,
+    value text not null
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -427,7 +427,7 @@ export function createPanel(o: PanelOptions) {
    */
   /** 같은 제목과 시각의 일정이 이미 있으면 넣지 않고 알릴 답 (두 번 눌러 겹쳐 넣는 일이 잦다) */
   function sameEvent(title: string, startAt: number, allDay: boolean) {
-    const found = findSameEvent(o.events.stored(startAt, startAt + 1), { title, startAt, allDay });
+    const found = findSameEvent(o.events.between(startAt, startAt + 1), { title, startAt, allDay });
     if (!found) return undefined;
     return { ok: false as const, error: t('panel.event.duplicate', { title: found.title }) };
   }

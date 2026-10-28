@@ -828,8 +828,11 @@ export class TodoStore {
       }
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
       // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
-      // 되돌린 뒤 다시 끝내도, 손댄 다음 회차가 이미 열려 있으면 새로 만들지 않는다
-      if (t.repeat && !this.nextOf(id)) {
+      // 되돌린 뒤 다시 끝내도, 이 회차에서 난 다음 회차가 (끝냈더라도) 남아 있으면 새로 만들지 않는다
+      const hasNext = this.#db
+        .prepare('select 1 from todo where repeat_of = ? and deleted_at is null limit 1')
+        .get(id);
+      if (t.repeat && !hasNext) {
         const kept = this.#repeatAnchor(id);
         const monthDay = t.repeat === 'monthly' ? monthAnchor(kept, t.due) : undefined;
         const next = this.add(

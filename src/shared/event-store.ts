@@ -242,13 +242,23 @@ export function repairAllDayZone(db: Db): number {
 /**
  * 시간대를 바꿔 켰을 때 시각 반복 일정의 앞으로 올 회차를 반복 기준 시각(repeat_clock)에 다시 맞춘다 (켤 때 한 번).
  * 서울 오전 9시로 만든 매일 일정이 LA 에서 켜면 17시, 18시로 흩어져 보였다. 같은 현지 날의 기준 시각으로 옮긴다
- * (DST 로 없는 시각은 만들 때와 같은 규칙이라 그대로다). 지난 회차는 그대로 둔다. 고친 행 수
+ * (DST 로 없는 시각은 만들 때와 같은 규칙이라 그대로다). 지난 회차는 그대로 둔다.
+ * 마지막으로 켠 시간대(app_meta)와 다를 때만 돌고, 사용자가 시각을 옮긴 회차(user_edited)는 건드리지 않는다. 고친 행 수
  */
 export function repairRepeatZone(db: Db, now: number): number {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const last = (
+    db.prepare("select value from app_meta where key = 'tz'").get() as { value: string } | undefined
+  )?.value;
+  if (last === zone) return 0;
+  db.prepare("insert or replace into app_meta (key, value) values ('tz', ?)").run(zone);
+  // 기록이 없던 첫 켬은 어느 시간대에서 만들었는지 모르니 기록만 한다
+  if (last === undefined) return 0;
   const rows = db
     .prepare(
       `select id, start_at, end_at, repeat_clock from event
-       where all_day = 0 and repeat_clock is not null and repeat_kind is not null and deleted_at is null and start_at > ?`,
+       where all_day = 0 and repeat_clock is not null and repeat_kind is not null and deleted_at is null
+       and user_edited = 0 and start_at > ?`,
     )
     .all(now) as { id: number; start_at: number; end_at: number | null; repeat_clock: number }[];
   let fixed = 0;

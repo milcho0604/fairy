@@ -868,6 +868,7 @@ test('시간대를 바꿔 켜면 앞으로 올 반복 회차를 기준 시각에
     const { db, events } = fresh();
     const base = new Date(2026, 9, 1, 8, 0).getTime();
     events.add({ title: '아침', startAt: new Date(2026, 9, 2, 9, 0).getTime(), repeat: 'daily' }, base);
+    assert.equal(repairRepeatZone(db, base), 0, '처음 켠 시간대는 기록만 한다');
     process.env.TZ = 'America/Los_Angeles';
     const hours = () =>
       new Set(events.stored(base, base + 500 * DAY).map((e) => new Date(e.startAt).getHours()));
@@ -875,8 +876,31 @@ test('시간대를 바꿔 켜면 앞으로 올 반복 회차를 기준 시각에
     assert.ok(repairRepeatZone(db, base) > 0);
     assert.deepEqual([...hours()], [9]);
     assert.equal(repairRepeatZone(db, base), 0, '두 번 해도 그대로');
+    // 같은 시간대로 다시 켜면 사용자가 옮긴 회차를 되돌리지 않는다
+    const target = events.stored(base, base + 10 * DAY)[3];
+    assert.ok(target);
+    const moved = new Date(target.startAt);
+    moved.setHours(15, 0, 0, 0);
+    events.update(target.id, { startAt: moved.getTime() }, base);
+    assert.equal(repairRepeatZone(db, base), 0);
+    assert.equal(new Date(events.get(target.id)?.startAt ?? 0).getHours(), 15);
+    // 시간대가 또 바뀌어도 옮긴 회차는 건너뛴다
+    process.env.TZ = 'Asia/Seoul';
+    repairRepeatZone(db, base);
+    assert.equal(events.get(target.id)?.startAt, moved.getTime());
   } finally {
     if (prev === undefined) Reflect.deleteProperty(process.env, 'TZ');
     else process.env.TZ = prev;
   }
+});
+
+test('같은 일정 찾기용 between 은 1~2년 뒤 반복 회차도 찾는다', () => {
+  const { events } = fresh();
+  const now = Date.now();
+  const d = new Date(now + DAY);
+  d.setHours(9, 0, 0, 0);
+  events.add({ title: '매일', startAt: d.getTime(), repeat: 'daily' }, now);
+  const at = new Date(now + 600 * DAY);
+  at.setHours(9, 0, 0, 0);
+  assert.equal(events.between(at.getTime(), at.getTime() + 1).length, 1);
 });

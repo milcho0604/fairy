@@ -228,7 +228,7 @@ function clashNote(events: EventStore, ev: { id: number; startAt: number; endAt:
 
 /** 같은 일정이 이미 있으면 그 일정 (제목, 시작, 종일이 같은 것. event-dup.ts) */
 function sameEvent(events: EventStore, ev: { title: string; startAt: number; allDay?: boolean }) {
-  return findSameEvent(events.stored(ev.startAt, ev.startAt + 1).filter(aiSees()), ev);
+  return findSameEvent(events.between(ev.startAt, ev.startAt + 1).filter(aiSees()), ev);
 }
 
 /** 기억 받은 편지함에 하나 더한다. 짝꿍이 켜져 있으면 곧 "기다리는 기억"으로 옮기고 사용자가 허락한다 */
