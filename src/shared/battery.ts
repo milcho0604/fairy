@@ -19,6 +19,22 @@ export interface PowerFacts {
   reducedMotion?: boolean;
 }
 
+/**
+ * 움직임 줄이기 고르기 (설정 편의): system(기본) 운영체제 "동작 줄이기"를 따른다, always 늘 줄인다, off 줄이지 않는다.
+ * 줄이면 화면을 가로질러 걷지 않는다(calmOn)
+ */
+export const MOTION_CHOICES = ['system', 'always', 'off'] as const;
+export type MotionChoice = (typeof MOTION_CHOICES)[number];
+export const isMotionChoice = (v: unknown): v is MotionChoice => MOTION_CHOICES.includes(v as MotionChoice);
+
+/** 고른 값과 운영체제 설정으로 지금 줄일지 */
+export const reducedMotionOf = (choice: MotionChoice, os: boolean): boolean =>
+  choice === 'always' ? true : choice === 'off' ? false : os;
+
+/** 예전 설정에는 이 값이 없다: 배터리 절약을 "항상"으로 해 둔 사람은 "항상 줄이기"로 잇는다 */
+export const motionChoiceFromOld = (saved: unknown, saver: unknown): MotionChoice =>
+  isMotionChoice(saved) ? saved : saver === 'always' ? 'always' : 'system';
+
 /** 지금 절약할지 */
 export function saverOn(mode: SaverMode, facts: PowerFacts): boolean {
   // 운영체제 동작 줄이기는 사용자가 접근성으로 고른 것이라 절약 설정(끔)보다 앞선다

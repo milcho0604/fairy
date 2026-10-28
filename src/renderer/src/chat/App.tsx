@@ -419,7 +419,10 @@ export function App() {
   // 머리 안내 줄: 못 찾음이면 설치, 로그인 안 됨이면 로그인 안내
   const bannerMode = guideModeOf(current);
   const bannerSubject = bannerMode ? subjectOf(state.provider) : undefined;
-  const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
+  // 목록에 없는 AI(대화권 정의가 아직 안 왔을 때)도 내부 id 를 화면에 내지 않는다
+  const labelOf = (id?: AiProvider) =>
+    providers.find((p) => p.id === id)?.label ??
+    (id === TICKET_PROVIDER_ID ? t('ticket.label') : id ? t('chat.aiGeneric') : '');
   const imagesBlocked = !!spec && !spec.images && images.length > 0;
   // 한도에 걸리면 바로 물어볼 수 있는 다른 AI (설치, 로그인 확인된 것)
   const lastQuestionHasImages = !!state.messages.findLast((m) => m.role === 'user')?.images?.length;

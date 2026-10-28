@@ -38,7 +38,18 @@ process.env.JJ_INSPECT_PORT = await port();
 process.env.JJ_PAGE_PORT = await port();
 const fakeBin = join(scratch, 'bin');
 mkdirSync(fakeBin);
-writeFileSync(join(fakeBin, 'claude'), `#!${process.execPath}\nprocess.exit(1)\n`, { mode: 0o755 });
+mkdirSync(join(home, '.local', 'bin'), { recursive: true });
+for (const dir of [fakeBin, join(home, '.local', 'bin')])
+  writeFileSync(
+  join(dir, 'claude'),
+  `#!${process.execPath}
+const a = process.argv.slice(2);
+if (a[0] === '--version') { console.log('9.9.9 (Fake Claude)'); process.exit(0); }
+if (a[0] === 'auth') { console.log(JSON.stringify({ loggedIn: true })); process.exit(0); }
+process.exit(1);
+`,
+  { mode: 0o755 },
+);
 const app = spawn(electron, [`--inspect=${process.env.JJ_INSPECT_PORT}`, '.', `--remote-debugging-port=${process.env.JJ_PAGE_PORT}`], {
   cwd: resolve(import.meta.dirname, '../..'),
   env: { ...process.env, HOME: home, PATH: `${fakeBin}:/usr/bin:/bin:${dirname(process.execPath)}`, SHELL: '/usr/bin/false', JJ_NO_FOCUS: '1', JJ_SHOW: '', JJ_USER_DATA: data, JJ_TEST_SECRETS: 'memory' },
@@ -251,7 +262,7 @@ try {
   const c = await page('chat');
   await until(() => c.ev(`!!document.querySelector('.composer')`), '채팅');
   await c.ev(CONTRAST);
-  await main(`__jj.chat.debugSetState((s) => ({ ...s, messages: [
+  await main(`__jj.chat.debugSetState((s) => ({ ...s, provider: 'local', messages: [
     { id: 'u1', role: 'user', text: 'q' },
     { id: 'a1', role: 'pet', text: 'hello there', provider: 'claude', status: 'done' },
     { id: 'u2', role: 'user', text: '오늘 뭐부터' },
@@ -260,13 +271,19 @@ try {
     { id: 'a3', role: 'pet', text: '', provider: 'fairy-ticket', status: 'error', error: { kind: 'no-tickets', message: '채팅 이용권을 다 썼어.' } },
   ] })); 1`);
   await sleep(600);
+  await until(() => c.ev(`document.querySelectorAll('.retry button').length >= 2`), '대안 단추', 60).catch(() => 0);
   const chatSmall = JSON.parse(await c.ev(`JSON.stringify([...document.querySelectorAll('.answer-actions button')].map((b) => { b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); const probe = document.elementFromPoint(r.left + r.width / 2, r.top - 5); return { t: b.textContent.trim(), effH: Math.round(r.height + 12), hit: probe === b }; }))`));
   check('채팅 복사, 메모로, 할 일로 누르는 영역 24px 이상', chatSmall.length >= 3 && chatSmall.every((x) => x.effH >= 24 && x.hit), JSON.stringify(chatSmall));
   const tag = await c.ev(`(() => { const t = [...document.querySelectorAll('.tag')].find((x) => x.getAttribute('title')); return t ? [t.getAttribute('title'), t.getAttribute('aria-label')] : null; })()`);
   check('"AI 없이" 꼬리표에 설명(title, aria)', !!tag && !!tag[0] && tag[0] === tag[1], JSON.stringify(tag));
+  console.log('상태', await c.ev(`window.jjakkungChat.status(true).then((l) => JSON.stringify(l.map((x) => [x.provider, x.installed, x.loggedIn])))`));
   const retry = JSON.parse(await c.ev(`JSON.stringify([...document.querySelectorAll('.retry button')].map((b) => b.textContent.trim()))`));
   console.log('다시 묻기 단추', JSON.stringify(retry));
-  check('다시 묻기 단추 이름이 AI 별로 구분', retry.length >= 1 && new Set(retry).size === retry.length && retry[0] !== (ko ? '다시 묻기' : 'Ask again'), JSON.stringify(retry));
+  check('다시 묻기 단추 이름이 AI 별로 구분, 내부 id 없음, 대안 단추 있음', retry.length >= 2 && retry.some((x) => x.includes('Claude')) && new Set(retry).size === retry.length && !retry.join().includes('fairy-ticket') && retry[0].includes(ko ? '채팅 이용권' : 'Chat pass'), JSON.stringify(retry));
+  const tags = JSON.parse(await c.ev(`JSON.stringify([...document.querySelectorAll('.tag')].map((x) => x.textContent))`));
+  check('꼬리표에 내부 id 없음', !tags.join().includes('fairy-ticket'), JSON.stringify(tags));
+  await c.ev(`document.querySelector('main').scrollTop = 1e6; 1`);
+  await sleep(300);
   await c.shot(`chat-${lang}-light`);
   await main(`__jj.chat.debugSetState((s) => ({ ...s, messages: [], ticket: undefined })); 1`);
   await sleep(300);
@@ -293,11 +310,36 @@ try {
     }
     return JSON.parse(await pet.ev('JSON.stringify(window.__acts)'));
   };
-  const calmActs = await ask(80);
-  check('동작 줄이기: 한가한 행동에 걷기가 없다', calmActs.length > 0 && !calmActs.includes('walk'), `${calmActs.length}번 행동 ${[...new Set(calmActs)].join(',')}`);
+  // 설정 편의 탭에서 세 갈래를 누른다
+  await main('__jj.settingsWindow.open(); 1');
+  const st = await page('settings');
+  await until(() => st.ev(`!!document.querySelector('[role=tab], nav button, .tabs button')`), '설정');
+  await st.ev(`[...document.querySelectorAll('button, [role=tab]')].find((b) => /^(편의|General)/.test(b.textContent.trim()))?.click(); 1`);
+  await sleep(500);
+  const pick = (name) => st.ev(`(() => { const f = document.querySelector('fieldset[aria-label="${ko ? '움직임을 줄일 때' : 'When to reduce motion'}"]'); const b = [...f.querySelectorAll('button')].find((x) => x.textContent.includes(${JSON.stringify(name)})); b.click(); return 1; })()`);
+  const pressed = () => st.ev(`JSON.stringify([...document.querySelector('fieldset[aria-label="${ko ? '움직임을 줄일 때' : 'When to reduce motion'}"]').querySelectorAll('button')].map((b) => [b.textContent.trim(), b.getAttribute('aria-pressed')]))`);
+  const names = ko ? { system: '운영체제 따름', always: '항상 줄이기', off: '줄이지 않기' } : { system: 'Follow system', always: 'Always reduce', off: "Don't reduce" };
+  console.log('움직임 갈래', await pressed());
+  check('기본은 운영체제 따름', JSON.parse(await pressed())[0][1] === 'true', await pressed());
+  await st.ev(`document.querySelector('fieldset[aria-label="${ko ? '움직임을 줄일 때' : 'When to reduce motion'}"]').scrollIntoView({ block: 'center' }); 1`);
+  await sleep(300);
+  await st.shot(`settings-motion-${lang}-light`);
+  const walks = async (n) => (await ask(n)).filter((x) => x === 'walk').length;
+  // 걷기는 무작위라 걷는 쪽 시험은 몇 번 더 본다
+  const walksSome = async () => {
+    for (let i = 0; i < 4; i++) if ((await walks(120)) > 0) return true;
+    return false;
+  };
+  // 운영체제가 줄이기를 켠 척
+  await main('__jj.debugReducedMotion(true); 1');
+  check('운영체제 따름 + 운영체제 줄이기 켬: 걷기 없음', (await walks(70)) === 0);
+  await pick(names.off); await sleep(400);
+  check('줄이지 않기: 운영체제가 켜도 걷는다', await walksSome());
   await main('__jj.debugReducedMotion(false); 1');
-  const freeActs = await ask(120);
-  console.log(`끈 뒤 행동 ${freeActs.length}번: ${[...new Set(freeActs)].join(',')} (walk ${freeActs.filter((x) => x === 'walk').length})`);
+  await pick(names.always); await sleep(400);
+  check('항상 줄이기: 운영체제가 꺼도 걷기 없음', (await walks(70)) === 0);
+  await pick(names.system); await sleep(400);
+  check('운영체제 따름 + 꺼짐: 걷는다', await walksSome());
 } catch (err) {
   console.error('실패', err);
   code = 1;
