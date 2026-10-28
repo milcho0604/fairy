@@ -552,3 +552,145 @@ test('같은 계정이 다시 로그인해 상태가 바뀌어도 서버 쪽지�
   assert.equal(mail.get('inbox:2')?.archivedAt, now);
   assert.equal(mail.get('inbox:3')?.pinnedAt, now);
 });
+
+/** 계정 표식이 바뀌는 코어 흉내 (받기 응답을 손으로 풀 수 있다) */
+function keyedCore(first: InboxItem[]) {
+  const state = {
+    allowed: true,
+    key: 'A' as string | undefined,
+    calls: 0,
+    pages: [] as ((p: InboxPage) => void)[],
+    reply: first,
+  };
+  const core = {
+    allowed: () => state.allowed,
+    accountKey: () => state.key,
+    inbox: async (): Promise<InboxPage> => {
+      state.calls++;
+      return { items: state.reply, next: null, unopened: state.reply.length };
+    },
+  };
+  return { core: core as unknown as ServerCore, state };
+}
+const tick = () => new Promise((r) => setTimeout(r, 10));
+
+test('계정이 바뀌어 비운 뒤에는 새 계정 쪽지를 바로 받는다 (다음 계기까지 비어 있지 않다)', async () => {
+  const f = keyedCore([item({ id: 1 })]);
+  const { mail, inbox } = make({ core: f.core } as unknown as ReturnType<typeof fakeCore>);
+  await inbox.refresh();
+  f.state.key = 'B';
+  f.state.reply = [item({ id: 2 })];
+  inbox.sync();
+  await tick();
+  assert.deepEqual(
+    mail.all().map((r) => r.id),
+    ['inbox:2'],
+  );
+  // 서버 모드를 껐다 켜도 같다. 꺼진 동안에는 받지 않는다
+  const calls = f.state.calls;
+  f.state.allowed = false;
+  inbox.sync();
+  await tick();
+  assert.equal(f.state.calls, calls, '꺼진 상태에서는 받지 않는다');
+  f.state.allowed = true;
+  inbox.sync();
+  await tick();
+  assert.equal(mail.all().length, 1);
+});
+
+test('받는 동안 계정이 바뀌면 옛 계정의 응답은 버린다', async () => {
+  const mailStore = memoryMail();
+  let key = 'A';
+  let release: (p: InboxPage) => void = () => {};
+  let n = 0;
+  const core = {
+    allowed: () => true,
+    accountKey: () => key,
+    inbox: () =>
+      ++n === 1
+        ? Promise.resolve({ items: [item({ id: 1 })], next: null, unopened: 1 })
+        : new Promise<InboxPage>((r) => {
+            release = r;
+          }),
+  } as unknown as ServerCore;
+  const inbox = createServerInbox({
+    core: () => core,
+    mail: mailStore,
+    say: async () => undefined,
+    react: () => {},
+    canTalk: () => false,
+    onChange: () => {},
+    onGot: () => {},
+    log: () => {},
+  });
+  await inbox.refresh();
+  const slow = inbox.refresh();
+  await tick();
+  key = 'B';
+  // 계정 B 로 바뀌었다고 알리면 비우고 B 쪽지를 받으러 간다 (그 받기는 둘째 응답을 기다린다)
+  inbox.sync();
+  await tick();
+  release({ items: [item({ id: 2, message: 'A 계정 비밀' })], next: null, unopened: 1 });
+  await slow;
+  await tick();
+  assert.equal(mailStore.get('inbox:2'), undefined, '옛 계정 응답이 저장됐다');
+});
+
+test('계정 코드가 아직 없는 동안에는 서버 쪽지를 지우지 않고 숨기기만 하고, 코드가 오면 판정한다', async () => {
+  const f = keyedCore([item({ id: 1 }), item({ id: 2 })]);
+  const { mail, inbox } = make({ core: f.core } as unknown as ReturnType<typeof fakeCore>);
+  await inbox.refresh();
+  mail.setRead('inbox:1', 7);
+  f.state.key = undefined;
+  inbox.sync();
+  assert.equal(inbox.hiding(), true);
+  assert.equal(mail.all().length, 2, '지우지 않았다');
+  assert.equal(inbox.items.length, 0);
+  const calls = f.state.calls;
+  await inbox.refresh();
+  assert.equal(f.state.calls, calls, '누구 것인지 모르는 동안은 받지 않는다');
+  // 같은 계정이면 그대로 돌아온다 (읽음도 그대로)
+  f.state.key = 'A';
+  inbox.sync();
+  await tick();
+  assert.equal(inbox.hiding(), false);
+  assert.equal(mail.get('inbox:1')?.readAt, 7);
+  // 다른 계정이면 비운다
+  f.state.key = undefined;
+  inbox.sync();
+  f.state.key = 'B';
+  f.state.reply = [item({ id: 9 })];
+  inbox.sync();
+  await tick();
+  assert.deepEqual(
+    mail.all().map((r) => r.id),
+    ['inbox:9'],
+  );
+});
+
+test('표식 없이 받아 둔 서버 쪽지는 처음 키가 오면 표식만 붙고 읽음과 지움이 남는다', async () => {
+  const f = keyedCore([item({ id: 1 }), item({ id: 2 })]);
+  f.state.key = undefined;
+  const { mail, inbox } = make({ core: f.core } as unknown as ReturnType<typeof fakeCore>);
+  await inbox.refresh();
+  mail.setRead('inbox:1', 5);
+  mail.setDeleted('inbox:2', 5);
+  f.state.key = 'A';
+  inbox.sync();
+  await inbox.refresh();
+  assert.equal(mail.get('inbox:1')?.readAt, 5);
+  assert.equal(mail.get('inbox:2')?.deletedAt, 5);
+  assert.equal(mail.meta('server_account'), 'A');
+});
+
+test('이 기기에서 지우거나 보관한 알림은 서버에서 안 열렸어도 펫이 들지 않는다', async () => {
+  const f = keyedCore([item({ id: 1 }), item({ id: 2 })]);
+  const { mail, inbox } = make({ core: f.core } as unknown as ReturnType<typeof fakeCore>);
+  await inbox.refresh();
+  assert.equal(inbox.holding(), true);
+  mail.setDeleted('inbox:1', 5);
+  mail.setArchived('inbox:2', 5);
+  assert.equal(inbox.holding(), false);
+  mail.setDeleted('inbox:1', null);
+  assert.equal(inbox.holding(), true);
+});

@@ -103,6 +103,8 @@ export interface ExtraNotes {
   /** quiet 이면 펫 말풍선을 띄우지 않는다 (쪽지함에서 읽을 때) */
   open(key: string, quiet?: boolean): Promise<void>;
   isKey(key: string): boolean;
+  /** 계정을 아직 몰라 서버 쪽지를 숨기는 중 */
+  hiding?(): boolean;
 }
 
 export function createDailyNotes(o: DailyNoteOptions) {
@@ -220,7 +222,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
     // 휴지통 기한이 지나 글을 비운 서버 쪽지(묘비)는 화면에 내지 않는다
     const items = mail
       .all()
-      .filter((r) => !isPurged(r, now))
+      .filter((r) => !isPurged(r, now) && !(r.source === 'server' && extra?.hiding?.()))
       .map(mailItemOf);
     return {
       on: settings.get().dailyNotes,

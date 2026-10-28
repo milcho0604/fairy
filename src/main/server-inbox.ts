@@ -58,30 +58,66 @@ export function createServerInbox(o: {
     announced.clear();
   }
 
+  /** 계정 코드가 아직 안 와 어느 계정인지 모르는 동안: 담아 둔 서버 쪽지는 지우지 않고 화면에서만 숨긴다 */
+  let hiding = false;
+  /** 서버 모드가 꺼져 비웠다 (다시 켜지면 바로 받는다) */
+  let emptiedOff = false;
+
   /**
-   * 서버 상태가 바뀔 때마다 부른다(켬, 끔, 로그아웃, 만 14세 미만, 탈퇴, 계정 바뀜).
-   * 서버 모드가 아니면 담아 둔 서버 쪽지를 모두 비우고, 계정이 달라졌으면(표식이 다르면) 그 계정 쪽지를 비운다.
-   * 서버 모드이고 같은 계정이면 아무것도 안 한다. 서버 모드인가를 돌려준다
+   * 서버 상태에 맞춰 담아 둔 서버 쪽지를 맞춘다(again: 새로 받아야 한다). 서버 모드가 아니면 모두 비우고, 계정이 달라졌으면(표식이 다르면) 앞 계정 쪽지를
+   * 모두 비운다. 계정 코드가 아직 안 왔고 알던 표식이 있으면 지우지 않고 숨기기만 한다(코드가 오면 판정). 표식이 없던 줄(표식
+   * 없이 받아 둔 것)은 처음 키가 오면 표식만 붙이고 읽음, 지움은 그대로 둔다
    */
-  function sync(): boolean {
+  function reconcile(): { on: boolean; again: boolean } {
     const core = o.core();
     const on = core?.allowed() === true;
     const key = on ? core?.accountKey() : undefined;
-    const known = o.mail.meta(ACCOUNT_META);
-    let drop = false;
-    if (!on) drop = true;
-    else if (key !== undefined && key !== known) drop = true;
-    if (drop) {
+    const known = o.mail.meta(ACCOUNT_META) || undefined;
+    const wasHiding = hiding;
+    hiding = on && key === undefined && known !== undefined;
+    let again = false;
+    if (!on || (key !== undefined && known !== undefined && key !== known)) {
       const n = o.mail.dropServer();
       const had = items.length > 0 || older.length > 0;
       forget();
-      if (known !== (key ?? '')) o.mail.setMeta(ACCOUNT_META, key ?? '');
+      again = true;
+      emptiedOff = !on;
+      if ((known ?? '') !== (key ?? '')) o.mail.setMeta(ACCOUNT_META, key ?? '');
       if (n > 0 || had) o.onChange();
+    } else {
+      if (key !== undefined && known === undefined) o.mail.setMeta(ACCOUNT_META, key);
+      if (on && emptiedOff) {
+        emptiedOff = false;
+        again = true;
+      }
     }
-    return on;
+    if (hiding && !wasHiding) {
+      forget();
+      o.onChange();
+    } else if (!hiding && wasHiding) {
+      again = true;
+      o.onChange();
+    }
+    return { on, again };
   }
 
-  const unopened = () => items.filter((i) => !i.opened && !i.expired);
+  /**
+   * 서버 상태가 바뀔 때마다 부른다(켬, 끔, 로그아웃, 만 14세 미만, 탈퇴, 계정 바뀜). 서버 모드인가를 돌려준다.
+   * 계정이 바뀌어 비웠으면 새 계정 쪽지를 바로 받는다(다음 계기까지 쪽지함이 비어 있지 않게)
+   */
+  function sync(): boolean {
+    const r = reconcile();
+    if (r.on && !hiding && r.again) void refresh();
+    return r.on;
+  }
+
+  /** 아직 안 연 쪽지 (이 기기에서 지우거나 보관한 것은 뺀다: 펫이 지운 알림을 계속 들지 않게) */
+  const unopened = () =>
+    items.filter((i) => {
+      if (i.opened || i.expired) return false;
+      const r = o.mail.get(inboxKey(i.id));
+      return !(r && (r.deletedAt !== null || r.archivedAt !== null));
+    });
 
   /** 받은 쪽지를 쪽지함 표에 담는다 (이미 있으면 내용만 바꾸고 이 기기의 읽음, 보관, 지움은 그대로) */
   function store(list: readonly InboxItem[]) {
@@ -117,11 +153,14 @@ export function createServerInbox(o: {
     const run = async () => {
       try {
         // 서버 모드가 아니면(로그아웃, 만 14세 미만) 담아 둔 서버 쪽지도 비운다: 다른 계정 쪽지가 남아 보이지 않게
-        if (!sync()) return;
+        const state = reconcile();
+        if (!state.on || hiding) return;
         const core = o.core();
         if (!core) return;
+        const key = core.accountKey();
         const page = await core.inbox();
-        if (!page) return;
+        // 기다리는 동안 계정이 바뀌었거나 서버 모드가 꺼졌으면 옛 응답은 버린다 (새 표식 아래 저장되지 않게)
+        if (!page || !core.allowed() || core.accountKey() !== key) return;
         store(page.items);
         // 서버가 이미 정리한 쪽지(1년 지남)는 이 기기에서도 비운다: 첫 쪽이 가리키는 범위(첫 쪽의 가장 오래된 쪽지 이후)에서만 본다
         const oldest = page.items.reduce(
@@ -157,8 +196,9 @@ export function createServerInbox(o: {
     try {
       const core = o.core();
       if (!core?.allowed()) return;
+      const key = core.accountKey();
       const page = await core.inbox(next);
-      if (!page) return;
+      if (!page || !core.allowed() || core.accountKey() !== key) return;
       store(page.items);
       older = merge(older, page.items);
       items = merge(items, page.items);
@@ -234,6 +274,8 @@ export function createServerInbox(o: {
     deliver,
     open,
     loadMore,
+    /** 계정을 아직 몰라 서버 쪽지를 숨기는 중 (지우지 않았다) */
+    hiding: () => hiding,
     /** 서버에 더 오래된 쪽지가 있다 */
     hasMore: () => next !== null,
     /** 펫이 들고 있을 쪽지가 있다 */
