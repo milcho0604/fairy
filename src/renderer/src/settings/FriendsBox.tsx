@@ -194,10 +194,10 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
     setRefreshing(true);
     try {
       const r = await b.refresh();
-      if (r?.problem) refreshSay(errorText(r.problem), true);
-      else refreshSay(t('friends.refreshed'));
+      if (r?.problem) refreshSay(() => errorText(r.problem as string), true);
+      else refreshSay(() => t('friends.refreshed'));
     } catch {
-      refreshSay(t('friends.err.other'), true);
+      refreshSay(() => t('friends.err.other'), true);
     } finally {
       setRefreshing(false);
     }
@@ -239,17 +239,8 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
             >
               {t('friends.copyLink')}
             </button>
-            <button
-              type="button"
-              className="ghost small"
-              disabled={refreshing}
-              onClick={() => void refreshNow()}
-            >
-              {t('friends.refresh')}
-            </button>
           </div>
         )}
-        {refreshNear}
         <div className="action-row friends-add">
           <input
             className="plain-input friends-input"
@@ -338,9 +329,22 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
 
         {list && (
           <div className="friends-group">
-            <small className="friends-head">
-              {t('friends.list', { n: list.friends.length, max: list.limits.friends })}
-            </small>
+            <div className="friends-headline">
+              <small className="friends-head">
+                {t('friends.list', { n: list.friends.length, max: list.limits.friends })}
+              </small>
+              <button
+                type="button"
+                className="ghost small friends-refresh"
+                disabled={refreshing}
+                aria-label={t('friends.refresh')}
+                title={t('friends.refresh')}
+                onClick={() => void refreshNow()}
+              >
+                ↻
+              </button>
+            </div>
+            {refreshNear}
             {list.friends.length === 0 ? (
               <small className="below">{t('friends.none')}</small>
             ) : (

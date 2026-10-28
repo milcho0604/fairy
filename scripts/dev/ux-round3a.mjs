@@ -61,7 +61,7 @@ writeFileSync(join(data, 'settings.json'), JSON.stringify({ onboarded: true, osN
 writeFileSync(join(data, 'day-plan.json'), JSON.stringify({ prefs: { auto: false, fromMinute: 480 } }));
 // 이 컴퓨터 http 서버 하나: 이벤트 목록(선물 이벤트 하나)만 내주고 공지, 릴리스는 404 (바깥으로 나가는 요청 없음)
 const NOW0 = Date.now();
-const eventsJson = JSON.stringify({
+let eventsJson = JSON.stringify({
   version: 1,
   events: [
     {
@@ -285,7 +285,7 @@ async function page(name) {
 const body = async () => {
 const NICK = tx('콩이', 'Bean');
 const FRIEND = tx('콩친구', 'Pal');
-const ONLY = process.env.ONLY ?? 'tab,age,server,friends,events,remove,review,chat';
+const ONLY = process.env.ONLY ?? 'tab,age,server,friends,events,remove,review,onboard,chat';
 const has = (k) => ONLY.split(',').includes(k);
 const wait = sleep;
 
@@ -439,7 +439,7 @@ if (has('friends')) {
   await sleep(800);
   const box = '.friends-box';
   check('친구 칸이 보임', (await s.ev(`!!document.querySelector('${box}')`)) === true);
-  const refreshBtn = await s.ev(`[...document.querySelectorAll('${box} button')].some((b) => b.textContent.trim() === ${JSON.stringify(tx('새로 고침', 'Refresh'))})`);
+  const refreshBtn = await s.ev(`[...document.querySelectorAll('${box} button')].some((b) => b.getAttribute('aria-label') === ${JSON.stringify(tx('새로 고침', 'Refresh'))})`);
   check('친구 칸에 "새로 고침" 단추', refreshBtn === true);
   // 설명 접기
   const more = await s.ev(`document.querySelectorAll('${box} details.friends-more').length`);
@@ -451,7 +451,7 @@ if (has('friends')) {
   check('방향 줄이 누구 펫이 누구에게 가는지 말함', visibleLong[0].includes(tx('내 펫이', 'sends my pet')) || visibleLong[0].includes(tx('놀러 가', "'s screen")), visibleLong[0]);
   // 새로 고침을 누르면 서버에 다시 묻고 결과가 단추 옆에 남는다
   const c0 = await main('globalThis.__ux.calls.friends');
-  await s.click(`[...document.querySelectorAll('${box} .friends-me button')].find((b) => b.textContent.trim() === ${JSON.stringify(tx('새로 고침', 'Refresh'))})`);
+  await s.click(`[...document.querySelectorAll('${box} .friends-headline button')].find((b) => b.getAttribute('aria-label') === ${JSON.stringify(tx('새로 고침', 'Refresh'))})`);
   await sleep(700);
   const c1 = await main('globalThis.__ux.calls.friends');
   check('새로 고침이 서버에 다시 물음', c1 > c0, `${c0} -> ${c1}`);
@@ -460,7 +460,7 @@ if (has('friends')) {
   // 새 신청이 오면 펫이 한마디 (처음 받은 목록은 기준일 뿐)
   const saidBefore = await main('globalThis.__ux.said.length');
   await main('(globalThis.__ux.incoming = [1, 2], 1)');
-  await s.click(`[...document.querySelectorAll('${box} .friends-me button')].find((b) => b.textContent.trim() === ${JSON.stringify(tx('새로 고침', 'Refresh'))})`);
+  await s.click(`[...document.querySelectorAll('${box} .friends-headline button')].find((b) => b.getAttribute('aria-label') === ${JSON.stringify(tx('새로 고침', 'Refresh'))})`);
   await sleep(900);
   const said = JSON.parse(await main('JSON.stringify(globalThis.__ux.said)'));
   const mine = said.slice(saidBefore).filter((x) => x.text.includes('REQ2'));
@@ -491,6 +491,8 @@ if (has('friends')) {
   await sleep(500);
   const overflow = await s.ev(`document.querySelector('main').scrollWidth > document.querySelector('main').clientWidth + 1`);
   check('폭 420 에서 가로로 넘치지 않음', overflow === false);
+  const sameRow = await s.ev(`(() => { const h = document.querySelector('${box} .friends-headline .friends-head').getBoundingClientRect(); const r = document.querySelector('${box} .friends-headline button').getBoundingClientRect(); const c = document.querySelector('${box}').getBoundingClientRect(); return Math.abs(r.top + r.height / 2 - (h.top + h.height / 2)) < 12 && r.right <= c.right; })()`);
+  check('폭 420 에서 새로 고침이 친구 수 줄 끝에 같이 있음', sameRow === true);
   await shotSec(s, 'ux3a-friends-narrow', `document.querySelector('${box}')`, 1900, 420);
   await s.click(`document.querySelector('${box} details.friends-more > summary')`);
   await sleep(300);
@@ -512,6 +514,13 @@ if (has('events')) {
   check('서버에 없는 이벤트면 무엇을 하라는지 말함 (10분 뒤 설정 창 다시)', claimNear.includes(tx('10분', '10 minutes')) && claimNear.includes(tx('준비', 'ready')), claimNear);
   const btnAfter = await s.ev(`[...document.querySelectorAll('.event-item button')].some((b) => b.textContent.trim() === ${JSON.stringify(claimLabel)})`);
   check('서버가 모른다고 한 이벤트의 단추는 숨고 "서버 준비 중" 이 보임', btnAfter === false && (await boxText(s, '.event-item .event-pending')) === tx('서버 준비 중', 'Getting ready'));
+  // 홈페이지 목록이 바뀌어 새로 오면 숨겼던 단추가 다시 보인다
+  eventsJson = eventsJson.replace('50 coins', '60 coins').replace('코인 50개', '코인 60개');
+  await main('__jj.siteEvents.refresh().then(() => 1)');
+  await s.until(async () => (await s.ev(`[...document.querySelectorAll('.event-item button')].some((b) => b.textContent.trim() === ${JSON.stringify(claimLabel)})`)) === true, 6000);
+  check('목록이 새로 오면 "서버 준비 중" 이 풀리고 단추가 돌아옴', (await s.ev(`[...document.querySelectorAll('.event-item button')].some((b) => b.textContent.trim() === ${JSON.stringify(claimLabel)})`)) === true);
+  await s.click(`[...document.querySelectorAll('.event-item button')].find((b) => b.textContent.trim() === ${JSON.stringify(claimLabel)})`);
+  await sleep(700);
   const stillThere = await s.ev(`(() => { const n = document.querySelector('.event-item .near-result'); const b = document.querySelector('.event-item .item-actions'); return !!n && !!b && n.getBoundingClientRect().top >= b.getBoundingClientRect().bottom - 2; })()`);
   check('결과가 단추 아래에 붙어 있음', stillThere === true);
   await sleep(3500);
@@ -542,6 +551,13 @@ if (has('remove')) {
   check('계정을 지운 결과가 칸 안에 남음', removed === tx('서버 계정을 지웠어.', 'Deleted the server account.'), removed);
   await sleep(2800);
   check('3초 뒤에도 남음', (await boxText(s, '.server-box .near-result')).length > 0);
+  const otherLang = ko ? 'en' : 'ko';
+  await main(`__jj.settings.set({ lang: ${JSON.stringify(otherLang)} }); 1`);
+  await sleep(1200);
+  const nearNow = await boxText(s, '.server-box .near-result');
+  check('언어를 바꾸면 단추 옆 결과도 새 말로', nearNow === (ko ? 'Deleted the server account.' : '서버 계정을 지웠어.'), nearNow);
+  await main(`__jj.settings.set({ lang: ${JSON.stringify(LANG)} }); 1`);
+  await sleep(1200);
   await shotSec(s, 'ux3a-removed', SERVER_SEC, 700);
 }
 
@@ -572,6 +588,22 @@ if (has('review')) {
   const laterSays = JSON.parse(await main('JSON.stringify(globalThis.__ux.said)'));
   check('첫 기록이 이틀 전이면 하루 회고를 함', laterSays.some((x) => x.kind === 'schedule'), JSON.stringify(laterSays).slice(0, 200));
   await main('(Date.now = globalThis.__realNow, 1)');
+}
+
+// ---- 1. 시작 안내 마지막 쪽 한 줄 ----
+if (has('onboard')) {
+  await main('__jj.onboarding.open(); 1');
+  await sleep(1500);
+  const o = await page('onboarding');
+  for (let i = 0; i < 4; i++) {
+    await o.click(`document.querySelector('footer .primary')`);
+    await sleep(400);
+  }
+  const hint = await o.ev(`document.querySelector('.first-todo')?.textContent.trim() ?? ''`);
+  check('시작 안내 마지막 쪽에 첫 할 일 안내', hint === tx('펫을 눌러 할 일 한 줄 적어 봐.', 'Click your fairy and write your first to-do.'), hint);
+  const fits = await o.ev(`document.documentElement.scrollWidth <= innerWidth + 1`);
+  check('가로로 넘치지 않음', fits === true);
+  await o.shots('ux3a-onboard-last', `document.querySelector('.onboard')`);
 }
 
 // ---- 7. 언어를 바꾸면 채팅 AI 이름이 새 말로 ----

@@ -70,6 +70,9 @@ export function EventsBox() {
       off();
     };
   }, []);
+  // 목록이 새로 오면(홈페이지 목록이 바뀜) 서버가 모른다던 이벤트도 다시 눌러 볼 수 있게 비운다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 목록이 바뀔 때만 비운다
+  useEffect(() => setUnknown(new Set()), [list]);
   const server = window.jjakkungServer;
   const serverMode = serverView(s) === 'server' && !!server;
   if (!list) return null;
@@ -83,10 +86,10 @@ export function EventsBox() {
     claimClear();
     try {
       const r = await server.claim(id);
-      if (r.ok) claimSay(t('events.claimOk', { n: r.coins }));
+      if (r.ok) claimSay(() => t('events.claimOk', { n: r.coins }));
       else {
         if (r.error === 'no_event') setUnknown((u) => new Set(u).add(id));
-        claimSay(claimError(r.error), r.error !== 'already_claimed');
+        claimSay(() => claimError(r.error), r.error !== 'already_claimed');
       }
     } finally {
       setBusy(null);
@@ -95,14 +98,14 @@ export function EventsBox() {
   const applyCoupon = async () => {
     if (!server) return;
     const norm = normalizeCoupon(code);
-    if (!norm) return couponSay(t('coupon.err.code'), true);
+    if (!norm) return couponSay(() => t('coupon.err.code'), true);
     setBusy('coupon');
     try {
       const r = await server.coupon(norm);
       if (r.ok) {
         setCode('');
-        couponSay(t('coupon.ok', { coins: r.coins, passes: r.tickets }));
-      } else couponSay(couponError(r.error), true);
+        couponSay(() => t('coupon.ok', { coins: r.coins, passes: r.tickets }));
+      } else couponSay(() => couponError(r.error), true);
     } finally {
       setBusy(null);
     }

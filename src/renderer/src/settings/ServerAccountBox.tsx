@@ -114,9 +114,9 @@ export function ServerAccountBox() {
     try {
       const r = await b.remove();
       setS(r.status);
-      removeFlash(t(r.ok ? 'server.removed' : 'server.removeFailed'), !r.ok);
+      removeFlash(() => t(r.ok ? 'server.removed' : 'server.removeFailed'), !r.ok);
     } catch {
-      removeFlash(t('server.removeFailed'), true);
+      removeFlash(() => t('server.removeFailed'), true);
     } finally {
       setBusy(false);
     }

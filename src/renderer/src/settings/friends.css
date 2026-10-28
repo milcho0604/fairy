@@ -259,3 +259,20 @@
   display: block;
   margin-top: 4px;
 }
+
+.friends-box .friends-refresh {
+  min-width: 32px;
+  padding-inline: 8px;
+}
+
+.friends-box .friends-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.friends-box .friends-headline .friends-head {
+  margin-bottom: 0;
+}

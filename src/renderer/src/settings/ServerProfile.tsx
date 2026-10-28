@@ -122,7 +122,7 @@ export function ProfileRows(o: {
       if (!r.ok) setProblem(r.problem ?? 'server');
       else {
         setEditing(false);
-        flash(t('server.nickname.saved'));
+        flash(() => t('server.nickname.saved'));
       }
     } finally {
       setBusy(false);
@@ -187,7 +187,7 @@ export function ProfileRows(o: {
                 type="button"
                 className="ghost small"
                 onClick={() => {
-                  void b.copyCode().then((ok) => ok && flash(t('server.code.copied')));
+                  void b.copyCode().then((ok) => ok && flash(() => t('server.code.copied')));
                 }}
               >
                 {t('server.code.copy')}

@@ -41,10 +41,10 @@ export function ServerBackupBox({
       .catch(() => undefined);
   }, [b, known, setS]);
 
-  const done = (r: ServerBackupResult, ok: string) => {
+  const done = (r: ServerBackupResult, ok: () => string) => {
     if (r.status) setS(r.status);
     if (r.ok) flash(ok);
-    else flash(r.message || t(`backup.${r.error ?? 'failed'}`), true);
+    else flash(() => r.message || t(`backup.${r.error ?? 'failed'}`), true);
   };
   const busy = view.busy !== null;
 
@@ -82,8 +82,8 @@ export function ServerBackupBox({
           onClick={() =>
             void b
               .backupUpload()
-              .then((r) => done(r, t('backup.uploaded')))
-              .catch(() => flash(t('backup.failed'), true))
+              .then((r) => done(r, () => t('backup.uploaded')))
+              .catch(() => flash(() => t('backup.failed'), true))
           }
         >
           {view.busy === 'up' ? t('backup.uploading') : t('backup.upload')}
@@ -109,8 +109,8 @@ export function ServerBackupBox({
                   onClick={() =>
                     void b
                       .backupDownload(x.id)
-                      .then((r) => done(r, t('backup.downloaded')))
-                      .catch(() => flash(t('backup.failed'), true))
+                      .then((r) => done(r, () => t('backup.downloaded')))
+                      .catch(() => flash(() => t('backup.failed'), true))
                   }
                 >
                   {view.busy === 'down' ? t('backup.downloading') : t('backup.download')}
@@ -122,8 +122,8 @@ export function ServerBackupBox({
                   onClick={() =>
                     void b
                       .backupDelete(x.id)
-                      .then((r) => done(r, t('backup.deleted')))
-                      .catch(() => flash(t('backup.failed'), true))
+                      .then((r) => done(r, () => t('backup.deleted')))
+                      .catch(() => flash(() => t('backup.failed'), true))
                   }
                 >
                   {t('backup.delete')}
