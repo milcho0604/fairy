@@ -739,6 +739,21 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * 제목을 볼 친구 수를 세면서 그 친구 줄을 공유 잠금으로 잡는다 (이 트랜잭션이 끝날 때까지). 친구의 나이 내리기, 끊기, 차단은
+   * 그 줄을 고치거나 지우므로 이 업로드가 끝나길 기다리고, 끝난 뒤 자기 정리(dropUnsharedBusy)로 방금 넣은 제목을 지운다.
+   * 거꾸로 그쪽이 먼저면 여기서 기다렸다가 바뀐 줄로 다시 본다. 내 계정 말고 다른 계정을 잠그지 않아 교착이 없다
+   */
+  private async titleViewersLocked(c: PoolClient, id: string): Promise<number> {
+    const r = await c.query(
+      `SELECT 1 FROM friend f JOIN account a ON a.id = f.account_id JOIN account b ON b.id = f.friend_id
+        WHERE f.account_id = $1 AND f.share_busy AND f.share_title AND a.age = '18+' AND b.age = '18+'
+          FOR SHARE OF f`,
+      [id],
+    );
+    return r.rowCount ?? 0;
+  }
+
   private async sharingCount(c: PoolClient, id: string): Promise<number> {
     return (
       (
@@ -780,7 +795,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       }
       const merged = mergeBlocks(blocks, now - 60 * 60_000, now + BUSY_DAYS * DAY);
       const keep =
-        (await this.titleCount(c, me.id)) > 0
+        (await this.titleViewersLocked(c, me.id)) > 0
           ? clipTitled(titled, now - 60 * 60_000, now + BUSY_DAYS * DAY)
           : [];
       await c.query('DELETE FROM busy_title WHERE account_id = $1', [me.id]);

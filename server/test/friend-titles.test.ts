@@ -331,3 +331,44 @@ describe('일정 제목 공유 (친구별)', () => {
     assert.throws(() => parseTitled({ items: new Array(401).fill({ start: 1, end: 2, title: 'x' }) }));
   });
 });
+
+describe('경쟁: 제목 올리기 대 친구 쪽 변화 (25번씩, 남는 제목 0건)', () => {
+  const arm = async () => {
+    const a = await user();
+    const b = await user();
+    await befriend(a, b);
+    await shareBusy(a, b);
+    await shareTitle(a, b);
+    return { a, b };
+  };
+
+  test('친구가 나이를 내리는 것과 동시에 올려도 제목이 남지 않는다', async () => {
+    let stale = 0;
+    for (let i = 0; i < 25; i++) {
+      const { a, b } = await arm();
+      await Promise.all([upload(a), call(b, 'PATCH', '/v1/account', { age: '14+' })]);
+      if ((await titleRows(a)) > 0) stale++;
+    }
+    assert.equal(stale, 0);
+  });
+
+  test('친구가 끊는 것과 동시에 올려도 제목이 남지 않는다', async () => {
+    let stale = 0;
+    for (let i = 0; i < 25; i++) {
+      const { a, b } = await arm();
+      await Promise.all([upload(a), call(b, 'DELETE', `/v1/friends/${a.code}`)]);
+      if ((await titleRows(a)) > 0) stale++;
+    }
+    assert.equal(stale, 0);
+  });
+
+  test('둘 다 나이를 내렸다 올려도 제목 공유는 다시 켜지지 않는다', async () => {
+    const { a, b } = await arm();
+    for (const age of ['14+', '18+']) {
+      await call(a, 'PATCH', '/v1/account', { age });
+      await call(b, 'PATCH', '/v1/account', { age });
+    }
+    const f = await friendOf(a, b);
+    assert.ok(!f || f.iTitle === false);
+  });
+});
