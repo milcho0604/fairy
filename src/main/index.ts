@@ -1597,6 +1597,8 @@ ready
       onReverted: (text) => void pet.say({ kind: 'answer', text, ttlMs: 8000 }),
       onStatus: () => {
         chat.ticketChanged();
+        // 서버 모드를 껐거나 로그아웃, 탈퇴, 계정이 바뀌면 담아 둔 서버 쪽지를 바로 비운다
+        serverInbox?.sync();
         const on = server.friends.available();
         if (on !== friendsAvailable) {
           friendsAvailable = on;

@@ -5,7 +5,7 @@
 // 펫이 쪽지를 들고 와 누르면 펼친다. 서버 모드가 아니면(만 14세 미만, 서버 주소 없음) 아무것도 하지 않고 담아 둔 서버 쪽지도 비운다.
 import { t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
-import type { MailStore } from '../shared/mail-store.ts';
+import { isPurged, type MailStore } from '../shared/mail-store.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { serverLines, serverTitle } from './mail-view.ts';
 import type { SayOptions } from './pet-window.ts';
@@ -14,6 +14,8 @@ import type { ServerCore } from './server-core.ts';
 
 /** 쪽지 번호를 쪽지함 열쇠로 (펫 쪽지의 날짜 자리를 같이 쓴다) */
 export const inboxKey = (id: number) => `inbox:${id}`;
+/** 쪽지함 표에 적어 두는 마지막 서버 계정 표식 (mail_meta). 다르면 앞 계정의 쪽지를 비운다 */
+const ACCOUNT_META = 'server_account';
 const idOf = (key: string): number | undefined => {
   const m = /^inbox:(\d{1,15})$/.exec(key);
   return m ? Number(m[1]) : undefined;
@@ -48,11 +50,46 @@ export function createServerInbox(o: {
   let refreshing: Promise<void> | null = null;
   let loadingMore = false;
 
+  /** 메모리에 든 서버 쪽지를 비운다 */
+  function forget() {
+    items = [];
+    older = [];
+    next = null;
+    announced.clear();
+  }
+
+  /**
+   * 서버 상태가 바뀔 때마다 부른다(켬, 끔, 로그아웃, 만 14세 미만, 탈퇴, 계정 바뀜).
+   * 서버 모드가 아니면 담아 둔 서버 쪽지를 모두 비우고, 계정이 달라졌으면(표식이 다르면) 그 계정 쪽지를 비운다.
+   * 서버 모드이고 같은 계정이면 아무것도 안 한다. 서버 모드인가를 돌려준다
+   */
+  function sync(): boolean {
+    const core = o.core();
+    const on = core?.allowed() === true;
+    const key = on ? core?.accountKey() : undefined;
+    const known = o.mail.meta(ACCOUNT_META);
+    let drop = false;
+    if (!on) drop = true;
+    else if (key !== undefined && key !== known) drop = true;
+    if (drop) {
+      const n = o.mail.dropServer();
+      const had = items.length > 0 || older.length > 0;
+      forget();
+      if (known !== (key ?? '')) o.mail.setMeta(ACCOUNT_META, key ?? '');
+      if (n > 0 || had) o.onChange();
+    }
+    return on;
+  }
+
   const unopened = () => items.filter((i) => !i.opened && !i.expired);
 
   /** 받은 쪽지를 쪽지함 표에 담는다 (이미 있으면 내용만 바꾸고 이 기기의 읽음, 보관, 지움은 그대로) */
   function store(list: readonly InboxItem[]) {
+    const now = Date.now();
     for (const i of list) {
+      // 휴지통 30일이 지나 글을 비운 쪽지는 다시 채우지 않는다 (서버가 목록에서 뺄 때 줄을 지운다)
+      const have = o.mail.get(inboxKey(i.id));
+      if (have && isPurged(have, now)) continue;
       const sent = Date.parse(i.sentAt);
       const at = Number.isFinite(sent) ? sent : Date.now();
       o.mail.put({
@@ -79,18 +116,10 @@ export function createServerInbox(o: {
     if (refreshing) return refreshing;
     const run = async () => {
       try {
+        // 서버 모드가 아니면(로그아웃, 만 14세 미만) 담아 둔 서버 쪽지도 비운다: 다른 계정 쪽지가 남아 보이지 않게
+        if (!sync()) return;
         const core = o.core();
-        if (!core?.allowed()) {
-          // 서버 모드가 아니면(로그아웃, 만 14세 미만) 담아 둔 서버 쪽지도 비운다: 다른 계정 쪽지가 남아 보이지 않게
-          const dropped = o.mail.dropServerNotIn(new Set(), 0);
-          if (items.length > 0 || older.length > 0 || dropped > 0) {
-            items = [];
-            older = [];
-            next = null;
-            o.onChange();
-          }
-          return;
-        }
+        if (!core) return;
         const page = await core.inbox();
         if (!page) return;
         store(page.items);
@@ -103,6 +132,8 @@ export function createServerInbox(o: {
           new Set(page.items.map((i) => inboxKey(i.id))),
           page.next === null || !Number.isFinite(oldest) ? 0 : oldest,
         );
+        // 서버가 거둔 쪽지는 이어 받아 둔 오래된 쪽에서도 뺀다 (위에서 표 줄을 지웠으니 줄이 없는 것)
+        older = older.filter((i) => o.mail.get(inboxKey(i.id)) !== undefined);
         // 첫 쪽이 이어 받던 오래된 쪽과 겹치면 오래된 쪽의 겹친 부분은 첫 쪽 것으로
         items = merge(page.items, older);
         if (older.length === 0) next = page.next;
@@ -199,6 +230,7 @@ export function createServerInbox(o: {
 
   return {
     refresh,
+    sync,
     deliver,
     open,
     loadMore,

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { type Db, migrate } from '../shared/db-schema.ts';
+import { type Db, MIGRATIONS, migrate } from '../shared/db-schema.ts';
 import { setLang } from '../shared/i18n/index.ts';
-import { type MailRow, MailStore } from '../shared/mail-store.ts';
+import { isPurged, type MailRow, MailStore } from '../shared/mail-store.ts';
 import { mailItemOf, serverLines, serverRead, serverRemovable, serverTitle } from './mail-view.ts';
 import type { InboxItem, InboxPage } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
@@ -44,6 +44,7 @@ const serverRow = (i: InboxItem, over: Partial<MailRow> = {}): MailRow => ({
   archivedAt: null,
   deletedAt: null,
   pinnedAt: null,
+  coinsPaidAt: null,
   ...over,
 });
 
@@ -140,6 +141,7 @@ test('쪽지 행을 화면 모델로: 펫 쪽지, 서버 쪽지, 공지', () => 
     archivedAt: null,
     deletedAt: null,
     pinnedAt: 9,
+    coinsPaidAt: null,
   };
   const a = mailItemOf(local);
   assert.equal(a.title, '10월 28일 쪽지');
@@ -214,9 +216,10 @@ function fakeCore(total: number) {
       sentAt: new Date(Date.UTC(2026, 9, 1) + (total - k) * 3_600_000).toISOString(),
     }),
   );
-  const state = { allowed: true, calls: [] as (number | undefined)[], opened: [] as number[] };
+  const state = { allowed: true, account: 'A', calls: [] as (number | undefined)[], opened: [] as number[] };
   const core = {
     allowed: () => state.allowed,
+    accountKey: () => state.account,
     inbox: async (before?: number): Promise<InboxPage> => {
       state.calls.push(before);
       const rest = before === undefined ? all : all.filter((i) => i.id < before);
@@ -378,4 +381,157 @@ test('새 쪽지 말풍선에는 펼쳐 보기와 쪽지함 열기 단추가 있
   // 같은 쪽지는 한 번만 알린다
   await inbox.deliver();
   assert.equal(said.length, 1);
+});
+
+const DAY = 86_400_000;
+
+test('서버 모드가 꺼지면 상태가 바뀌는 즉시 서버 쪽지를 비운다 (받기를 기다리지 않는다, 개인정보)', async () => {
+  const f = fakeCore(3);
+  const { mail, inbox } = make(f);
+  await inbox.refresh();
+  assert.equal(mail.all().filter((r) => r.source === 'server').length, 3);
+  f.state.allowed = false;
+  assert.equal(inbox.sync(), false);
+  assert.equal(mail.all().filter((r) => r.source === 'server').length, 0);
+  assert.equal(inbox.items.length, 0);
+  assert.equal(inbox.holding(), false);
+});
+
+test('다른 계정으로 바뀌면 앞 계정의 서버 쪽지가 하나도 남지 않는다 (오래된 쪽지 포함)', async () => {
+  const f = fakeCore(30);
+  const { mail, inbox } = make(f);
+  await inbox.refresh();
+  await inbox.loadMore();
+  assert.equal(mail.all().length, 30);
+  // 같은 계정이면 상태가 바뀌어도 그대로
+  inbox.sync();
+  assert.equal(mail.all().length, 30);
+  // 계정 B: 첫 쪽만 새로 받는다
+  f.state.account = 'B';
+  const first = new Set(f.all.slice(0, 20).map((i) => inboxKey(i.id)));
+  inbox.sync();
+  assert.equal(mail.all().length, 0, '앞 계정 쪽지가 남았다');
+  await inbox.refresh();
+  assert.deepEqual(new Set(mail.all().map((r) => r.id)), first);
+  assert.equal(mail.meta('server_account'), 'B');
+});
+
+test('다른 계정이면 refresh 만 불려도 앞 계정의 오래된 쪽지가 남지 않는다', async () => {
+  const f = fakeCore(45);
+  const { mail, inbox } = make(f);
+  await inbox.refresh();
+  await inbox.loadMore();
+  await inbox.loadMore();
+  f.state.account = 'B';
+  await inbox.refresh();
+  assert.equal(mail.all().length, 20, '첫 쪽 20통만 있어야 한다');
+});
+
+test('휴지통 30일이 지나 정리된 서버 쪽지는 다시 받아도 안 읽음으로 돌아오지 않는다', async () => {
+  const f = fakeCore(2);
+  const { mail, inbox } = make(f);
+  await inbox.refresh();
+  const now = Date.now();
+  mail.setRead('inbox:1', now);
+  mail.setDeleted('inbox:1', now - 31 * DAY);
+  mail.tidy(now);
+  const gone = mail.get('inbox:1');
+  assert.ok(gone, '줄은 남는다 (묘비)');
+  assert.equal(gone.payload, null, '글은 비운다');
+  assert.equal(isPurged(gone, now), true);
+  await inbox.refresh();
+  const row = mail.get('inbox:1');
+  assert.ok(row?.deletedAt !== null && row?.deletedAt !== undefined, '지운 채로 있다');
+  assert.equal(row.payload, null, '글을 다시 채우지 않는다');
+  assert.equal(row.readAt !== null, true, '읽음도 그대로');
+  // 서버가 목록에서 빼면 줄도 지운다
+  f.all.splice(
+    f.all.findIndex((i) => i.id === 1),
+    1,
+  );
+  await inbox.refresh();
+  assert.equal(mail.get('inbox:1'), undefined);
+});
+
+test('서버가 거둔 쪽지는 이어 받아 둔 오래된 쪽에서도 빠져 펫이 계속 들지 않는다', async () => {
+  const f = fakeCore(30);
+  const { inbox } = make(f);
+  // 5번을 첫 쪽 시간 범위 안에서 보낸 것으로 한다 (거둔 쪽지는 범위 안일 때만 알아챌 수 있다)
+  const five = f.all.find((i) => i.id === 5) as InboxItem;
+  five.sentAt = new Date(Date.UTC(2026, 9, 1) + 25 * 3_600_000).toISOString();
+  await inbox.refresh();
+  await inbox.loadMore();
+  assert.ok(inbox.items.some((i) => i.id === 5));
+  f.all.splice(f.all.indexOf(five), 1);
+  for (const i of f.all) i.opened = { coins: 0, chatPasses: 0 };
+  await inbox.refresh();
+  assert.equal(
+    inbox.items.some((i) => i.id === 5),
+    false,
+    '거둔 쪽지가 목록에 남았다',
+  );
+  assert.equal(inbox.holding(), false, '거둔 쪽지를 펫이 들고 있다');
+});
+
+test('묘비와 지운 휴지통 쪽지: 화면 모델은 만들어진다 (깨진 원본으로 앱이 멈추지 않는다)', () => {
+  const tomb = serverRow(item({ id: 9 }), { payload: null, deletedAt: 1 });
+  assert.doesNotThrow(() => mailItemOf(tomb));
+});
+
+test('코인이 걸린 특별한 편지는 코인을 받기 전에는 지우거나 보관하지 못하고, 받은 뒤에는 된다', () => {
+  setLang('ko');
+  const base: MailRow = {
+    id: '2026-10-21',
+    source: 'local',
+    kind: 'letter',
+    day: '2026-10-21',
+    at: 1,
+    look: 'letter',
+    milestone: 7,
+    coins: 10,
+    payload: { lines: [] },
+    readAt: null,
+    archivedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+    coinsPaidAt: null,
+  };
+  assert.equal(mailItemOf(base).removable, false);
+  assert.equal(
+    mailItemOf({ ...base, coinsPaidAt: 5, readAt: null }).removable,
+    true,
+    '받고 안 읽음으로 돌린 편지는 지울 수 있다',
+  );
+  assert.equal(mailItemOf({ ...base, coins: null }).removable, true);
+});
+
+test('서버에서 이미 연 쪽지는 이 기기에서 안 읽음으로 되돌릴 수 없다', () => {
+  setLang('ko');
+  const opened = item({
+    id: 1,
+    coins: 5,
+    opened: { coins: 5, chatPasses: 0 },
+    openedAt: '2026-10-11T00:00:00Z',
+  });
+  assert.equal(mailItemOf(serverRow(opened)).canUnread, false);
+  const alert = item({ id: 2, kind: 'notice', message: '점검' });
+  assert.equal(mailItemOf(serverRow(alert, { readAt: 5 })).canUnread, true);
+  assert.equal(mailItemOf(serverRow(alert, { readAt: 5 })).read, true);
+});
+
+test('코인 지급 표시는 한 번만 적히고, 옛 읽은 편지는 받은 것으로 옮겨진다', () => {
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  for (const sql of MIGRATIONS.slice(0, 22)) db.exec(sql);
+  db.exec('pragma user_version = 22');
+  db.prepare(
+    "insert into mail (id, source, kind, day, at, look, milestone, coins, payload, read_at) values ('a','local','letter','2026-10-01',1,'letter',7,5,'{}',9), ('b','local','letter','2026-10-02',2,'letter',30,5,'{}',null)",
+  ).run();
+  migrate(db);
+  const mail = new MailStore(db);
+  assert.equal(mail.get('a')?.coinsPaidAt, 9, '읽은 편지는 받은 것으로 센다');
+  assert.equal(mail.get('b')?.coinsPaidAt, null);
+  assert.equal(mail.markCoinsPaid('b', 100), true);
+  assert.equal(mail.markCoinsPaid('b', 200), false, '두 번째는 안 준다');
+  mail.setRead('b', null);
+  assert.equal(mail.get('b')?.coinsPaidAt, 100, '안 읽음으로 돌려도 남는다');
 });

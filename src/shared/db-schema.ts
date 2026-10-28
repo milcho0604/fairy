@@ -348,6 +348,11 @@ export const MIGRATIONS: readonly string[] = [
     value text not null
   );
   `,
+  // 23판: 특별한 편지 코인을 준 시각을 따로 둔다 (안 읽음으로 되돌렸다 다시 읽어도 또 주지 않게). 이미 읽은 편지는 받은 것으로 센다
+  `
+  alter table mail add column coins_paid integer;
+  update mail set coins_paid = read_at where source = 'local' and coins is not null and read_at is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

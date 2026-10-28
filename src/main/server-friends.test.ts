@@ -313,6 +313,7 @@ test('칸이 숨은 때 받기가 바로 끝나도 다음 받기는 돈다 (끝�
     core: () =>
       ({
         allowed: () => allowed,
+        accountKey: () => 'A',
         inbox: async () => {
           calls++;
           return { items: [], next: null, unopened: 0 };

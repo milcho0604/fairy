@@ -413,7 +413,7 @@ function Detail({
         </>
       ) : (
         <div className="mail-actions">
-          {item.read && (
+          {item.read && item.canUnread && (
             <button type="button" onClick={() => onAct('unread')}>
               {t('mail.markUnread')}
             </button>

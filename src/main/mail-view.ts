@@ -121,6 +121,7 @@ export function mailItemOf(row: MailRow): MailItem {
       lines,
       read: i ? serverRead(i, row) : row.readAt !== null,
       removable: i ? serverRemovable(i) : true,
+      canUnread: !(i && (i.opened || i.expired)),
       from:
         i && (i.kind === 'gift' || i.kind === 'friend' || i.kind === 'gift_back')
           ? senderName(i)
@@ -150,6 +151,7 @@ export function mailItemOf(row: MailRow): MailItem {
       lines,
       read: row.readAt !== null,
       removable: true,
+      canUnread: true,
       ...(link ? { link } : {}),
     };
   }
@@ -171,7 +173,9 @@ export function mailItemOf(row: MailRow): MailItem {
     preview: firstLine(lines),
     lines,
     read: row.readAt !== null,
-    removable: true,
+    // 코인을 아직 안 준 특별한 편지는 지우거나 보관하지 못한다 (안 읽은 채 지워 코인을 못 받는 일을 막는다)
+    removable: !(row.coins && row.coinsPaidAt === null),
+    canUnread: true,
     from: t('mail.fromPet'),
     ...(row.coins ? { coins: row.coins } : {}),
   };

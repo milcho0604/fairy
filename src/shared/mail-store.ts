@@ -40,6 +40,10 @@ export const MAIL_TRASH_DAYS = 30;
 export const MAIL_LOCAL_MAX = 2000;
 const DAY_MS = 86_400_000;
 
+/** 휴지통 기한이 지나 글을 비운 서버 쪽지인가 (묘비). 화면에는 내지 않는다 */
+export const isPurged = (r: Pick<MailRow, 'source' | 'deletedAt'>, now: number): boolean =>
+  r.source === 'server' && r.deletedAt !== null && r.deletedAt < now - MAIL_TRASH_DAYS * DAY_MS;
+
 export interface MailRow {
   id: string;
   source: MailSource;
@@ -57,12 +61,16 @@ export interface MailRow {
   archivedAt: number | null;
   deletedAt: number | null;
   pinnedAt: number | null;
+  /** 특별한 편지의 코인을 준 시각 (안 읽음으로 되돌려도 지워지지 않는다. 없으면 아직 안 줬다) */
+  coinsPaidAt: number | null;
 }
 
 /** 새로 넣거나 내용을 바꿀 때 주는 칸 (읽음, 보관, 지움, 고정은 따로) */
-export type MailPut = Omit<MailRow, 'readAt' | 'archivedAt' | 'deletedAt' | 'pinnedAt'> & {
+export type MailPut = Omit<MailRow, 'readAt' | 'archivedAt' | 'deletedAt' | 'pinnedAt' | 'coinsPaidAt'> & {
   /** 처음 넣을 때만 쓴다 (이미 있는 쪽지의 읽음은 그대로) */
   readAt?: number | null;
+  /** 처음 넣을 때만 쓴다 (옛 파일에서 옮기는 읽은 편지는 받은 것으로) */
+  coinsPaidAt?: number | null;
 };
 
 interface Row {
@@ -79,6 +87,7 @@ interface Row {
   archived_at: number | null;
   deleted_at: number | null;
   pinned_at: number | null;
+  coins_paid: number | null;
 }
 
 const ms = (v: unknown): number | null => {
@@ -107,6 +116,7 @@ function toRow(r: Row): MailRow {
     archivedAt: ms(r.archived_at),
     deletedAt: ms(r.deleted_at),
     pinnedAt: ms(r.pinned_at),
+    coinsPaidAt: ms(r.coins_paid),
   };
 }
 
@@ -131,8 +141,8 @@ export class MailStore {
   put(m: MailPut): void {
     this.#db
       .prepare(
-        `insert into mail (id, source, kind, day, at, look, milestone, coins, payload, read_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `insert into mail (id, source, kind, day, at, look, milestone, coins, payload, read_at, coins_paid)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          on conflict(id) do update set source = excluded.source, kind = excluded.kind, day = excluded.day,
            at = excluded.at, look = excluded.look, milestone = excluded.milestone, coins = excluded.coins,
            payload = excluded.payload`,
@@ -148,7 +158,18 @@ export class MailStore {
         m.coins,
         JSON.stringify(m.payload ?? null),
         m.readAt ?? null,
+        m.coinsPaidAt ?? null,
       );
+  }
+
+  /** 특별한 편지의 코인을 줬다고 적는다 (처음 한 번만. 이미 줬으면 false) */
+  markCoinsPaid(id: string, at: number): boolean {
+    return (
+      Number(
+        this.#db.prepare('update mail set coins_paid = ? where id = ? and coins_paid is null').run(at, id)
+          .changes,
+      ) > 0
+    );
   }
 
   #set(col: 'read_at' | 'archived_at' | 'deleted_at' | 'pinned_at', id: string, at: number | null): boolean {
@@ -191,11 +212,21 @@ export class MailStore {
    * 가장 오래된 읽은 것(고정, 보관 아님)부터 휴지통으로 보낸다. 지운 개수를 돌려준다
    */
   tidy(now: number): { purged: number; trashed: number } {
-    const purged = Number(
-      this.#db
-        .prepare('delete from mail where deleted_at is not null and deleted_at < ?')
-        .run(now - MAIL_TRASH_DAYS * DAY_MS).changes,
-    );
+    const limit = now - MAIL_TRASH_DAYS * DAY_MS;
+    // 서버 쪽지는 글만 비우고 줄은 남긴다(묘비): 지우면 다음 받기 때 안 읽은 새 쪽지로 되돌아온다. 서버가 목록에서 뺄 때 줄을 지운다
+    const purged =
+      Number(
+        this.#db
+          .prepare("delete from mail where deleted_at is not null and deleted_at < ? and source <> 'server'")
+          .run(limit).changes,
+      ) +
+      Number(
+        this.#db
+          .prepare(
+            "update mail set payload = 'null' where source = 'server' and deleted_at is not null and deleted_at < ? and payload <> 'null'",
+          )
+          .run(limit).changes,
+      );
     const over = Number(
       (
         this.#db
@@ -225,6 +256,11 @@ export class MailStore {
     for (const r of rows)
       if (!ids.has(r.id)) n += Number(this.#db.prepare('delete from mail where id = ?').run(r.id).changes);
     return n;
+  }
+
+  /** 모든 서버 쪽지 줄을 지운다 (서버 모드를 껐거나 계정이 바뀜). 지운 개수 */
+  dropServer(): number {
+    return Number(this.#db.prepare("delete from mail where source = 'server'").run().changes);
   }
 
   meta(key: string): string | undefined {

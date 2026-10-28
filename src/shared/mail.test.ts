@@ -26,6 +26,7 @@ const mk = (id: string, over: Partial<MailItem> = {}): MailItem => ({
   at: 1,
   day: '2026-10-28',
   removable: true,
+  canUnread: true,
   ...over,
 });
 

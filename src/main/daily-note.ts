@@ -29,7 +29,13 @@ import {
 import { t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
 import { inFilter, type MailBox, unreadCount } from '../shared/mail.ts';
-import { MAIL_LOCAL_MAX, type MailPut, type MailRow, type MailStore } from '../shared/mail-store.ts';
+import {
+  isPurged,
+  MAIL_LOCAL_MAX,
+  type MailPut,
+  type MailRow,
+  type MailStore,
+} from '../shared/mail-store.ts';
 import { isMailAct, type MailActResult, NOTES } from '../shared/note-ipc.ts';
 import { basePersonaOf, styled } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
@@ -151,9 +157,16 @@ export function createDailyNotes(o: DailyNoteOptions) {
       coins: n.coins ?? null,
       payload: { lines: n.lines, ...(n.at !== undefined ? { at: n.at } : {}) },
       readAt: n.read ? at : null,
+      // 옛 파일에서 읽은 특별한 편지는 코인을 받은 것으로 센다
+      coinsPaidAt: n.read && n.coins ? at : null,
     };
+    mail.put(put);
+  }
+
+  /** 쓴 쪽지를 저장하고 준 특별한 편지 날짜도 같이 저장한다 (실패해도 앱은 계속 간다) */
+  function save(n: DailyNote, at: number) {
     try {
-      mail.put(put);
+      persist(n, at);
       mail.setMarks(state.marks);
     } catch (err) {
       o.log('note', '저장 실패', err instanceof Error ? err.message : String(err));
@@ -170,6 +183,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
     if (raw === undefined || raw === null) return;
     try {
       const old = parseNotes(raw);
+      // 쪽지는 넣기만 하고 준 날짜(marks)는 맨 끝에 한 번 합쳐 저장한다 (넣을 때마다 저장하면 빈 목록으로 덮어 지운다)
       for (const n of old.box) persist(n);
       const marks = [...new Set([...mail.marks(), ...old.marks])];
       mail.setMarks(marks);
@@ -202,7 +216,12 @@ export function createDailyNotes(o: DailyNoteOptions) {
 
   /** 쪽지함: 모든 쪽지(펫 쪽지, 서버 쪽지, 공지)를 지금 말로. 안 읽음 수는 "전체" 목록에 보이는 안 읽은 쪽지 수다 */
   const box = (): MailBox => {
-    const items = mail.all().map(mailItemOf);
+    const now = Date.now();
+    // 휴지통 기한이 지나 글을 비운 서버 쪽지(묘비)는 화면에 내지 않는다
+    const items = mail
+      .all()
+      .filter((r) => !isPurged(r, now))
+      .map(mailItemOf);
     return {
       on: settings.get().dailyNotes,
       items,
@@ -232,7 +251,8 @@ export function createDailyNotes(o: DailyNoteOptions) {
     const n = state.box.find((x) => noteId(x) === id);
     if (n) state = markRead(state, id);
     // 특별한 편지는 처음 펼칠 때 코인을 준다 (쪽지함 표의 코인 칸이 기준이다)
-    if (row.source === 'local' && row.coins) {
+    // 준 적이 없을 때만 (안 읽음으로 되돌렸다 다시 읽어도 또 주지 않는다)
+    if (row.source === 'local' && row.coins && mail.markCoinsPaid(id, now)) {
       o.reward(row.coins, NOTE_REASON, now);
       o.onChange();
     }
@@ -311,7 +331,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
     const d = new Date(now);
     const filed = { ...note, at: d.getHours() * 60 + d.getMinutes() };
     state = fileNote(state, filed);
-    persist(filed, now);
+    save(filed, now);
     o.log('note', '씀', filed.kind ?? filed.look, milestone ?? '');
     return filed;
   }
@@ -328,7 +348,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
       recentVariants(state),
     );
     state = fileNote(state, note);
-    persist(note, now);
+    save(note, now);
     o.log('note', '씀', 'evening');
     return note;
   }
@@ -387,6 +407,10 @@ export function createDailyNotes(o: DailyNoteOptions) {
     const item = mailItemOf(row);
     if ((what === 'delete' || what === 'archive') && !item.removable)
       return { ok: false, reason: 'cantRemove' };
+    // 이미 휴지통에 있는 것을 또 지워도 30일을 다시 세지 않는다
+    if (what === 'delete' && row.deletedAt !== null) return { ok: true, box: box() };
+    // 서버에서 이미 연 쪽지는 열린 채라 안 읽음으로 되돌릴 수 없다
+    if (what === 'unread' && !item.canUnread) return { ok: false, reason: 'unknown' };
     switch (what) {
       case 'read':
         read(id, now);
@@ -539,7 +563,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
         lastWeekFocusMin: total.focusMin,
       });
       state = fileNote(state, week);
-      persist(week, Date.now());
+      save(week, Date.now());
       syncHold();
       push();
       return open(day);
@@ -559,7 +583,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
           milestone,
         });
         state = fileNote(state, note);
-        persist(note, Date.now());
+        save(note, Date.now());
       }
       return check(Date.now(), true);
     },

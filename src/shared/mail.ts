@@ -50,6 +50,8 @@ export interface MailItem {
   link?: string;
   /** 지우거나 보관해도 되는가: 받을 것(코인, 이용권)이 남은 안 연 서버 쪽지, 답 안 한 친구 신청은 안 된다 */
   removable: boolean;
+  /** "안 읽음으로" 를 할 수 있는가: 서버에서 이미 연 쪽지는 열린 채라 이 기기에서 되돌릴 수 없다 */
+  canUnread: boolean;
 }
 
 export interface MailBox {

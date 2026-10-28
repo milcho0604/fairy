@@ -38,10 +38,10 @@ const check = (name, ok, extra = '') => {
 };
 
 /** 앱 하나를 띄우고 cdp 도우미를 이 앱의 포트로 맞춘다. settings: 설정 파일 내용(없으면 파일 없음 = 새 사용자) */
-async function launch(settings, pre) {
+async function launch(settings, pre, keep) {
   const INSPECT = await freePort();
   const PAGE = await freePort();
-  const scratch = mkdtempSync(join(process.env.JJ_SCRATCH ?? tmpdir(), '.voice-test-'));
+  const scratch = keep ?? mkdtempSync(join(process.env.JJ_SCRATCH ?? tmpdir(), '.voice-test-'));
   const data = join(scratch, 'data');
   const home = join(scratch, 'home');
   mkdirSync(data, { recursive: true });
@@ -81,7 +81,7 @@ async function launch(settings, pre) {
     try {
       app.kill('SIGKILL');
     } catch {}
-    rmSync(scratch, { recursive: true, force: true });
+    if (!keep) rmSync(scratch, { recursive: true, force: true });
   };
   return { ...cdp, stop, data };
 }
@@ -215,6 +215,65 @@ if (SHOTS_ONLY) {
   await a.stop();
 }
 
+// ---- 검토 고침 (PR 261): 코인 중복, 옮기기 두 번, 서버 쪽지 비우기, 계정 바뀜, 두 번 지우기 ----
+{
+  const a = await launch({ petName: tx('콩', 'Mochi'), chatter: 'quiet', dailyNotes: true });
+  const letter = (id, n, coins, ago) =>
+    `__jj.mail.put({ id: '${id}', source: 'local', kind: 'letter', day: '${dayOf(NOW - ago * DAY)}', at: ${NOW - ago * DAY}, look: 'letter', milestone: ${n}, coins: ${coins}, payload: { lines: [{ key: 'note.special.open', vars: { p: 'friend', n: ${n} } }] }, readAt: null }); __jj.dailyNotes.changed(); 1`;
+  await a.main(letter('L1', 7, 10, 3));
+  const bal = () => a.main('__jj.store.balance()');
+  const b0 = await bal();
+  await a.main(`__jj.dailyNotes.act('L1', 'read'); 1`);
+  const b1 = await bal();
+  for (let k = 0; k < 2; k++) {
+    await a.main(`__jj.dailyNotes.act('L1', 'unread'); 1`);
+    await a.main(`__jj.dailyNotes.act('L1', 'read'); 1`);
+  }
+  const b2 = await bal();
+  check('특별한 편지를 읽고 안 읽음으로 되돌려 다시 읽어도 코인은 한 번만 준다', b1 > b0 && b2 === b1, `전 ${b0}, 첫 읽음 ${b1}, 되풀이 ${b2}`);
+  await a.main(letter('L2', 30, 20, 2));
+  const del = JSON.parse(await a.main(`JSON.stringify(__jj.dailyNotes.act('L2', 'delete'))`));
+  check('코인이 걸린 안 읽은 특별한 편지는 지우기가 막힌다', del.ok === false);
+  // 이미 휴지통에 있는 쪽지를 또 지워도 30일을 다시 세지 않는다
+  await a.main(`__jj.dailyNotes.act('L1', 'delete', 1000); 1`);
+  const d1 = await a.main(`__jj.mail.get('L1').deletedAt`);
+  await a.main(`__jj.dailyNotes.act('L1', 'delete', 999999); 1`);
+  check('이미 휴지통에 있는 쪽지를 또 지워도 지운 시각이 그대로', (await a.main(`__jj.mail.get('L1').deletedAt`)) === d1);
+  // 서버 쪽지: 서버 모드가 꺼지면 상태가 바뀔 때 바로 비운다
+  const srv = (id, at) => ({ id: `inbox:${id}`, source: 'server', kind: 'grant', day: dayOf(NOW), at, look: 'note', milestone: null, coins: null, payload: { id, kind: 'grant', sender: null, message: `A 계정 쪽지 ${id}`, coins: 0, chatPasses: 0, fillTo: null, sentAt: new Date(at).toISOString(), expiresAt: null, openedAt: null, opened: null, expired: false }, readAt: null });
+  const putSrv = (rows) => a.main(`for (const r of ${JSON.stringify(rows)}) __jj.mail.put(r); __jj.dailyNotes.changed(); 1`);
+  const serverCount = () => a.main(`__jj.dailyNotes.box().items.filter((i) => i.source === 'server').length`);
+  await putSrv([srv(1, NOW - 1000), srv(2, NOW - 2000)]);
+  const before = await serverCount();
+  await a.main(`(() => { const c = __jj.server.core; c.allowed = () => false; return __jj.serverInbox.sync() })()`);
+  check('서버 모드가 꺼지면 서버 쪽지가 쪽지함에서 바로 사라진다', before === 2 && (await serverCount()) === 0, `전 ${before}`);
+  // 계정이 바뀌면 앞 계정의 오래된 쪽지가 남지 않는다
+  await a.main(`(() => { const c = __jj.server.core; c.allowed = () => true; c.accountKey = () => 'A'; return __jj.serverInbox.sync() })()`);
+  await putSrv([srv(901, NOW - 400 * DAY), srv(902, NOW - 401 * DAY)]);
+  await a.main(`(() => { const c = __jj.server.core; c.accountKey = () => 'B'; const items = Array.from({ length: 20 }, (_, k) => ({ id: 100 + k, kind: 'grant', sender: null, message: 'B ' + k, coins: 0, chatPasses: 0, fillTo: null, sentAt: new Date(Date.now() - k * 60000).toISOString(), expiresAt: null, openedAt: null, opened: null, expired: false })); c.inbox = async () => ({ items, next: 100, unopened: 0 }); return 1; })()`);
+  await a.main(`__jj.serverInbox.refresh()`);
+  check('계정이 바뀐 뒤 앞 계정의 오래된 서버 쪽지가 남지 않는다', (await a.main(`__jj.mail.all().filter((r) => r.id === 'inbox:901' || r.id === 'inbox:902').length`)) === 0);
+  await a.stop();
+}
+{
+  // 같은 폴더로 두 번 켜기: 백업에서 옛 파일이 다시 생겨도 준 날 수와 지운 쪽지가 남는다
+  const scratch = mkdtempSync(join(tmpdir(), '.mailbox-twice-'));
+  mkdirSync(join(scratch, 'data'), { recursive: true });
+  const legacy = (marks) => ({ marks, box: [{ day: dayOf(NOW - 8 * DAY), look: 'letter', milestone: 7, coins: 5, lines: [{ key: 'note.special.open', vars: { p: 'friend', n: 7 } }], read: true }, { day: dayOf(NOW - 5 * DAY), look: 'note', lines: [{ key: 'note.open', vars: { p: 'friend', name: 'x', v: 1 } }], read: false }] });
+  const put = (d, v) => writeFileSync(join(d, 'daily-note.json'), JSON.stringify(v));
+  const a = await launch({ petName: 'Mochi', chatter: 'quiet', dailyNotes: true }, (d) => put(d, legacy([7])), scratch);
+  const paid = await a.main(`__jj.mail.get('${dayOf(NOW - 8 * DAY)}').coinsPaidAt !== null`);
+  await a.main(`__jj.mail.setMarks([7, 30]); __jj.dailyNotes.act('${dayOf(NOW - 5 * DAY)}', 'delete'); 1`);
+  await a.stop();
+  put(join(scratch, 'data'), legacy([7]));
+  const b = await launch({ petName: 'Mochi', chatter: 'quiet', dailyNotes: true }, undefined, scratch);
+  check('옛 파일이 다시 생겨 한 번 더 옮겨도 특별한 편지를 준 날 수가 남는다', (await b.main('JSON.stringify(__jj.mail.marks())')) === '[7,30]');
+  check('한 번 더 옮겨도 지운 쪽지는 지운 채다', (await b.main(`__jj.mail.get('${dayOf(NOW - 5 * DAY)}')?.deletedAt != null`)) === true);
+  check('옛 파일에서 이미 읽은 특별한 편지는 코인을 받은 것으로 옮긴다', paid === true);
+  await b.stop();
+  rmSync(scratch, { recursive: true, force: true });
+}
+
 // ---- 작은 패널 ----
 {
   const a = await launch({ petName: tx('콩', 'Mochi'), chatter: 'quiet', dailyNotes: true });
@@ -320,9 +379,12 @@ if (SHOTS_ONLY) {
   await act(tx('지우기', 'Delete'));
   check('지우면 휴지통으로 (삭제 알림)', JSON.parse(await flags(yId)).deleted && (await p.ev(`document.querySelector('.mail-sheet .mail-toast span')?.textContent`)) === tx('쪽지를 지웠어. 휴지통에 30일 있어.', 'Note deleted. It stays in the trash for 30 days.'));
   check('지운 쪽지는 오늘 쪽지가 다시 쓰이지 않게 상태에는 남는다', (await a.main(`__jj.dailyNotes.state.box.some((n) => n.day === '${yId}')`)) === true);
+  // 휴지통 30일이 지나 글을 비운 서버 쪽지(묘비)는 휴지통 목록에도 안 보인다
+  await a.main(`__jj.mail.put({ id: 'inbox:777', source: 'server', kind: 'grant', day: '${dayOf(NOW - 40 * DAY)}', at: ${NOW - 40 * DAY}, look: 'note', milestone: null, coins: null, payload: null, readAt: 1 }); __jj.mail.setDeleted('inbox:777', ${NOW - 40 * DAY}); __jj.dailyNotes.changed(); 1`);
   await chipClick(tx('휴지통', 'Trash'));
   await sleep(300);
   check('휴지통 칩에 한 통', (await p.ev(`document.querySelectorAll('.mail-sheet .mail-row').length`)) === 1);
+  await p.shot(`mail-trash-${LANG}-360`);
   await p.ev(`document.querySelector('.mail-sheet .mail-row').click()`);
   await sleep(500);
   await act(tx('되살리기', 'Restore'));
