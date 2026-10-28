@@ -3,8 +3,8 @@
 import { COIN } from './coin-rules.ts';
 import { cutText } from './cut-text.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
-import { canDeferToTomorrow } from './due-choices.ts';
 import { clockJumped, type Db } from './db-schema.ts';
+import { canDeferToTomorrow } from './due-choices.ts';
 import { FOCUS, focusReward } from './focus.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
