@@ -115,9 +115,9 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
                       {item.kind === 'todo' && item.doneAt !== null && (
                         <span className="trash-done">{t('records.trash.done')}, </span>
                       )}
-                      {item.kind === 'note' && item.preview ? `${item.preview} · ` : ''}
+                      {item.kind === 'note' && item.preview ? `${item.preview}, ` : ''}
                       {item.kind === 'event'
-                        ? `${t('records.trash.eventWhen', { date: new Date(item.startAt).toLocaleString() })} · `
+                        ? `${t('records.trash.eventWhen', { date: new Date(item.startAt).toLocaleString() })}, `
                         : ''}
                       {t('records.trash.left', { n: item.daysLeft })}
                     </small>

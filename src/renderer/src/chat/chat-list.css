@@ -258,3 +258,22 @@ header .new-chat .new-icon {
     white-space: nowrap;
   }
 }
+
+/* 아주 좁은 창(320 창을 1.5배로 키운 것과 같은 260 이하): 단추가 머리줄 밖으로 나가지 않게 줄을 나눈다.
+   얼굴, 이름과 단추들이 윗줄, AI 고르기는 아랫줄(자리가 남으면 새 대화 단추 옆) */
+@media (max-width: 260px) {
+  body header {
+    flex: none;
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  body header .title {
+    flex: 1 1 4.5em;
+  }
+
+  body header .picker {
+    order: 1;
+    flex: 1 1 7.35em;
+  }
+}

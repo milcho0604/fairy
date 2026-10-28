@@ -77,22 +77,27 @@ input {
   flex-direction: column;
 }
 
+/* 좁거나 확대한 창에서는 단추 줄이 아래로 내려간다. 얼굴, 이름, 코인은 한 줄에 남는다
+   (영어 Mochi 가 320 에서 M... 로 잘리던 것을 막으려 이름은 최소 4.2em, 코인 숫자는 줄지도 꺾이지도 않는다) */
 .panel header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 12px 14px 8px;
 }
 
 .panel header strong {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 4.2em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .coins {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1698,12 +1703,18 @@ li.pin-end {
   color: var(--ok);
 }
 
+/* 흐리게(opacity 0.5) 하면 글자 대비가 2.07 까지 떨어진다. 색은 --muted 그대로, 누르는 자리는 28px 로 넓히되
+   줄 높이는 그대로 두려고 위아래 여백을 뺀다 */
 .shop .goods .remove {
-  opacity: 0.5;
+  width: 28px;
+  height: 28px;
+  margin: -4px 0;
+  opacity: 1;
 }
 
-.shop .goods li:hover .remove {
-  opacity: 1;
+.shop .goods .remove:hover {
+  background: var(--code);
+  color: var(--ink);
 }
 
 /* 커스텀 먹이 지우기 확인: 한 번 누르면 글로 바뀌고 빨갛게 (두 번째에 지운다) */
@@ -1794,11 +1805,9 @@ ul.house-styles li > :last-child {
 
 /* 상점 안내 */
 .shop-msg {
-  /* 아래로 내려 집을 사도 보이게 위에 붙여 둔다 */
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  margin: 0 0 6px;
+  /* 스크롤 칸 밖 위에 있어 아래로 내려 집을 사도 보이고, 목록을 덮지 않고 밀어 내린다 */
+  flex: none;
+  margin: 8px 14px 0;
   padding: 5px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--ok) 14%, var(--panel));
@@ -1991,6 +2000,11 @@ li:is(.todo, .event) .tools .extra .due.none {
 .panel header .icon-btn svg {
   width: 16px;
   height: 16px;
+}
+
+/* 단추 줄이 둘째 줄로 내려가면 오른쪽 끝에 모은다 (한 줄에 들어가면 이름이 남는 자리를 먹어 여백이 0 이다) */
+.panel header .keep-pin {
+  margin-left: auto;
 }
 
 /* 패널 고정 핀: 켜졌을 때 색과 채움으로 알린다 (색만으로 알리지 않게 핀 몸통도 채운다) */

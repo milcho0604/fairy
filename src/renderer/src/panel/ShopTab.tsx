@@ -53,191 +53,193 @@ export function ShopTab({ s }: { s: PanelState }) {
   const nextHouse = HOUSE_COSTS[level];
 
   return (
-    <div className="scroll shop" ref={scroller}>
+    <>
+      {/* 안내 띠는 스크롤 칸 밖 위에 둔다. 안에 두면 내려 본 목록 줄을 덮는다 */}
       {msg && (
         <p className={`shop-msg ${msg.bad ? 'bad' : ''}`} role="status">
           {msg.text}
         </p>
       )}
-
-      <section>
-        <h2>{t('shop.foods')}</h2>
-        <ul className="goods">
-          {FOODS.map((f) => (
-            <li key={f.key}>
-              <span className="g-name">
-                {f.name}
-                <small>{t('shop.fullness', { n: f.gain })}</small>
-              </span>
-              <Price n={f.cost} />
-              <button
-                type="button"
-                className="ghost small"
-                disabled={shop.balance < f.cost}
-                onClick={() => feed(f)}
-              >
-                {t('shop.give')}
-              </button>
-            </li>
-          ))}
-          {shop.customFoods.map((f) => (
-            <li key={f.key}>
-              <span className="g-name custom">
-                {shop.foodImages[f.key] && <img src={shop.foodImages[f.key]} alt="" />}
-                {f.name}
-                {/* 지우기는 이름 옆에 둔다. 줄 끝에 두면 이 줄만 가격과 주기 단추가 밀린다 */}
+      <div className="scroll shop" ref={scroller}>
+        <section>
+          <h2>{t('shop.foods')}</h2>
+          <ul className="goods">
+            {FOODS.map((f) => (
+              <li key={f.key}>
+                <span className="g-name">
+                  {f.name}
+                  <small>{t('shop.fullness', { n: f.gain })}</small>
+                </span>
+                <Price n={f.cost} />
                 <button
                   type="button"
-                  className={`remove${sure === f.key ? ' sure' : ''}`}
-                  aria-label={
-                    sure === f.key ? t('shop.removeSure') : t('panel.todo.remove', { title: f.name })
-                  }
-                  onClick={() => {
-                    if (sure !== f.key) {
-                      setSure(f.key);
-                      return;
-                    }
-                    setSure('');
-                    bridge.removeFood(f.key);
-                  }}
-                  onBlur={() => setSure((k) => (k === f.key ? '' : k))}
+                  className="ghost small"
+                  disabled={shop.balance < f.cost}
+                  onClick={() => feed(f)}
                 >
-                  {sure === f.key ? t('shop.removeSure') : '×'}
+                  {t('shop.give')}
                 </button>
-              </span>
-              <Price n={f.cost} />
-              <button
-                type="button"
-                className="ghost small"
-                disabled={shop.balance < f.cost}
-                onClick={() => feed(f)}
-              >
-                {t('shop.give')}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="row-line">
-          <span>
-            {t('shop.custom')} <small>{t('shop.customHint', { n: CUSTOM_FOOD_MAX })}</small>
-          </span>
-          <Price n={CUSTOM_FOOD_COST} />
-          <button
-            type="button"
-            className="ghost small"
-            disabled={shop.balance < CUSTOM_FOOD_COST || shop.customFoods.length >= CUSTOM_FOOD_MAX}
-            onClick={() => run(() => bridge.makeFood(), t('shop.makerOpened'))}
-          >
-            {t('shop.make')}
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <h2>{t('shop.toys')}</h2>
-        <ul className="goods">
-          {TOYS.map((toy) => {
-            const owned = shop.toys[toy.key];
-            return (
-              <li key={toy.key}>
-                <span className="g-name">
-                  {toy.name}
-                  <small>{toy.hint}</small>
-                </span>
-                {owned ? <span className="owned">{t('shop.owned')}</span> : <Price n={toy.cost} />}
-                {!owned && (
+              </li>
+            ))}
+            {shop.customFoods.map((f) => (
+              <li key={f.key}>
+                <span className="g-name custom">
+                  {shop.foodImages[f.key] && <img src={shop.foodImages[f.key]} alt="" />}
+                  {f.name}
+                  {/* 지우기는 이름 옆에 둔다. 줄 끝에 두면 이 줄만 가격과 주기 단추가 밀린다 */}
                   <button
                     type="button"
-                    className="ghost small"
-                    disabled={shop.balance < toy.cost}
-                    onClick={() => run(() => bridge.buyToy(toy.key), t('shop.bought', { name: toy.name }))}
+                    className={`remove${sure === f.key ? ' sure' : ''}`}
+                    aria-label={
+                      sure === f.key ? t('shop.removeSure') : t('panel.todo.remove', { title: f.name })
+                    }
+                    onClick={() => {
+                      if (sure !== f.key) {
+                        setSure(f.key);
+                        return;
+                      }
+                      setSure('');
+                      bridge.removeFood(f.key);
+                    }}
+                    onBlur={() => setSure((k) => (k === f.key ? '' : k))}
                   >
-                    {t('shop.buy')}
+                    {sure === f.key ? t('shop.removeSure') : '×'}
                   </button>
-                )}
+                </span>
+                <Price n={f.cost} />
+                <button
+                  type="button"
+                  className="ghost small"
+                  disabled={shop.balance < f.cost}
+                  onClick={() => feed(f)}
+                >
+                  {t('shop.give')}
+                </button>
               </li>
-            );
-          })}
-        </ul>
-        <div className="play-row">
-          <button
-            type="button"
-            className="ghost"
-            disabled={!shop.toys.ball && !shop.toys.yarn}
-            title={shop.toys.ball || shop.toys.yarn ? undefined : t('shop.needBall')}
-            onClick={() => bridge.play('ball')}
-          >
-            {shop.toys.yarn ? t('shop.throwYarn') : t('shop.throwBall')}
-          </button>
-          <button type="button" className="ghost" onClick={() => bridge.play('walk')}>
-            {t('shop.walk')}
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <h2>{t('shop.house')}</h2>
-        <div className="row-line">
-          <span>
-            {level === 0
-              ? t('shop.noHouse')
-              : `${t('shop.houseNow', { name: houseName(level - 1) ?? '' })} (${t('shop.houseLevel', { n: level, max: HOUSE_LEVELS })})`}
-            <small>
-              {nextHouse === undefined
-                ? t('shop.bestHouse')
-                : t(level === 0 ? 'shop.houseFirst' : 'shop.houseNext', { name: houseName(level) ?? '' })}
-            </small>
-          </span>
-          {nextHouse !== undefined && (
-            <>
-              <Price n={nextHouse} />
-              <button
-                type="button"
-                className="ghost small"
-                disabled={pending || shop.balance < nextHouse}
-                onClick={() => run(() => bridge.buyHouse(level), t('shop.newHouse'))}
-              >
-                {level === 0 ? t('shop.build') : t('shop.upgrade')}
-              </button>
-            </>
-          )}
-        </div>
-        {/* 집을 숨겨 두었으면 사고 바꾸기는 그대로 되고, 화면에 보이려면 꺼내야 한다고 알린다 (shared/house-stow.ts) */}
-        {level > 0 && shop.houseHidden && (
+            ))}
+          </ul>
           <div className="row-line">
-            <span>{t('shop.houseHidden')}</span>
-            <button type="button" className="ghost small" onClick={() => bridge.setHouseHidden(false)}>
-              {t('shop.houseShow')}
+            <span>
+              {t('shop.custom')} <small>{t('shop.customHint', { n: CUSTOM_FOOD_MAX })}</small>
+            </span>
+            <Price n={CUSTOM_FOOD_COST} />
+            <button
+              type="button"
+              className="ghost small"
+              disabled={shop.balance < CUSTOM_FOOD_COST || shop.customFoods.length >= CUSTOM_FOOD_MAX}
+              onClick={() => run(() => bridge.makeFood(), t('shop.makerOpened'))}
+            >
+              {t('shop.make')}
             </button>
           </div>
-        )}
-        {level > 0 && (
-          <>
-            <h2 className="sub">
-              {t('shop.styles')} <small>{t('shop.stylesHint')}</small>
-            </h2>
-            <ul className="house-styles">
-              {HOUSE_STYLES.map((style) => (
-                <StyleCard
-                  key={style}
-                  style={style}
-                  level={level}
-                  owned={shop.houseStyles[style]}
-                  using={shop.houseStyle === style}
-                  canBuy={!pending && shop.balance >= HOUSE_STYLE_COSTS[style]}
-                  onPick={() =>
-                    run(
-                      () => bridge.buyHouseStyle(style),
-                      t('shop.styleChanged', { name: houseStyleName(style) }),
-                    )
-                  }
-                />
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
-    </div>
+        </section>
+
+        <section>
+          <h2>{t('shop.toys')}</h2>
+          <ul className="goods">
+            {TOYS.map((toy) => {
+              const owned = shop.toys[toy.key];
+              return (
+                <li key={toy.key}>
+                  <span className="g-name">
+                    {toy.name}
+                    <small>{toy.hint}</small>
+                  </span>
+                  {owned ? <span className="owned">{t('shop.owned')}</span> : <Price n={toy.cost} />}
+                  {!owned && (
+                    <button
+                      type="button"
+                      className="ghost small"
+                      disabled={shop.balance < toy.cost}
+                      onClick={() => run(() => bridge.buyToy(toy.key), t('shop.bought', { name: toy.name }))}
+                    >
+                      {t('shop.buy')}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="play-row">
+            <button
+              type="button"
+              className="ghost"
+              disabled={!shop.toys.ball && !shop.toys.yarn}
+              title={shop.toys.ball || shop.toys.yarn ? undefined : t('shop.needBall')}
+              onClick={() => bridge.play('ball')}
+            >
+              {shop.toys.yarn ? t('shop.throwYarn') : t('shop.throwBall')}
+            </button>
+            <button type="button" className="ghost" onClick={() => bridge.play('walk')}>
+              {t('shop.walk')}
+            </button>
+          </div>
+        </section>
+
+        <section>
+          <h2>{t('shop.house')}</h2>
+          <div className="row-line">
+            <span>
+              {level === 0
+                ? t('shop.noHouse')
+                : `${t('shop.houseNow', { name: houseName(level - 1) ?? '' })} (${t('shop.houseLevel', { n: level, max: HOUSE_LEVELS })})`}
+              <small>
+                {nextHouse === undefined
+                  ? t('shop.bestHouse')
+                  : t(level === 0 ? 'shop.houseFirst' : 'shop.houseNext', { name: houseName(level) ?? '' })}
+              </small>
+            </span>
+            {nextHouse !== undefined && (
+              <>
+                <Price n={nextHouse} />
+                <button
+                  type="button"
+                  className="ghost small"
+                  disabled={pending || shop.balance < nextHouse}
+                  onClick={() => run(() => bridge.buyHouse(level), t('shop.newHouse'))}
+                >
+                  {level === 0 ? t('shop.build') : t('shop.upgrade')}
+                </button>
+              </>
+            )}
+          </div>
+          {/* 집을 숨겨 두었으면 사고 바꾸기는 그대로 되고, 화면에 보이려면 꺼내야 한다고 알린다 (shared/house-stow.ts) */}
+          {level > 0 && shop.houseHidden && (
+            <div className="row-line">
+              <span>{t('shop.houseHidden')}</span>
+              <button type="button" className="ghost small" onClick={() => bridge.setHouseHidden(false)}>
+                {t('shop.houseShow')}
+              </button>
+            </div>
+          )}
+          {level > 0 && (
+            <>
+              <h2 className="sub">
+                {t('shop.styles')} <small>{t('shop.stylesHint')}</small>
+              </h2>
+              <ul className="house-styles">
+                {HOUSE_STYLES.map((style) => (
+                  <StyleCard
+                    key={style}
+                    style={style}
+                    level={level}
+                    owned={shop.houseStyles[style]}
+                    using={shop.houseStyle === style}
+                    canBuy={!pending && shop.balance >= HOUSE_STYLE_COSTS[style]}
+                    onPick={() =>
+                      run(
+                        () => bridge.buyHouseStyle(style),
+                        t('shop.styleChanged', { name: houseStyleName(style) }),
+                      )
+                    }
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      </div>
+    </>
   );
 }
 
