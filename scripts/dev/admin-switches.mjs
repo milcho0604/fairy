@@ -228,7 +228,7 @@ try {
     }
     console.log('이전 그림만 찍음', OUT);
   } else {
-    const KEYS = ['ai_chat', 'kakao_login', 'coin_reset', 'calendar_link_hint', 'friends', 'friend_gifts', 'friend_calendar', 'friend_gift_passes'];
+    const KEYS = ['ai_chat', 'kakao_login', 'coin_reset', 'calendar_link_hint', 'friends', 'friend_gifts', 'friend_calendar', 'friend_visit', 'friend_gift_passes'];
     const modeOf = (key) => sql(`SELECT COALESCE((SELECT mode FROM feature_flag WHERE key = '${key}'), '(없음)')`);
 
     for (const [w, h] of [[1280, 900], [360, 780]]) {

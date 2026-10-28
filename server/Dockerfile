@@ -1,5 +1,5 @@
 # 페어리 서버 이미지. 빌드 맥락은 레포 루트다: 서버(server/)와 앱과 함께 쓰는 순수 규칙 파일 하나
-# (src/shared/coin-rules.ts, site-events.ts, account-profile.ts)만 들어온다. 나머지 앱 코드는 server/Dockerfile.dockerignore 가 막는다.
+# (src/shared/coin-rules.ts, site-events.ts, account-profile.ts, update-levels.ts, pet-card.ts)만 들어온다. 나머지 앱 코드는 server/Dockerfile.dockerignore 가 막는다.
 #   docker build -f server/Dockerfile .
 # 기동 때 마이그레이션을 돌리고 서버를 띄운다. node 사용자(uid 1000)로 돈다.
 FROM node:26.12.1-slim AS builder
@@ -14,6 +14,7 @@ COPY src/shared/coin-rules.ts ./src/shared/coin-rules.ts
 COPY src/shared/site-events.ts ./src/shared/site-events.ts
 COPY src/shared/account-profile.ts ./src/shared/account-profile.ts
 COPY src/shared/update-levels.ts ./src/shared/update-levels.ts
+COPY src/shared/pet-card.ts ./src/shared/pet-card.ts
 RUN npm run build && npm prune --omit=dev
 
 FROM node:26.12.1-slim AS runner

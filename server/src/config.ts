@@ -230,6 +230,7 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
       friends: readFeature('FEATURE_FRIENDS', env.FEATURE_FRIENDS, 'allowlist'),
       friend_gifts: readFeature('FEATURE_FRIEND_GIFTS', env.FEATURE_FRIEND_GIFTS, 'allowlist'),
       friend_calendar: readFeature('FEATURE_FRIEND_CALENDAR', env.FEATURE_FRIEND_CALENDAR, 'allowlist'),
+      friend_visit: readFeature('FEATURE_FRIEND_VISIT', env.FEATURE_FRIEND_VISIT, 'allowlist'),
       friend_gift_passes: readFeature(
         'FEATURE_FRIEND_GIFT_PASSES',
         env.FEATURE_FRIEND_GIFT_PASSES,

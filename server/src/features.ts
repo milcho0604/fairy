@@ -29,6 +29,8 @@ export const FEATURES = {
   friend_gifts: { env: 'FEATURE_FRIEND_GIFTS', fallback: 'allowlist', admins: true },
   /** 친구에게 바쁜 시간 보여 주기 (#110 일정 공유 1차). 보여 주는 사람과 보는 사람 모두 */
   friend_calendar: { env: 'FEATURE_FRIEND_CALENDAR', fallback: 'allowlist', admins: true },
+  /** 친구 펫 놀러 가기 (#141). 보내는 사람과 받는 사람 모두 허용돼야 한다. 카드는 종류 id, 이름, 네 발 서기뿐 */
+  friend_visit: { env: 'FEATURE_FRIEND_VISIT', fallback: 'allowlist', admins: true },
   /**
    * 친구에게 채팅 이용권 선물 (#110, 사용자 결정 2026-10-16). 보내는 사람과 받는 사람이 모두 허용돼야 한다. 지금 이용권은
    * 모두 운영자 지급분(정기 지급, 쪽지, 쿠폰, 첫 선물)이라 "운영자 지급분도 선물" 스위치를 따로 두면 기능이 비어 버려서,

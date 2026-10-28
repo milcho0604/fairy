@@ -22,13 +22,20 @@ import { AiAdmin } from './ai-admin';
 import { Auth, AuthGuard, type AuthInfo, type HttpReq } from './auth.guard';
 import { Db } from './db';
 import { type FeatureKey, Features } from './features';
-import { dropUnsharedBusy, expiredGifts, GIFT_KEEP_DAYS, returnGift } from './friend-links';
+import {
+  dropUnsharedBusy,
+  dropUnsharedVisit,
+  expiredGifts,
+  GIFT_KEEP_DAYS,
+  returnGift,
+} from './friend-links';
 import { sendInbox } from './inbox';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
-import { normalizeDeviceCode } from './shared/account-profile';
+import { checkNickname, normalizeDeviceCode } from './shared/account-profile';
+import { type PetCard, parseCard } from './shared/pet-card';
 import { kstDay } from './shared/site-events';
 
-// 친구 (이슈 #110 1부): 친구 맺기, 친구 선물, 일정 공유 1차(바쁜 시간대)와 2차(친구별 일정 제목). 펫 놀러 가기(2부)는 여기 없다.
+// 친구 (이슈 #110 1부): 친구 맺기, 친구 선물, 일정 공유 1차(바쁜 시간대)와 2차(친구별 일정 제목). 2부 펫 놀러 가기(#141)는 맨 아래 절.
 // - 로그인(구글, 카카오 세션) 계정만. 기기 토큰은 403 login_required. 만 14세 미만은 서버 계정이 없다
 // - 친구는 같은 나이 구분끼리만 (만 14~17세끼리, 성인끼리). 검색은 없다: 상대의 기기 코드(설정, 초대 링크)로 신청하고 상대가 수락
 // - 막혔거나, 나이 구분이 다르거나, 상대가 친구 기능을 못 쓰면 모두 409 unavailable 하나로 답한다 (상대의 나이와 차단을 알리지 않는다)
@@ -38,6 +45,8 @@ import { kstDay } from './shared/site-events';
 //   켠 것만 (아니면 404)
 // - 일정 제목 (2차): 친구마다 따로 켠다 (share_title, 받는 친구 단위, 기본 꺼짐). 둘 다 만 18세 이상일 때만 켜고, 읽을 때도 다시 본다.
 //   앱이 제목을 올려도 보여 줄 친구(제목을 켠 성인 친구)가 없으면 저장하지 않고, 응답은 친구별 허용에 따라 제목을 주거나 뺀다
+// - 펫 놀러 가기 (#141): 친구마다 따로 켠다 (visit_on, 기본 꺼짐). 양쪽 줄이 모두 켜진 친구의 펫 카드(종류 id, 이름, 네 발 서기)만
+//   손님 목록으로 나간다. 방문 기록은 서버에 남기지 않는다 (손님을 부를지는 받는 사람의 앱이 정한다)
 
 /** 친구 수 상한 (보낸 신청 포함) */
 export const FRIEND_MAX = 100;
@@ -50,6 +59,8 @@ export const GIFT_DAY_COINS = 500;
 export const GIFT_DAY_PASSES = 5;
 /** 일정: 앞으로 이만큼만 받고 보인다 */
 export const BUSY_DAYS = 14;
+/** 펫 카드는 이만큼 안 올리면 정리 작업이 지운다 (#141) */
+export const CARD_KEEP_DAYS = 14;
 /** 한 번에 올리는 바쁜 시간대 수 */
 export const BUSY_MAX = 400;
 /** 일정 제목은 이 글자 수까지 (넘으면 자른다) */
@@ -73,6 +84,10 @@ export interface FriendView extends Person {
   theyShare: boolean;
   /** 이 친구가 마지막으로 일정을 올린 때 (보여 줄 때만) */
   busyAt: string | null;
+  /** 내가 이 친구에게 내 펫이 놀러 가도 된다고 켰다 (#141) */
+  iVisit: boolean;
+  /** 이 친구가 나에게 자기 펫이 놀러 와도 된다고 켰다 */
+  theyVisit: boolean;
   /** 둘 다 만 18세 이상이라 일정 제목 공유를 켤 수 있다 */
   canTitle: boolean;
   /** 내가 이 친구에게 일정 제목까지 보여 준다 */
@@ -85,6 +100,11 @@ export interface TitledBlock {
   start: number;
   end: number;
   title: string;
+}
+
+/** 놀러 올 친구 펫 (#141). 올린 때나 계정 번호는 싣지 않는다 */
+export interface VisitorView extends Person {
+  pet: { species: string; name: string | null; stand: boolean };
 }
 
 export interface RequestView extends Person {
@@ -168,6 +188,9 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     await this.db.pool.query('DELETE FROM friend_request WHERE expires_at <= now()');
     await this.db.pool.query('DELETE FROM busy_block WHERE ends_at <= now()');
     await this.db.pool.query('DELETE FROM busy_title WHERE ends_at <= now()');
+    await this.db.pool.query(
+      `DELETE FROM pet_card WHERE updated_at < now() - make_interval(days => ${CARD_KEEP_DAYS})`,
+    );
     // 선물마다 트랜잭션 하나: 보낸 사람 계정 → 선물 줄 → 쪽지 줄 순으로 잠근다 (쪽지 열기, 탈퇴와 같은 순서, 교착 없음).
     // 받는 사람 계정은 잠그지 않는다: 열기와는 선물 줄 잠금이 막아 준다 (돌려준 선물은 열기가 410)
     let n = 0;
@@ -219,6 +242,8 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
         since: Date;
         i_share: boolean;
         they_share: boolean;
+        i_visit: boolean;
+        they_visit: boolean;
         busy_at: Date | null;
         can_title: boolean;
         i_title: boolean;
@@ -226,6 +251,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       }>(
         `SELECT a.code, a.nickname, f.created_at AS since, f.share_busy AS i_share,
                 COALESCE(g.share_busy, false) AS they_share,
+                f.visit_on AS i_visit, COALESCE(g.visit_on, false) AS they_visit,
                 CASE WHEN g.share_busy THEN (SELECT updated_at FROM busy_upload u WHERE u.account_id = f.friend_id) END
                   AS busy_at,
                 (a.age = '18+' AND m.age = '18+') AS can_title,
@@ -279,6 +305,8 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
             since: r.since.toISOString(),
             iShare: r.i_share,
             theyShare: r.they_share,
+            iVisit: r.i_visit,
+            theyVisit: r.they_visit,
             busyAt: r.busy_at?.toISOString() ?? null,
             canTitle: r.can_title,
             iTitle: r.i_title,
@@ -499,6 +527,8 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       if ((r.rowCount ?? 0) === 0) throw fail(HttpStatus.NOT_FOUND, { error: 'not_friend' });
       await dropUnsharedBusy(c, me);
       await dropUnsharedBusy(c, other);
+      await dropUnsharedVisit(c, me);
+      await dropUnsharedVisit(c, other);
     });
   }
 
@@ -528,6 +558,8 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       );
       await dropUnsharedBusy(c, me);
       await dropUnsharedBusy(c, other);
+      await dropUnsharedVisit(c, me);
+      await dropUnsharedVisit(c, other);
       return { code: (await person(c, other)).code };
     });
   }
@@ -823,6 +855,97 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  // ---- 펫 놀러 가기 (#141) ----
+
+  /** 내 펫이 놀러 갈 친구 수 (켠 친구 줄). 줄을 공유 잠금으로 잡아 친구 쪽의 끊기, 차단, 나이 내리기가 끝나길 기다리게 한다 */
+  private async visitingLocked(c: PoolClient, id: string): Promise<number> {
+    const r = await c.query('SELECT 1 FROM friend WHERE account_id = $1 AND visit_on FOR SHARE', [id]);
+    return r.rowCount ?? 0;
+  }
+
+  /** 이 친구에게 내 펫 놀러 가기 켜고 끄기. 끄고 나서 켠 친구가 없으면 올린 카드를 바로 지운다. 대답: { visit, visiting: 켠 친구 수 } */
+  async visit(accountId: string, code: unknown, on: boolean): Promise<{ visit: boolean; visiting: number }> {
+    return this.db.tx(async (c) => {
+      const me = await lockAccount(c, accountId);
+      const other = await findByCode(c, code);
+      if (!other) throw fail(HttpStatus.NOT_FOUND, { error: 'no_user' });
+      const r = await c.query('UPDATE friend SET visit_on = $3 WHERE account_id = $1 AND friend_id = $2', [
+        me.id,
+        other,
+        on,
+      ]);
+      if ((r.rowCount ?? 0) === 0) throw fail(HttpStatus.NOT_FOUND, { error: 'not_friend' });
+      if (!on) await dropUnsharedVisit(c, me.id);
+      return { visit: on, visiting: await this.visitingLocked(c, me.id) };
+    });
+  }
+
+  /** 모든 친구에게 놀러 가기를 끄고 올린 카드를 지운다 (로그아웃 같은 때) */
+  async stopVisiting(accountId: string): Promise<void> {
+    await this.db.tx(async (c) => {
+      const me = await lockAccount(c, accountId);
+      await c.query('UPDATE friend SET visit_on = false WHERE account_id = $1', [me.id]);
+      await dropUnsharedVisit(c, me.id);
+    });
+  }
+
+  /** 펫 카드 올리기 (덮어쓴다). 놀러 갈 친구가 없으면 409 not_visiting (받지 않는다) */
+  async putCard(accountId: string, card: PetCard): Promise<{ stored: true }> {
+    return this.db.tx(async (c) => {
+      const me = await lockAccount(c, accountId);
+      if ((await this.visitingLocked(c, me.id)) === 0)
+        throw fail(HttpStatus.CONFLICT, { error: 'not_visiting' });
+      await c.query(
+        `INSERT INTO pet_card (account_id, species, name, stand) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (account_id) DO UPDATE
+           SET species = EXCLUDED.species, name = EXCLUDED.name, stand = EXCLUDED.stand, updated_at = now()`,
+        [me.id, card.species, card.name, card.stand],
+      );
+      return { stored: true };
+    });
+  }
+
+  /**
+   * 놀러 올 친구 펫: 서로 켠 친구(양쪽 줄이 visit_on), 같은 나이 구분, 차단 없음, 로그인 계정, 두 쪽 모두 friends 와 friend_visit 가
+   * 허용된 친구의 카드만. 14일 안에 올린 카드만. 올린 때, 계정 번호는 주지 않는다 (접속 여부 신호가 되지 않게)
+   */
+  async visitors(accountId: string): Promise<{ visitors: VisitorView[] }> {
+    const rows = await this.db.pool.query<{
+      id: string;
+      code: string;
+      nickname: string | null;
+      species: string;
+      name: string | null;
+      stand: boolean;
+    }>(
+      `SELECT a.id, a.code, a.nickname, p.species, p.name, p.stand
+         FROM friend f
+         JOIN friend g ON g.account_id = f.friend_id AND g.friend_id = f.account_id AND g.visit_on
+         JOIN account a ON a.id = f.friend_id JOIN account m ON m.id = f.account_id
+         JOIN pet_card p ON p.account_id = f.friend_id
+        WHERE f.account_id = $1 AND f.visit_on AND a.age = m.age
+          AND p.updated_at > now() - make_interval(days => ${CARD_KEEP_DAYS})
+          AND EXISTS (SELECT 1 FROM login l WHERE l.account_id = a.id)
+          AND NOT EXISTS (SELECT 1 FROM friend_block k
+                           WHERE (k.blocker = f.account_id AND k.blocked = f.friend_id)
+                              OR (k.blocker = f.friend_id AND k.blocked = f.account_id))
+        ORDER BY f.created_at, a.code LIMIT ${FRIEND_MAX}`,
+      [accountId],
+    );
+    const visitors: VisitorView[] = [];
+    for (const r of rows.rows)
+      if (
+        (await this.features.featureAllowed('friends', r.id)) &&
+        (await this.features.featureAllowed('friend_visit', r.id))
+      )
+        visitors.push({
+          code: r.code,
+          nickname: r.nickname,
+          pet: { species: r.species, name: r.name, stand: r.stand },
+        });
+    return { visitors };
+  }
+
   /**
    * 친구의 바쁜 시간대 (그 친구가 나에게 켰을 때만, 아니면 404 not_shared). titles 는 그 친구가 나에게 제목까지 켰고
    * 둘 다 만 18세 이상일 때만 채운다 (아니면 빈 배열)
@@ -1095,6 +1218,47 @@ export class FriendsController {
   async busy(@Auth() auth: AuthInfo, @Param('code') code: string) {
     await this.friends.gate(auth, 'friend_calendar');
     return this.coded(auth, () => this.friends.busy(auth.accountId, code));
+  }
+
+  /**
+   * 펫 카드 올리기 (#141): { species, name?, stand? }. 종류는 앱에 든 기본 펫(kind:*, starter:*)뿐이고 이름은 닉네임 규칙이다.
+   * 그 밖의 칸은 400 card. 놀러 갈 친구가 없으면 409 not_visiting
+   */
+  @Put('visit/card')
+  @HttpCode(200)
+  async putCard(@Auth() auth: AuthInfo, @Body() body: unknown) {
+    this.limiter.check(`visit-card:${auth.accountId}`, LIMITS.visitCardByAccount);
+    await this.friends.gate(auth, 'friend_visit');
+    const card = parseCard(body, checkNickname);
+    if (!card) throw fail(HttpStatus.BAD_REQUEST, { error: 'card' });
+    return this.friends.putCard(auth.accountId, card);
+  }
+
+  /** 놀러 올 친구 펫 카드 (서로 켠 친구만) */
+  @Get('visits')
+  async visits(@Auth() auth: AuthInfo) {
+    this.limiter.check(`visit-list:${auth.accountId}`, LIMITS.visitListByAccount);
+    await this.friends.gate(auth, 'friend_visit');
+    return this.friends.visitors(auth.accountId);
+  }
+
+  /** 모든 친구에게 놀러 가기를 끄고 카드를 지운다. 기능 키와 상관없이 늘 된다 (자기 것을 지우는 길, DELETE /v1/friends/calendar 와 같다) */
+  @Delete('visit')
+  @HttpCode(204)
+  async stopVisit(@Auth() auth: AuthInfo): Promise<void> {
+    await this.friends.stopVisiting(auth.accountId);
+  }
+
+  /** 이 친구에게 내 펫 놀러 가기: { on: true | false }. 켜기는 friends 와 friend_visit, 끄기는 friends 기능 키를 본다 */
+  @Put(':code/visit')
+  @HttpCode(200)
+  async visit(@Auth() auth: AuthInfo, @Param('code') code: string, @Body() body: unknown) {
+    const on = (body as { on?: unknown } | null)?.on;
+    if (typeof on !== 'boolean') throw fail(HttpStatus.BAD_REQUEST, { error: 'on' });
+    this.limiter.check(`visit-switch:${auth.accountId}`, LIMITS.visitSwitchByAccount);
+    if (on) await this.friends.gate(auth, 'friend_visit');
+    else await this.friends.gate(auth);
+    return this.coded(auth, () => this.friends.visit(auth.accountId, code, on));
   }
 
   /** 친구 끊기 */
