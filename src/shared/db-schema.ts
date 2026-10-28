@@ -292,6 +292,19 @@ export interface Db {
   };
 }
 
+/** 마지막 기록 날에서 이만큼 넘게 뛴 시계는 믿지 않고 휴지통을 비우지 않는다 */
+export const CLOCK_JUMP_DAYS = 90;
+
+/**
+ * 켤 때 시계가 크게 앞서 있으면(배터리가 나간 컴퓨터, 잘못 맞춘 시계) 휴지통 전체가 한 번에 지워진다.
+ * 마지막으로 앱이 켜 있던 날(하루 기록)에서 90일 넘게 뛰었으면 true. 할 일, 메모, 일정 휴지통이 같이 쓴다
+ */
+export function clockJumped(db: Db, now: number): boolean {
+  const seen = (db.prepare('select max(day) as d from daily_stat').get() as { d: string | null } | undefined)
+    ?.d;
+  return Boolean(seen && now - Date.parse(`${seen}T00:00:00Z`) > CLOCK_JUMP_DAYS * 86_400_000);
+}
+
 export function schemaVersion(db: Db): number {
   return Number((db.prepare('pragma user_version').get() as { user_version: number }).user_version);
 }

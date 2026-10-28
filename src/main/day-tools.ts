@@ -369,7 +369,7 @@ export function createDayTools(o: DayToolsOptions) {
         return notes.length ? { text: notesMarkdown(notes, now), n: notes.length } : undefined;
       }
       if (kind === 'events-ics') {
-        const events = o.events.between(0, Number.MAX_SAFE_INTEGER);
+        const events = o.events.stored(0, Number.MAX_SAFE_INTEGER);
         return events.length ? { text: eventsIcs(events, now), n: events.length } : undefined;
       }
       const todos = o.exportTodos();

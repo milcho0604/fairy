@@ -87,3 +87,19 @@ test('시계가 앞으로 튀어도(몇 해 뒤) 새것 3개와, 그 종류의 �
   // 보통 시계에서는 30일 규칙 그대로 (모두 30일 안)
   assert.deepEqual(expiredCopies(list, real), []);
 });
+
+test('가져오기 전 복사본은 새것 5개만 두고 30일을 기다리지 않는다', () => {
+  const now = Date.now();
+  const list = Array.from({ length: 9 }, (_, i) => ({
+    name: `before-import-2026102${i}-0000`,
+    kind: 'beforeImport' as const,
+    at: now - i * 2 * 86_400_000,
+    bytes: 1,
+  }));
+  // 가장 새것에서 7일 안인 것(0~3번)은 시계가 튄 경우를 위해 남고, 5개 밖이면서 7일 넘은 것(5~8번)만 지운다
+  assert.deepEqual(
+    expiredCopies(list, now).map((c) => c.name),
+    list.slice(5).map((c) => c.name),
+  );
+  assert.deepEqual(expiredCopies(list.slice(0, 5), now), []);
+});

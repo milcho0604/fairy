@@ -10,10 +10,12 @@ import {
   parseQuickEvent,
   repairAllDayZone,
   repairEventTimes,
+  repairRepeatZone,
   takeKoDue,
   timeLabel,
 } from './event-store.ts';
 import { mergeNoteText, NoteStore, notePreview, noteTitle } from './note-store.ts';
+import { localDay, TodoStore } from './todo-store.ts';
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 9, 6, 9, 0); // 기준 시각
@@ -801,4 +803,80 @@ test('AI 로 보낼 일정 거르개: 꺼짐(기본)이면 구글에서 읽어 �
     all.filter(aiEventFilter(true)).map((e) => e.title),
     ['내 일정', 'ics 일정', '구글 일정'],
   );
+});
+
+// ---- 버그잡이: 반복 회차 확장 상한, 휴지통 시계 점프, 시간대 바꿈 ----
+
+const DAY = 86_400_000;
+const countRows = (db: Db) => (db.prepare('select id from event').all() as unknown[]).length;
+
+test('먼 날짜나 끝없는 범위를 물어도 반복 회차는 지금부터 2년까지만 저장한다', () => {
+  const { db, events } = fresh();
+  const now = Date.now();
+  events.add({ title: '매일', startAt: now + 3_600_000, repeat: 'daily' }, now);
+  const before = countRows(db);
+  const far = Date.UTC(2100, 0, 1);
+  assert.deepEqual(events.between(far, far + 31 * DAY), [], '2년 너머 달력에는 반복 일정이 없다');
+  events.between(0, Number.MAX_SAFE_INTEGER);
+  const grew = countRows(db) - before;
+  assert.ok(grew > 0 && grew <= 731, `행이 ${grew}개 늘었다`);
+  assert.ok(countRows(db) <= 740);
+  // 1년 안은 그대로 보인다
+  assert.ok(events.between(now + 300 * DAY, now + 301 * DAY).length >= 1);
+});
+
+test('stored 는 반복 회차를 새로 만들지 않고 저장된 행만 돌려준다', () => {
+  const { db, events } = fresh();
+  const now = Date.now();
+  events.add({ title: '매일', startAt: now + 3_600_000, repeat: 'daily' }, now);
+  const before = countRows(db);
+  const all = events.stored(0, Number.MAX_SAFE_INTEGER);
+  assert.equal(countRows(db), before);
+  assert.equal(all.length, before, '내보내기에 저장된 회차가 빠짐없이 든다');
+  const far = Date.UTC(2100, 0, 1);
+  assert.deepEqual(events.stored(far, far + DAY), []);
+  assert.equal(countRows(db), before);
+});
+
+test('시계가 90일 넘게 뛰면 메모와 일정 휴지통도 비우지 않는다', () => {
+  const { db, events, notes } = fresh();
+  const todos = new TodoStore(db);
+  const now = Date.now();
+  db.prepare('insert into daily_stat (day) values (?)').run(localDay(now));
+  const n = notes.add({ body: '알파' }, now);
+  const ev = events.add({ title: '일정', startAt: now + 3_600_000 }, now);
+  const t = todos.add({ title: '할 일' }, now);
+  notes.remove(n.id, now);
+  events.remove(ev.id, now);
+  todos.remove(t.id, now);
+  const jumped = now + 400 * DAY;
+  assert.deepEqual(
+    [todos.purgeExpired(jumped), notes.purgeExpired(jumped), events.purgeExpired(jumped)],
+    [0, 0, 0],
+  );
+  // 정상 시계(31일 뒤)에서는 지워진다
+  const later = now + 31 * DAY;
+  db.prepare('insert into daily_stat (day) values (?)').run(localDay(later));
+  assert.equal(notes.purgeExpired(later), 1);
+  assert.equal(events.purgeExpired(later), 1);
+});
+
+test('시간대를 바꿔 켜면 앞으로 올 반복 회차를 기준 시각에 다시 맞춘다', () => {
+  const prev = process.env.TZ;
+  try {
+    process.env.TZ = 'Asia/Seoul';
+    const { db, events } = fresh();
+    const base = new Date(2026, 9, 1, 8, 0).getTime();
+    events.add({ title: '아침', startAt: new Date(2026, 9, 2, 9, 0).getTime(), repeat: 'daily' }, base);
+    process.env.TZ = 'America/Los_Angeles';
+    const hours = () =>
+      new Set(events.stored(base, base + 500 * DAY).map((e) => new Date(e.startAt).getHours()));
+    assert.ok(hours().size > 1, '고치기 전에는 흩어진다');
+    assert.ok(repairRepeatZone(db, base) > 0);
+    assert.deepEqual([...hours()], [9]);
+    assert.equal(repairRepeatZone(db, base), 0, '두 번 해도 그대로');
+  } finally {
+    if (prev === undefined) Reflect.deleteProperty(process.env, 'TZ');
+    else process.env.TZ = prev;
+  }
 });
