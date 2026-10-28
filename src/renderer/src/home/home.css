@@ -163,6 +163,11 @@ html.home-win body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 고른 항목은 바탕이 진해져 흐린 글(--muted)이 밝은 쪽에서 4.20 이었다 */
+.home-nav button.on kbd {
+  color: var(--chip-on-ink);
+}
+
 .home-foot {
   display: flex;
   flex-direction: column;
