@@ -228,12 +228,22 @@ describe('기능 스위치 한 표', () => {
           admin.act('/admin/features/mode', { key, mode: modes[i % 2] ?? 'off', from, confirm: 'yes' }),
         ),
       );
-    const first = await run('allowlist', ['off', 'everyone']);
-    assert.equal(first.filter((r) => r.ok).length, 1);
+    // 성공 수는 결과 글(세션에 하나뿐이라 동시 요청끼리 덮어쓴다)이 아니라 운영 기록 줄 수로 센다
+    const wins = async () =>
+      Number(
+        (
+          await h.pool.query(
+            "SELECT count(*) AS n FROM admin_log WHERE action = 'feature.mode' AND detail->>'key' = $1",
+            [key],
+          )
+        ).rows[0]?.n,
+      );
+    await run('allowlist', ['off', 'everyone']);
+    assert.equal(await wins(), 1);
     const cur = (await h.pool.query<{ mode: string }>('SELECT mode FROM feature_flag WHERE key = $1', [key]))
       .rows[0]?.mode as string;
-    const second = await run(cur, ['allowlist', cur === 'off' ? 'everyone' : 'off']);
-    assert.equal(second.filter((r) => r.ok).length, 1);
+    await run(cur, ['allowlist', cur === 'off' ? 'everyone' : 'off']);
+    assert.equal(await wins(), 2);
   });
 
   test('줄이 없는 스위치는 거절되거나 읽기만 해서는 줄이 생기지 않는다 (서버 설정 기본값 표시 유지)', async () => {
