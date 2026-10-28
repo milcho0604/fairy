@@ -79,30 +79,30 @@ export const ko = {
         'P.S. 점심은 꼭 챙기자.',
       ]),
     }),
-  // 주간 편지 (월요일, 코인 없음)
+  // 주간 편지 (한 주에 한 번, 코인 없음)
   'note.week.open': (v: Pv) =>
     P(v.p, {
       friend: V(v.v, [
         '한 주가 시작됐어! 지난주 이야기부터 해 줄게.',
-        '월요일이야. 지난주를 돌아보는 편지를 썼어.',
+        '편지를 썼어. 지난주를 돌아보는 이야기야.',
         '새로운 한 주야. 지난주에 네가 한 일을 적어 봤어.',
         '주간 편지 도착! 지난 한 주 정말 수고했어.',
       ]),
       polite: V(v.v, [
         '한 주가 시작됐어요. 지난주 이야기부터 해 드릴게요.',
-        '월요일이에요. 지난주를 돌아보는 편지를 썼어요.',
+        '편지를 썼어요. 지난주를 돌아보는 이야기예요.',
         '새로운 한 주예요. 지난주에 하신 일을 적어 봤어요.',
         '주간 편지가 도착했어요. 지난 한 주 정말 수고하셨어요.',
       ]),
       tsundere: V(v.v, [
         '한 주가 시작됐네. 지난주 얘기 좀 해 줄게. 듣든 말든.',
-        '월요일이야. 지난주 정리해 봤어. 시간이 남아서.',
+        '주간 편지야. 지난주 정리해 봤어. 시간이 남아서.',
         '새 주야. 지난주에 뭐 했는지, 다 적어 놨거든.',
         '주간 편지야. ...지난주, 수고했어.',
       ]),
       calm: V(v.v, [
         '한 주가 시작됐어. 지난주를 차분히 돌아보자.',
-        '월요일이야. 지난주를 돌아보는 편지를 썼어.',
+        '편지를 썼어. 지난주를 차분히 돌아봤어.',
         '새로운 한 주야. 지난주에 해 낸 것들을 적어 봤어.',
         '주간 편지가 도착했어. 지난 한 주 수고했어.',
       ]),
@@ -287,25 +287,25 @@ export const en: Translation<typeof ko> = {
     P(v.p, {
       friend: V(v.v, [
         "A new week! Let's start with last week.",
-        "It's Monday. I wrote a letter looking back on last week.",
+        'I wrote a letter looking back on last week.',
         'New week! I wrote down what you did last week.',
         'Weekly letter is here! You worked hard last week.',
       ]),
       polite: V(v.v, [
         'A new week has begun. Let me start with last week.',
-        "It's Monday. I wrote a letter looking back on last week.",
+        'I wrote a letter looking back on last week.',
         'A new week. I wrote down what you accomplished last week.',
         'Your weekly letter has arrived. You worked hard last week.',
       ]),
       tsundere: V(v.v, [
         "A new week. I'll tell you about last week. Listen or don't.",
-        "It's Monday. I sorted out last week. I had time.",
+        'Weekly letter. I sorted out last week. I had time.',
         'New week. I wrote down everything you did last week.',
         'Weekly letter. ...You did well last week.',
       ]),
       calm: V(v.v, [
         "A new week begins. Let's look back on last week calmly.",
-        "It's Monday. I wrote a letter looking back on last week.",
+        'I wrote a letter calmly looking back on last week.',
         'A new week. I wrote down what you got done last week.',
         'Your weekly letter has arrived. Good work last week.',
       ]),

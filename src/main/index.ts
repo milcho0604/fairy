@@ -19,7 +19,7 @@ import { ownsLoginItem } from '../shared/login-item.ts';
 import { runnerLookOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
-import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
+import { setSpeechSource, setVoiceSource, voiced, voicedLive } from '../shared/persona-voice.ts';
 import { cardOf, isCustomPet } from '../shared/pet-card-of.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { DoingSet } from '../shared/pet-status.ts';
@@ -851,14 +851,16 @@ ready
           }
           return ok;
         }
-        void pet.say({ kind: 'answer', text: voiced('pet.play.walkStart'), ttlMs: 2000 });
+        const walkHi = voicedLive('pet.play.walkStart');
+        if (walkHi !== undefined) void pet.say({ kind: 'answer', text: walkHi, ttlMs: 2000 });
         await new Promise((r) => setTimeout(r, 2200));
         const started = Date.now();
         const ok = await pet.stroll(walkMin);
         const minutes = Math.round((Date.now() - started) / 60_000);
         stats.addWalk(Date.now(), minutes);
         if (minutes > 0) petLife.activity('play');
-        if (ok) void pet.say({ kind: 'answer', text: voiced('pet.play.walkEnd'), ttlMs: 4000 });
+        const walkBye = voicedLive('pet.play.walkEnd');
+        if (ok && walkBye !== undefined) void pet.say({ kind: 'answer', text: walkBye, ttlMs: 4000 });
         return ok;
       } finally {
         playing = false;
@@ -891,7 +893,7 @@ ready
       busy: () => pet.isHidden() || playing || pet.held() || planner.focus.phase === 'focus',
       giggle: (text) => {
         pet.react('dance');
-        void pet.say({ kind: 'answer', text, ttlMs: 3000 });
+        if (text) void pet.say({ kind: 'answer', text, ttlMs: 3000 });
       },
       log,
     });

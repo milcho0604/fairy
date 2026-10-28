@@ -1,7 +1,7 @@
 // 웃게 하기 중 메인이 들고 있는 것: 끝말잇기 판(채팅 창에서 AI 없이)과 간지럼(쓰다듬기를 센다).
 // 규칙은 shared/word-chain.ts, shared/fun.ts. 웃겨 줘와 하이파이브는 짧은 놀이(main/minigames.ts)로 한다.
 import { pickLine, TICKLE, TICKLE_START, tickle } from '../shared/fun.ts';
-import { getLang, type I18nKey, t } from '../shared/i18n/index.ts';
+import { getLang, type I18nKey, isMutedLine, t } from '../shared/i18n/index.ts';
 import { grantCoins } from '../shared/minigames.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
@@ -173,7 +173,9 @@ export function createTickle(o: TickleOptions) {
       st = { pats: r.pats, lastAt: r.lastAt };
       if (!r.tickled) return false;
       o.log('fun', 'tickle');
-      o.giggle(voiced(`fun.tickle.${pickLine(TICKLE.lines, rand)}` as I18nKey));
+      const n = pickLine(TICKLE.lines, rand, (k) => !isMutedLine(`fun.tickle.${k}`));
+      // 웃음 말을 모두 안 쓰기로 했으면 말 없이 웃는 몸짓만
+      o.giggle(n === undefined ? '' : voiced(`fun.tickle.${n}` as I18nKey));
       return true;
     },
   };

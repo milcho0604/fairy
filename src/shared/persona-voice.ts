@@ -2,7 +2,7 @@
 // 츤데레, 차분한 선생님) 말투로. 다정한 친구는 원래 말 그대로이고, 나머지는 사전의 voice.<성격>.<원래 키> 를 쓴다.
 // AI 없이 정해진 말이다. 메인이 시작할 때 setVoiceSource 로 지금 성격을 읽는 곳을 정한다 (안 정하면 다정한 친구)
 import type { PersonaId } from './ai/persona.ts';
-import { dicts, getLang, hasLineOverride, type I18nKey, t } from './i18n/index.ts';
+import { dicts, getLang, hasLineOverride, type I18nKey, isMutedLine, t } from './i18n/index.ts';
 import {
   applyStyle,
   callWord,
@@ -171,6 +171,9 @@ function emojiFor(key: string, persona: PersonaId): string | undefined {
   return undefined;
 }
 
+/** 값 name 이 펫 자신이 아니라 다른 펫(놀이 상대 친구)인 말. 1인칭으로 바꾸지 않는다 */
+const NAME_IS_OTHER = /^play\.tag\./;
+
 /** 직접 쓴 말 하나를 고른다 (rand 0~1) */
 function ownLine(
   style: SpeechStyle,
@@ -221,7 +224,8 @@ export function voiced(
   }
   const base = basePersonaOf(persona, custom ?? customSource());
   // 펫이 자기를 "나", "저" 같은 말로 부르게 했으면 이름 자리에 그 말을 넣는다 (한국어, 조사는 withParticle 이 맞춘다)
-  const me = style ? selfWord(style, getLang()) : undefined;
+  // 단, name 이 펫 자신이 아닌 말(술래잡기 상대 친구 이름)은 그대로 둔다. "나야, 술래잡기 하자" 로 뜻이 뒤집힌다
+  const me = style && !NAME_IS_OTHER.test(key) ? selfWord(style, getLang()) : undefined;
   if (me && vars && 'name' in vars) vars = { ...vars, name: me };
   let text = looseT(key, vars);
   // 사용자가 직접 고친 대사는 말투와 상관없이 그 글을 쓴다 (말투 변형이 고친 글을 가리지 않게, #125)
@@ -240,6 +244,14 @@ export function voiced(
     rand,
     ...(emoji ? { emoji } : {}),
   });
+}
+
+/**
+ * voiced 인데 사용자가 안 쓰기로 한 말(설정 > 대사 관리)이면 undefined. 정해진 열쇠 하나를 바로 부르는 곳은 이것으로
+ * 부르고, undefined 면 말풍선을 띄우지 않는다 (변형을 고르는 곳은 variants.pick 이 같은 일을 한다)
+ */
+export function voicedLive(key: I18nKey, vars?: Record<string, string | number>): string | undefined {
+  return isMutedLine(key) ? undefined : voiced(key, vars);
 }
 
 /** 이미 만든 말(쪽지 줄처럼 성격마다 따로 쓴 말)에 지금 말투 규칙을 입힌다. 말을 따로 쓴 성격이면 그대로 */

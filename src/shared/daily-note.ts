@@ -20,6 +20,8 @@ export const NOTE_UNTIL_MIN = 22 * 60;
 /** 저녁 쪽지를 들고 오는 때 (밤 9시 뒤, 11시 반 전까지) */
 export const EVENING_FROM_MIN = 21 * 60;
 export const EVENING_UNTIL_MIN = 23 * 60 + 30;
+/** 오늘 매일 쪽지를 들고 온 뒤 저녁 쪽지까지 두는 간격 (21시 넘어 처음 앉았을 때 두 통이 연달아 오지 않게) */
+export const EVENING_GAP_MIN = 120;
 /** 쪽지 줄마다 날마다 다른 말 수 (사전의 V 목록 길이와 같다. daily-note.test 가 맞는지 본다) */
 export const NOTE_VARIANTS = {
   open: 8,
@@ -64,6 +66,8 @@ export interface DailyNote {
   /** 특별한 편지에 든 코인 */
   coins?: number;
   lines: NoteLine[];
+  /** 들고 온 때 (그날 0시부터 분). 옛 쪽지에는 없다 */
+  at?: number;
   /** 펼쳐 읽었는지 */
   read: boolean;
 }
@@ -133,6 +137,9 @@ function noteOf(v: unknown): DailyNote | undefined {
     ...(milestone ? { milestone } : {}),
     ...(coins ? { coins } : {}),
     lines,
+    ...(Number.isInteger(n.at) && (n.at as number) >= 0 && (n.at as number) < 24 * 60
+      ? { at: n.at as number }
+      : {}),
     read: n.read === true,
   };
 }
@@ -439,8 +446,12 @@ export function canDeliverEvening(
   state: NoteState,
   o: { day: string; minute: number; present: boolean; calm: boolean; on: boolean },
 ): boolean {
+  const daily = state.box.find((n) => n.day === o.day && n.kind !== 'evening');
+  // 매일 쪽지를 방금 들고 왔으면 저녁 쪽지는 간격을 두고
+  const tooSoon = daily?.at !== undefined && o.minute - daily.at < EVENING_GAP_MIN;
   return (
     o.on &&
+    !tooSoon &&
     !state.box.some((n) => n.day === o.day && n.kind === 'evening') &&
     o.minute >= EVENING_FROM_MIN &&
     o.minute < EVENING_UNTIL_MIN &&

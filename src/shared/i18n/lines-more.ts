@@ -170,7 +170,7 @@ export const ko = {
   'idle.friend.new.4': '앞으로 같이 지낼 날이 많이 남았어. 잘 부탁해.',
   'idle.friend.new.5': '작은 말 한마디에도 {name:은} 기뻐.',
   'idle.friend.new.6': '쓰다듬어 주면 {name:이} 조금 더 가까워진 기분이야.',
-  'idle.friend.1.2': '이제 타자 소리만 들어도 {name:이} 너인 줄 알아.',
+  'idle.friend.1.2': '이제 타자 소리만 들어도 너인 줄 {name:이} 알아.',
   'idle.friend.1.3': '{name:은} 우리가 같이 보낸 시간이 좋아.',
   'idle.friend.1.4': '조금 더 가까워진 것 같아. 기분 좋은 일이야.',
   'idle.friend.1.5': '네가 오면 {name:이} 먼저 알아채. 신기하지?',

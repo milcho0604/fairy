@@ -219,10 +219,12 @@ export function createDailyNotes(o: DailyNoteOptions) {
           Math.random,
           recent,
         );
-    state = fileNote(state, note);
+    const d = new Date(now);
+    const filed = { ...note, at: d.getHours() * 60 + d.getMinutes() };
+    state = fileNote(state, filed);
     save();
-    o.log('note', '씀', note.kind ?? note.look, milestone ?? '');
-    return note;
+    o.log('note', '씀', filed.kind ?? filed.look, milestone ?? '');
+    return filed;
   }
 
   /** 오늘 저녁 쪽지를 쓴다. 이미 있으면 그것 */
