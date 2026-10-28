@@ -63,3 +63,27 @@ test('짧은 시간에 여러 번 죽으면 멈추고 기록한다, 다시 열�
   revive();
   assert.equal(wc.reloads, 4);
 });
+
+test('자동으로 살아난 뒤 다시 열어도 세던 것을 지운다', () => {
+  const { wc, gone } = fake();
+  const revive = reviveOnCrash(wc as unknown as WebContents, 'x', () => {});
+  for (let i = 0; i < 3; i++) gone();
+  assert.equal(wc.reloads, 3);
+  // 멀쩡한 채로 다시 열기: 불러오지 않지만 가드는 풀린다
+  revive();
+  assert.equal(wc.reloads, 3);
+  for (let i = 0; i < 3; i++) gone();
+  assert.equal(wc.reloads, 6);
+});
+
+test('again 을 주면 reload 대신 그것을 부른다', () => {
+  const { wc, gone } = fake();
+  const revive = reviveOnCrash(wc as unknown as WebContents, 'x', () => {});
+  for (let i = 0; i < 4; i++) gone();
+  let called = 0;
+  revive(() => {
+    called++;
+  });
+  assert.equal(called, 1);
+  assert.equal(wc.reloads, 3);
+});

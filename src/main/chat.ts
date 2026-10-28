@@ -955,7 +955,7 @@ export function createChat(o: ChatOptions) {
     const wc = view.webContents;
     wc.setWindowOpenHandler(() => ({ action: 'deny' }));
     wc.on('will-navigate', (ev) => ev.preventDefault());
-    reviveOnCrash(wc, 'chat', log);
+    const reviveEmbed = reviveOnCrash(wc, 'chat', log);
     const devUrl = devRendererUrl();
     if (devUrl) void wc.loadURL(`${devUrl}/chat.html#embed`);
     else void wc.loadFile(join(import.meta.dirname, '../renderer/chat.html'), { hash: 'embed' });
@@ -977,7 +977,7 @@ export function createChat(o: ChatOptions) {
       face,
       reveal() {
         if (win && !win.isDestroyed()) win.close();
-        if (!wc.isDestroyed() && wc.isCrashed()) wc.reload();
+        reviveEmbed();
       },
       remove() {
         if (embedded === face) embedded = undefined;
