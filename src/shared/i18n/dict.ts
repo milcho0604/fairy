@@ -25,6 +25,7 @@ import * as gemini from './gemini.ts';
 import * as home from './home.ts';
 import * as idle from './idle.ts';
 import * as keep from './keep.ts';
+import * as linesMore from './lines-more.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
 import * as notice from './notice.ts';
@@ -52,6 +53,7 @@ import * as tray from './tray.ts';
 import type { Translation } from './types.ts';
 import * as voice from './voice.ts';
 import * as voiceIdle from './voice-idle.ts';
+import * as voiceMore from './voice-more.ts';
 import * as voicePlay from './voice-play.ts';
 
 export const ko = {
@@ -107,6 +109,8 @@ export const ko = {
   ...keep.ko,
   ...home.ko,
   ...rows.ko,
+  ...linesMore.ko,
+  ...voiceMore.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -162,4 +166,6 @@ export const en: Translation<typeof ko> = {
   ...keep.en,
   ...home.en,
   ...rows.en,
+  ...linesMore.en,
+  ...voiceMore.en,
 };

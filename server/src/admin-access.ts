@@ -16,10 +16,11 @@ export class AdminAccess {
   ) {}
 
   /** 이 계정에 운영자 구글 로그인이 붙어 있나 (세션인지는 보지 않는다. AI 허용 목록에 쓴다) */
-  async isAdminAccount(accountId: string): Promise<boolean> {
+  async isAdminAccount(accountId: string, q: Pick<Db['pool'], 'query'> = this.db.pool): Promise<boolean> {
     const subs = this.config.adminSubs ?? [];
     if (subs.length === 0) return false;
-    const r = await this.db.pool.query(
+    // 트랜잭션 안에서는 그 클라이언트(q)로 묻는다: 풀에서 연결을 하나 더 잡으면 풀이 찬 때 서로 기다려 멎는다
+    const r = await q.query(
       `SELECT 1 FROM login WHERE account_id = $1 AND service = 'google' AND sub = ANY($2::text[]) LIMIT 1`,
       [accountId, subs],
     );

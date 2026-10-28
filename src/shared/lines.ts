@@ -21,7 +21,10 @@ export const emptyOverrides = (): LineOverrides => ({ ko: {}, en: {} });
  */
 export const LINE_GROUPS = [
   { id: 'hello', prefixes: ['pet.hello.', 'briefing.hi.', 'routine.hi.', 'routine.cue', 'idle.back.'] },
-  { id: 'idle', prefixes: ['idle.any.', 'idle.work.', 'idle.mouse.', 'idle.together.', 'idle.friend.'] },
+  {
+    id: 'idle',
+    prefixes: ['idle.any.', 'idle.work.', 'idle.mouse.', 'idle.together.', 'idle.friend.', 'idle.mood.'],
+  },
   {
     id: 'time',
     prefixes: [

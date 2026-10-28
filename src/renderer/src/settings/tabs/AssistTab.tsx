@@ -13,7 +13,16 @@ const chatterHint = (level: ChatterLevel): string =>
     ? t('settings.chatterHint.quiet')
     : level === 'normal'
       ? t('settings.chatterHint.normal', { n: MAX_PER_HOUR.normal })
-      : t('settings.chatterHint.chatty', { n: MAX_PER_HOUR.chatty });
+      : level === 'sometimes'
+        ? t('settings.chatterHint.sometimes', { n: MAX_PER_HOUR.sometimes })
+        : t('settings.chatterHint.chatty', { n: MAX_PER_HOUR.chatty });
+
+const clock = (minute: number): string =>
+  `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+const minuteOf = (value: string): number | undefined => {
+  const [h, m] = value.split(':').map(Number);
+  return Number.isInteger(h) && Number.isInteger(m) ? (h ?? 0) * 60 + (m ?? 0) : undefined;
+};
 
 /** 비서 탭: 말풍선과 알림, 만나는 시간, 하루 회고, 캘린더 */
 export function AssistTab({ snap, update, flash }: TabProps) {
@@ -22,7 +31,7 @@ export function AssistTab({ snap, update, flash }: TabProps) {
     <>
       <Section title={t('settings.bubbles')}>
         <fieldset className="segmented" aria-label={t('settings.bubblesAria')}>
-          {(['quiet', 'normal', 'chatty'] as const).map((level) => (
+          {(['quiet', 'normal', 'sometimes', 'chatty'] as const).map((level) => (
             <button
               key={level}
               type="button"
@@ -35,6 +44,44 @@ export function AssistTab({ snap, update, flash }: TabProps) {
           ))}
         </fieldset>
         <small className="below">{chatterHint(s.chatter)}</small>
+        <Toggle
+          label={t('settings.quietOn')}
+          hint={t('settings.quietHint')}
+          on={s.quietHours.on}
+          onChange={(v) => update({ quietHours: { ...s.quietHours, on: v } })}
+        />
+        {s.quietHours.on && (
+          <div className="quiet-times">
+            <label className="field">
+              <span>{t('settings.quietFrom')}</span>
+              <input
+                type="time"
+                value={clock(s.quietHours.from)}
+                onChange={(e) => {
+                  const m = minuteOf(e.target.value);
+                  if (m !== undefined) update({ quietHours: { ...s.quietHours, from: m } });
+                }}
+              />
+            </label>
+            <label className="field">
+              <span>{t('settings.quietTo')}</span>
+              <input
+                type="time"
+                value={clock(s.quietHours.to)}
+                onChange={(e) => {
+                  const m = minuteOf(e.target.value);
+                  if (m !== undefined) update({ quietHours: { ...s.quietHours, to: m } });
+                }}
+              />
+            </label>
+          </div>
+        )}
+        <Toggle
+          label={t('settings.quietWeekend')}
+          hint={t('settings.quietWeekendHint')}
+          on={s.quietHours.weekend}
+          onChange={(v) => update({ quietHours: { ...s.quietHours, weekend: v } })}
+        />
         <Toggle
           label={t('settings.osNotify')}
           hint={t('settings.osNotifyHint')}

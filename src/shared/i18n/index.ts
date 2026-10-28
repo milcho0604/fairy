@@ -61,7 +61,8 @@ function lookup(key: string, vars: Vars | undefined): string {
   if (typeof v === 'function') return (v as (vars?: Vars) => string)(vars);
   if (typeof v !== 'string') return key;
   if (!vars) return v;
-  return v.replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m));
+  // {이름} 과 {이름:은} (값 뒤에 받침에 맞는 조사). 값이 없는 자리는 그대로 둔다
+  return renderTemplate(v, vars);
 }
 
 /** 시험용: 사전을 직접 보고 싶을 때 */

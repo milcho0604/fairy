@@ -113,7 +113,9 @@ export class Feeds {
    * 5분 동안 기억한다. 못 읽으면 undefined (그때는 올리기를 막는다)
    */
   async latestRelease(now = Date.now()): Promise<string | undefined> {
-    if (this.#latest && now - this.#latest.at < 300_000 && this.#latest.version) return this.#latest.version;
+    // 못 읽은 것도 1분은 기억한다: GitHub 가 느리거나 막힌 동안 운영자 요청마다 5초씩 기다리지 않게
+    if (this.#latest && now - this.#latest.at < (this.#latest.version ? 300_000 : 60_000))
+      return this.#latest.version;
     let version: string | undefined;
     try {
       const res = await fetch(this.config.releasesApi ?? DEFAULT_RELEASES_API, {

@@ -81,50 +81,87 @@ export class Features {
   }
 
   /** allowlist 모드에서도 운영자 계정은 켜지는 기능인가 (calendar_link_hint) */
-  private async adminAllowed(key: FeatureKey, accountId: string): Promise<boolean> {
+  private async adminAllowed(key: FeatureKey, accountId: string, q: Q): Promise<boolean> {
     const f: FeatureDef = FEATURES[key] as FeatureDef;
     const subs = this.config.adminSubs ?? [];
     if (!f.admins || subs.length === 0) return false;
-    const r = await this.db.pool.query(
+    const r = await q.query(
       `SELECT 1 FROM login WHERE account_id = $1 AND service = 'google' AND sub = ANY($2::text[]) LIMIT 1`,
       [accountId, subs],
     );
     return (r.rowCount ?? 0) > 0;
   }
 
-  private async dbModes(): Promise<Map<string, FeatureMode>> {
+  private async dbModes(q: Q): Promise<Map<string, FeatureMode>> {
     const now = this.clock();
     if (this.#modes && now - this.#modes.at < FEATURE_CACHE_MS) return this.#modes.map;
-    const r = await this.db.pool.query<{ key: string; mode: string }>('SELECT key, mode FROM feature_flag');
+    const r = await q.query<{ key: string; mode: string }>('SELECT key, mode FROM feature_flag');
     const map = new Map<string, FeatureMode>();
     for (const row of r.rows) if (isFeatureMode(row.mode)) map.set(row.key, row.mode);
     this.#modes = { at: now, map };
     return map;
   }
 
-  /** 기능의 지금 모드 (DB 가 env 보다 먼저) */
-  async featureMode(key: FeatureKey): Promise<FeatureMode> {
-    return (await this.dbModes()).get(key) ?? this.envMode(key);
+  /**
+   * 기능의 지금 모드 (DB 가 env 보다 먼저). q 는 트랜잭션 클라이언트: 트랜잭션 안에서 부를 때는 풀에서 연결을 하나 더
+   * 잡지 않게 그것을 넘긴다
+   */
+  async featureMode(key: FeatureKey, q: Q = this.db.pool): Promise<FeatureMode> {
+    return (await this.dbModes(q)).get(key) ?? this.envMode(key);
   }
 
   /**
-   * 이 계정이 기능을 쓸 수 있는가. allowlist 면 그 계정만(admins 인 기능은 운영자 계정도), 계정이 없으면(로그인 전) false
+   * 이 계정이 기능을 쓸 수 있는가. allowlist 면 그 계정만(admins 인 기능은 운영자 계정도), 계정이 없으면(로그인 전) false.
+   * 트랜잭션 안에서는 q 에 그 클라이언트를 넘긴다 (풀 연결을 더 잡으면 동시 요청이 풀 크기만큼 몰릴 때 서로 기다려 멎는다)
    */
-  async featureAllowed(key: FeatureKey, accountId: string | null): Promise<boolean> {
-    const mode = await this.featureMode(key);
+  async featureAllowed(key: FeatureKey, accountId: string | null, q: Q = this.db.pool): Promise<boolean> {
+    const mode = await this.featureMode(key, q);
     if (mode === 'everyone') return true;
     if (mode === 'off' || accountId === null) return false;
     const k = `${key}:${accountId}`;
     const now = this.clock();
     const hit = this.#allow.get(k);
     if (hit && now - hit.at < FEATURE_CACHE_MS) return hit.ok;
-    const r = await this.db.pool.query('SELECT 1 FROM feature_allow WHERE key = $1 AND account_id = $2', [
+    const r = await q.query('SELECT 1 FROM feature_allow WHERE key = $1 AND account_id = $2', [
       key,
       accountId,
     ]);
-    const ok = (r.rowCount ?? 0) > 0 || (await this.adminAllowed(key, accountId));
+    const ok = (r.rowCount ?? 0) > 0 || (await this.adminAllowed(key, accountId, q));
     if (this.#allow.size > 10_000) this.#allow.clear();
     this.#allow.set(k, { at: now, ok });
+    return ok;
+  }
+
+  /**
+   * 계정 여럿 중 기능 키 모두를 쓸 수 있는 계정 번호들. featureAllowed 를 계정마다 부르는 대신 허용 목록과 운영자 로그인을
+   * 한 번씩만 묻는다 (친구 목록처럼 계정이 많을 때). 판정은 featureAllowed 와 같다
+   */
+  async allowedAmong(keys: FeatureKey[], ids: string[], q: Q = this.db.pool): Promise<Set<string>> {
+    let ok = new Set(ids);
+    for (const key of keys) {
+      if (ok.size === 0) break;
+      const mode = await this.featureMode(key, q);
+      if (mode === 'everyone') continue;
+      if (mode === 'off') return new Set();
+      const list = [...ok];
+      const hit = new Set<string>();
+      const allow = await q.query<{ account_id: string }>(
+        'SELECT account_id FROM feature_allow WHERE key = $1 AND account_id = ANY($2::bigint[])',
+        [key, list],
+      );
+      for (const r of allow.rows) hit.add(String(r.account_id));
+      const f: FeatureDef = FEATURES[key] as FeatureDef;
+      const subs = this.config.adminSubs ?? [];
+      if (f.admins && subs.length > 0) {
+        const adm = await q.query<{ account_id: string }>(
+          `SELECT DISTINCT account_id FROM login
+            WHERE account_id = ANY($1::bigint[]) AND service = 'google' AND sub = ANY($2::text[])`,
+          [list, subs],
+        );
+        for (const r of adm.rows) hit.add(String(r.account_id));
+      }
+      ok = new Set(list.filter((id) => hit.has(id)));
+    }
     return ok;
   }
 
@@ -173,8 +210,9 @@ export class Features {
 
   /** 모든 기능 키의 지금 값 (운영자 화면용, ai_chat 은 ai-admin.ts 가 따로 다룬다) */
   async listFeatures(): Promise<FeatureView[]> {
-    this.forget();
-    const modes = await this.dbModes();
+    // 모드만 새로 읽는다: 허용 목록 담아 둔 것까지 비우면 운영자 홈을 열 때마다 모든 계정의 판정을 다시 묻게 된다
+    this.#modes = undefined;
+    const modes = await this.dbModes(this.db.pool);
     const allow = await this.db.pool.query<{ key: string; account_id: string }>(
       'SELECT key, account_id FROM feature_allow ORDER BY key, account_id',
     );

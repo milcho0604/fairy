@@ -19,28 +19,27 @@ import {
   talkBlock,
   WORKED_LONG_MIN,
 } from './idle-talk.ts';
+import { variantsOf } from './variants.ts';
+
+// 사전에서 번호 규칙으로 센 열쇠들 (정렬해서 견준다)
+const keys = (...bases: string[]) => bases.flatMap((b) => variantsOf(b)).sort();
+const sorted = (list: readonly string[]) => [...list].sort();
 
 // 2026-10-05 은 월요일, 10-09 는 금요일
 const at = (day: number, h: number, m = 0) => new Date(2026, 9, day, h, m).getTime();
 
 test('시각과 요일로 고른다: 월요일 아침, 점심, 금요일 오후, 늦은 밤, 주말', () => {
-  const fit = (day: number, h: number, m = 0) => idleCandidates({ now: at(day, h, m), doneToday: 0 }).fit;
-  assert.deepEqual(fit(5, 9), [
-    'idle.morning.1',
-    'idle.morning.2',
-    'idle.morning.3',
-    'idle.morning.4',
-    'idle.monday.1',
-    'idle.monday.2',
-  ]);
-  assert.deepEqual(fit(6, 9), ['idle.morning.1', 'idle.morning.2', 'idle.morning.3', 'idle.morning.4']);
-  assert.deepEqual(fit(6, 12), ['idle.lunch.1', 'idle.lunch.2', 'idle.lunch.3']);
+  const fit = (day: number, h: number, m = 0) =>
+    sorted(idleCandidates({ now: at(day, h, m), doneToday: 0 }).fit);
+  assert.deepEqual(fit(5, 9), keys('idle.morning', 'idle.monday'));
+  assert.deepEqual(fit(6, 9), keys('idle.morning'));
+  assert.deepEqual(fit(6, 12), keys('idle.lunch'));
   assert.ok(fit(9, 15).includes('idle.friday.2'));
   assert.ok(!fit(8, 15).includes('idle.friday.1'));
-  assert.deepEqual(fit(6, 23, 30), ['idle.late.1', 'idle.late.2', 'idle.late.3']);
+  assert.deepEqual(fit(6, 23, 30), keys('idle.late'));
   // 새벽 1~5시는 지금 시를 말하는 대사가 더해진다
-  assert.deepEqual(fit(6, 2), ['idle.late.1', 'idle.late.2', 'idle.late.3', 'idle.night.1', 'idle.night.2']);
-  assert.deepEqual(fit(7, 0, 30), ['idle.late.1', 'idle.late.2', 'idle.late.3']);
+  assert.deepEqual(fit(6, 2), keys('idle.late', 'idle.night'));
+  assert.deepEqual(fit(7, 0, 30), keys('idle.late'));
   // 사이 시간(13:30~14:00, 17:00~18:00)은 시각 대사가 없다
   assert.deepEqual(fit(6, 13, 45), []);
   // 10-10 토요일, 10-11 일요일 낮에는 주말 대사. 밤에는 늦은 밤 대사만
@@ -50,12 +49,20 @@ test('시각과 요일로 고른다: 월요일 아침, 점심, 금요일 오후,
   assert.ok(!fit(6, 15).includes('idle.weekend.1'));
 });
 
+test('시각마다 대사가 열 가지 안팎으로 넉넉하다 (번호만 이어 붙이면 후보에 든다)', () => {
+  for (const base of ['idle.morning', 'idle.lunch', 'idle.afternoon', 'idle.evening', 'idle.late'])
+    assert.ok(variantsOf(base).length >= 10, `${base}: ${variantsOf(base).length}`);
+  assert.ok(variantsOf('idle.any').length >= 60);
+});
+
 test('오늘 끝낸 수로 칭찬이 달라진다', () => {
   const fit = (n: number) => idleCandidates({ now: at(6, 13, 45), doneToday: n }).fit;
   assert.deepEqual(fit(0), []);
-  assert.deepEqual(fit(1), ['idle.praise.1']);
-  assert.deepEqual(fit(3), ['idle.praise.3']);
-  assert.deepEqual(fit(7), ['idle.praise.5']);
+  assert.deepEqual(sorted(fit(1)), keys('idle.praise.1'));
+  assert.deepEqual(sorted(fit(3)), keys('idle.praise.3'));
+  assert.deepEqual(sorted(fit(7)), keys('idle.praise.5'));
+  // 같은 단계에도 말이 여럿
+  for (const tier of ['1', '3', '5']) assert.ok(variantsOf(`idle.praise.${tier}`).length >= 6, tier);
 });
 
 test('앱이 아는 신호마다 상황 대사가 붙는다', () => {
@@ -70,10 +77,24 @@ test('앱이 아는 신호마다 상황 대사가 붙는다', () => {
   assert.ok(has({ nextEventMin: 30 }, 'event.soon'));
   assert.ok(!has({ nextEventMin: 10 }, 'event.soon'));
   assert.ok(!has({ nextEventMin: 90 }, 'event.soon'));
-  assert.ok(has({ eventsLeftToday: 0 }, 'event.free'));
+  // 일정을 쓰는 사람에게만 "남은 일정이 없어" 말을 한다
+  assert.ok(has({ eventsLeftToday: 0, eventsUsed: true }, 'event.free'));
+  assert.ok(!has({ eventsLeftToday: 0 }, 'event.free'));
+  assert.ok(!has({ eventsLeftToday: 0, eventsUsed: false }, 'event.free'));
   assert.ok(
-    !idleCandidates({ now: at(6, 20), doneToday: 0, eventsLeftToday: 0 }).fit.includes('idle.event.free.1'),
+    !idleCandidates({ now: at(6, 20), doneToday: 0, eventsLeftToday: 0, eventsUsed: true }).fit.includes(
+      'idle.event.free.1',
+    ),
   );
+  // 먼저 할 일 제목이 있으면 제목을 넣는 말이 더해지고, 밀린 일이 있으면 밀린 일 말이 더해진다
+  assert.ok(has({ openToday: 2, todoTitle: '보고서' }, 'todo.title'));
+  assert.ok(!has({ openToday: 2 }, 'todo.title'));
+  assert.ok(has({ overdue: 2 }, 'todo.late'));
+  assert.ok(!has({ overdue: 0 }, 'todo.late'));
+  // 기분이 높거나 낮을 때 기분 말
+  assert.ok(has({ mood: 90 }, 'mood.high'));
+  assert.ok(has({ mood: 10 }, 'mood.low'));
+  assert.ok(!has({ mood: 60 }, 'mood.high') && !has({ mood: 60 }, 'mood.low'));
   assert.ok(has({ workedMin: WORKED_LONG_MIN }, 'work'));
   assert.ok(!has({ workedMin: WORKED_LONG_MIN - 1 }, 'work'));
   assert.ok(has({ mouseBusy: true }, 'mouse'));
@@ -82,10 +103,12 @@ test('앱이 아는 신호마다 상황 대사가 붙는다', () => {
   assert.ok(has({ mood: 20 }, 'play'));
   assert.ok(!has({ mood: 20, hungry: true }, 'play'));
   assert.ok(!has({ mood: 80 }, 'play'));
-  assert.deepEqual(fit({ affection: 50 }), ['idle.friend.new']);
-  assert.deepEqual(fit({ affection: 100 }), ['idle.friend.1']);
-  assert.deepEqual(fit({ affection: 350 }), ['idle.friend.2']);
-  assert.deepEqual(fit({ affection: 700 }), ['idle.friend.3']);
+  assert.deepEqual(sorted(fit({ affection: 50 })), keys('idle.friend.new'));
+  assert.deepEqual(sorted(fit({ affection: 100 })), keys('idle.friend.1'));
+  assert.deepEqual(sorted(fit({ affection: 350 })), keys('idle.friend.2'));
+  assert.deepEqual(sorted(fit({ affection: 700 })), keys('idle.friend.3'));
+  for (const tier of ['new', '1', '2', '3'])
+    assert.ok(variantsOf(`idle.friend.${tier}`).length >= 6, `친밀도 ${tier}`);
   // 다른 쪽(기운 등)이 넣는 상황 대사 자리
   assert.deepEqual(fit({ more: ['idle.any.3'] }), ['idle.any.3']);
 });
@@ -142,8 +165,8 @@ test('대사마다 펫 이름이 자연스럽게 들어가고 조사가 맞는�
   assert.equal(t('idle.any.4', { name: '밤' }), '심심하면 밤을 쓰다듬어 줘도 돼.');
   const keys = Object.keys(dicts.ko).filter((k) => k.startsWith('idle.'));
   const named = keys.filter((k) => (t as (k: string, v: object) => string)(k, { name: 'ZZ' }).includes('ZZ'));
-  // 절반 넘게 이름이 들어간다
-  assert.ok(named.length * 2 > keys.length, `${named.length}/${keys.length}`);
+  // 이름이 들어가는 말이 많다 (삼분의 일 넘게. 이름 없는 말도 섞어야 같은 투가 되풀이되지 않는다)
+  assert.ok(named.length * 3 > keys.length, `${named.length}/${keys.length}`);
   setLang('en');
   assert.equal(t('idle.monday.1', { name: 'Bean' }), "It's Monday. Bean is sticking right by you.");
   setLang('ko');
@@ -334,7 +357,7 @@ test('ActivityWatch: 쉬지 않고 일한 분, 오래 비웠다 돌아옴, 마�
 });
 
 test('수다쟁이 상한은 한 시간에 14개, 보통과 조용히는 그대로', () => {
-  assert.deepEqual(MAX_PER_HOUR, { quiet: 0, normal: 3, chatty: 14 });
+  assert.deepEqual(MAX_PER_HOUR, { quiet: 0, normal: 3, sometimes: 5, chatty: 14 });
   const g = new ChatterGate('chatty');
   const taken = Array.from({ length: 16 }, (_, i) => g.take('system', i * 1000)).filter(Boolean).length;
   assert.equal(taken, 14);

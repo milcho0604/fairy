@@ -39,6 +39,8 @@ services:
     image: fairy-api
     container_name: fairy-api
     restart: unless-stopped
+    # 끄라는 신호 뒤 진행 중인 AI 답(최대 2분 안팎)이 끝나기를 기다리는 시간. 기본 10초면 답이 도중에 잘린다
+    stop_grace_period: 130s
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     read_only: true
