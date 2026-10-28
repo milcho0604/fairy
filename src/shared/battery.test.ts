@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  calmOn,
   capFps,
   followTickMs,
   idleWaitFactor,
@@ -23,6 +24,16 @@ test('자동은 배터리나 저전력일 때만, 항상은 늘, 끄기는 안 �
   assert.equal(saverOn('always', plugged), true);
   assert.equal(saverOn('off', battery), false);
   assert.equal(saverOn('off', low), false);
+});
+
+test('운영체제 동작 줄이기는 절약 끔보다 앞서고, 배터리만으로는 걷기를 멈추지 않는다', () => {
+  const calm = { onBattery: false, lowPower: false, reducedMotion: true };
+  assert.equal(saverOn('off', calm), true);
+  assert.equal(saverOn('auto', calm), true);
+  assert.equal(calmOn(calm), true);
+  assert.equal(calmOn(plugged), false);
+  assert.equal(calmOn(battery), false);
+  assert.equal(calmOn({ ...low, reducedMotion: false }), false);
 });
 
 test('설정 값 검사', () => {

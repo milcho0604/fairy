@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { cleanCalendarId, type GcalStatus } from '../../../shared/gcal.ts';
 import { type CalRow, calendarRows, listState } from '../../../shared/gcal-cals.ts';
 import { t } from '../../../shared/i18n/index.ts';
+import { useReturnFocus } from '../focus-return.ts';
 import { isEsc, takeEsc } from '../panel/keys.ts';
 
 const gcal = () => window.jjakkungGcal;
@@ -26,6 +27,7 @@ export function GcalCalendarsSheet({
   onReconnect: () => void;
   onMsg: (m: string) => void;
 }) {
+  useReturnFocus(true);
   const sheetRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [busy, setBusy] = useState(false);
@@ -171,7 +173,7 @@ export function GcalCalendarsSheet({
                       </small>
                     </span>
                   </span>
-                  <span className="gcal-cell">
+                  <label className="gcal-cell">
                     <input
                       className="gcal-check"
                       type="checkbox"
@@ -180,8 +182,8 @@ export function GcalCalendarsSheet({
                       aria-label={t('gcal.sheet.pullOf', { name: r.name })}
                       onChange={() => togglePull(r)}
                     />
-                  </span>
-                  <span className="gcal-cell" title={r.canPush ? undefined : t('gcal.sheet.readOnlyTip')}>
+                  </label>
+                  <label className="gcal-cell" title={r.canPush ? undefined : t('gcal.sheet.readOnlyTip')}>
                     <input
                       className="gcal-check"
                       type="radio"
@@ -192,7 +194,7 @@ export function GcalCalendarsSheet({
                       aria-description={r.canPush ? undefined : t('gcal.sheet.readOnlyTip')}
                       onChange={() => void save(s.pullCals, r.id)}
                     />
-                  </span>
+                  </label>
                 </div>
               );
             })}

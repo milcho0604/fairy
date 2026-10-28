@@ -36,7 +36,14 @@ import { localModelReady, stopLocal } from './ai/local.ts';
 import { cachedMcpServers, knownMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet, importPetBytes } from './backup.ts';
-import { debugBattery, onSaverChange, powerFacts, saverNow, watchPower } from './battery.ts';
+import {
+  debugBattery,
+  debugReducedMotion,
+  onSaverChange,
+  powerFacts,
+  saverNow,
+  watchPower,
+} from './battery.ts';
 import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
@@ -2191,6 +2198,7 @@ ready
           openBackupFile,
           saverNow,
           debugBattery,
+          debugReducedMotion,
           trayTitle,
           knows,
           journey,

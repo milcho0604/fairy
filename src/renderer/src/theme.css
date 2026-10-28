@@ -198,3 +198,21 @@ input[type="range"]:disabled {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* 누르는 영역은 24px 이상(WCAG 2.5.8), 손가락 화면은 44px. 보이는 모양은 그대로 두고 단추 둘레로 눈에 안 보이는 영역만
+   넓힌다(::after). 글자 링크, 말풍선 아래 작은 단추, 작은 체크 칸(.hit)이 대상이다 */
+:is(.link, .answer-actions button, .ticket-report-open, .check, .hit) {
+  position: relative;
+}
+
+:is(.link, .answer-actions button, .ticket-report-open, .check, .hit)::after {
+  content: "";
+  position: absolute;
+  inset: -6px -4px;
+}
+
+@media (pointer: coarse) {
+  :is(.link, .answer-actions button, .ticket-report-open, .check, .hit)::after {
+    inset: -14px -8px;
+  }
+}

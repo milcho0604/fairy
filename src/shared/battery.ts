@@ -15,14 +15,21 @@ export interface PowerFacts {
    * 맥 저전력 모드는 CPU 속도를 묶어 여기에 잡힌다
    */
   lowPower: boolean;
+  /** 운영체제 "동작 줄이기"가 켜져 있다 (접근성). 있으면 설정이 꺼져 있어도 아낀다 */
+  reducedMotion?: boolean;
 }
 
 /** 지금 절약할지 */
 export function saverOn(mode: SaverMode, facts: PowerFacts): boolean {
+  // 운영체제 동작 줄이기는 사용자가 접근성으로 고른 것이라 절약 설정(끔)보다 앞선다
+  if (facts.reducedMotion) return true;
   if (mode === 'off') return false;
   if (mode === 'always') return true;
   return facts.onBattery || facts.lowPower;
 }
+
+/** 돌아다니기, 손님 걷기, 집 문 걷기처럼 화면을 가로지르는 움직임을 멈출지 (운영체제 동작 줄이기만, 배터리는 해당 없음) */
+export const calmOn = (facts: PowerFacts): boolean => facts.reducedMotion === true;
 
 /** 열 상태와 속도 제한으로 본 저전력 */
 export function lowPowerOf(speedLimit: number | undefined, thermal: string | undefined): boolean {

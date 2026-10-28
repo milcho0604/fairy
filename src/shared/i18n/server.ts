@@ -125,8 +125,11 @@ export const ko = {
   /** 설정 채팅 이용권 묶음의 고르는 법 (설명 줄) */
   'ticket.passHow': '채팅 창에서 "채팅 이용권"을 고르면 질문 하나에 한 장씩 써.',
   'ticket.aiNow': 'AI와 대화 중이야. 답은 사람이 아니라 AI(Anthropic의 Claude)가 써.',
-  'ticket.notice':
-    '채팅 이용권으로 물으면 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일(제목, 마감)과 오늘 남은 일정(제목, 시각)도 같이 가. 페어리 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
+  'ticket.notice.sent':
+    '가는 것: 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일(제목, 마감)과 오늘 남은 일정(제목, 시각)도 같이 가.',
+  'ticket.notice.kept':
+    '안 가는 것과 보관: 페어리 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨.',
+  'ticket.notice.skip': '싫으면: 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
   'ticket.agree': '알겠어, 채팅 이용권 쓰기',
   'ticket.needAgree': '먼저 위 안내를 읽고 "알겠어"를 눌러 줘.',
   'ticket.empty': '채팅 이용권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
@@ -289,8 +292,11 @@ export const en: Translation<typeof ko> = {
   'ticket.passHow': 'Pick "Chat pass" in the chat window; each question uses one.',
   'ticket.aiNow':
     "You're talking with an AI. Answers are written by an AI (Anthropic's Claude), not a person.",
-  'ticket.notice':
-    "When you ask with a chat pass, your question (with the current time), a few recent messages from this chat, and your fairy's name and voice description are sent encrypted to Anthropic (USA). If \"Share my to-dos\" is on, today's to-dos (titles, due dates) and the rest of today's events (titles, times) go too. Your fairy's rules and what it remembers are not sent. Under its policy Anthropic may keep them for up to 30 days (with exceptions such as policy-violation reviews). The fairy server stores no chat text, only usage numbers. If you prefer not to, skip chat passes and chat with the AI on your computer.",
+  'ticket.notice.sent':
+    "What is sent: your question (with the current time), a few recent messages from this chat, and your fairy's name and voice description go encrypted to Anthropic (USA). If \"Share my to-dos\" is on, today's to-dos (titles, due dates) and the rest of today's events (titles, times) go too.",
+  'ticket.notice.kept':
+    "What is not sent, and what is kept: your fairy's rules and what it remembers are not sent. Under its policy Anthropic may keep what it gets for up to 30 days (with exceptions such as policy-violation reviews). The fairy server stores no chat text, only usage numbers.",
+  'ticket.notice.skip': 'If you prefer not to: skip chat passes and chat with the AI on your computer.',
   'ticket.agree': 'Got it, use chat passes',
   'ticket.needAgree': 'Please read the note above and press "Got it" first.',
   'ticket.empty': "You've used all your chat passes. Continue with the AI on your computer?",

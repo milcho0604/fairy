@@ -1011,11 +1011,16 @@ function Message({
           {/* 규칙 답("오늘 뭐부터")은 AI 이름 대신 "AI 없이" (AI 가 답한 줄 알지 않게) */}
           {m.game ? (
             // 끝말잇기 (AI 없이 하는 말놀이)
-            <span className="tag" title={t('fun.chain.tagTitle')}>
+            <span
+              className="tag"
+              title={t('fun.chain.tagTitle')}
+              role="note"
+              aria-label={t('fun.chain.tagTitle')}
+            >
               {t('fun.chain.tag')}
             </span>
           ) : m.byRules ? (
-            <span className="tag" title={t('first.tagTitle')}>
+            <span className="tag" title={t('first.tagTitle')} role="note" aria-label={t('first.tagTitle')}>
               {t('first.tag')}
             </span>
           ) : (
@@ -1089,7 +1094,7 @@ function Message({
               title={t('keep.retryTitle')}
               onClick={onAskAgain}
             >
-              {t('keep.retry')}
+              {label ? t('chat.retrySame', { label }) : t('keep.retry')}
             </button>
           </div>
         )}

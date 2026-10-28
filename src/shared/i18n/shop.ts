@@ -69,6 +69,21 @@ export const ko = {
   'shop.styleUseLabel': (v: { name: string }) => `${withParticle(v.name, '으로')} 바꾸기`,
   'shop.styleBuyLabel': (v: { name: string; n: number }) => `${v.name} 사기, 코인 ${v.n}개`,
   'shop.styleChanged': (v: { name: string }) => `${withParticle(v.name, '으로')} 바꿨어`,
+  'shop.needMore': '코인 {n}개 더 필요',
+  'shop.sure': '한 번 더',
+  'shop.sureNote': '코인 {n}개가 나가고 되돌릴 수 없어. 한 번 더 누르면 사.',
+  'shop.fullFor': '지금은 {n}만 차',
+  'shop.fullNow': '배불러서 지금은 못 줘',
+  'shop.giveLabel': (v: { name: string; n: number }) => `${v.name} 주기, 코인 ${v.n}개`,
+  'shop.buyLabel': (v: { name: string; n: number }) => `${v.name} 사기, 코인 ${v.n}개`,
+  'shop.buildLabel': (v: { name: string; n: number }) => `${v.name} 짓기, 코인 ${v.n}개`,
+  'shop.upgradeLabel': (v: { name: string; n: number }) =>
+    `${withParticle(v.name, '으로')} 늘리기, 코인 ${v.n}개`,
+  'shop.makeLabel': (v: { n: number }) => `커스텀 먹이 만들기, 코인 ${v.n}개`,
+  'shop.sureLabel': (v: { name: string; n: number }) =>
+    `${v.name}, 코인 ${v.n}개, 되돌릴 수 없어, 한 번 더 눌러 확인`,
+  'shop.newHouseFirst': '새 집이야! 화면 왼쪽 아래 구석에 놓았어. 끌어서 옮길 수 있어',
+  'shop.newHouseGrown': '새 집이야! 있던 자리에서 커졌어',
 };
 
 export const en: Translation<typeof ko> = {
@@ -138,4 +153,18 @@ export const en: Translation<typeof ko> = {
   'shop.styleUseLabel': (v: { name: string }) => `Switch to ${v.name}`,
   'shop.styleBuyLabel': (v: { name: string; n: number }) => `Buy ${v.name}, ${v.n} coins`,
   'shop.styleChanged': (v: { name: string }) => `Switched to ${v.name}`,
+  'shop.needMore': 'Need {n} more coins',
+  'shop.sure': 'Tap again',
+  'shop.sureNote': "Costs {n} coins and can't be undone. Tap again to buy.",
+  'shop.fullFor': 'Only {n} more fits now',
+  'shop.fullNow': 'Too full to eat right now',
+  'shop.giveLabel': (v: { name: string; n: number }) => `Give ${v.name}, ${v.n} coins`,
+  'shop.buyLabel': (v: { name: string; n: number }) => `Buy ${v.name}, ${v.n} coins`,
+  'shop.buildLabel': (v: { name: string; n: number }) => `Build ${v.name}, ${v.n} coins`,
+  'shop.upgradeLabel': (v: { name: string; n: number }) => `Upgrade to ${v.name}, ${v.n} coins`,
+  'shop.makeLabel': (v: { n: number }) => `Make a custom treat, ${v.n} coins`,
+  'shop.sureLabel': (v: { name: string; n: number }) =>
+    `${v.name}, ${v.n} coins, can't be undone, tap again to confirm`,
+  'shop.newHouseFirst': 'A new house! It is in the bottom left corner of the screen. Drag it anywhere',
+  'shop.newHouseGrown': 'A new house! It grew right where it was',
 };

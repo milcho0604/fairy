@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FOCUS_STEPS, monthCells, monthOf, monthTotals, shiftMonth } from '../../../shared/focus-month.ts';
 import { locale, t } from '../../../shared/i18n/index.ts';
 import type { FocusMonthView, PanelState } from '../../../shared/ipc.ts';
+import { moveCell, stopCell } from './roving.ts';
 import './records.css';
 
 const bridge = window.jjakkungPanel;
@@ -67,6 +68,21 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
     setMonth(shiftMonth(month, delta));
     setPick(undefined);
   };
+  // 달력 칸은 탭 정지가 하나(고른 날, 아니면 오늘, 아니면 가장 최근 날)이고 나머지는 화살표로 간다
+  const cells = weeks.flat();
+  const ok = cells.map((c) => !!c.day && !c.future);
+  const stop = stopCell(ok, [
+    cells.findIndex((c) => c.day === pick),
+    cells.findIndex((c) => c.day === s.today),
+  ]);
+  const gridRef = useRef<HTMLFieldSetElement>(null);
+  const arrow = (i: number, key: string) => {
+    const next = moveCell(ok, i, key);
+    const day = cells[next]?.day;
+    if (next === i || !day) return false;
+    gridRef.current?.querySelector<HTMLButtonElement>(`[data-day="${day}"]`)?.focus();
+    return true;
+  };
   const picked = pick ? weeks.flat().find((c) => c.day === pick) : undefined;
 
   return (
@@ -101,13 +117,17 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
           ›
         </button>
       </div>
-      <fieldset className="fm-grid" aria-label={t('records.month.grid', { month: monthLabel(month) })}>
+      <fieldset
+        className="fm-grid"
+        ref={gridRef}
+        aria-label={t('records.month.grid', { month: monthLabel(month) })}
+      >
         {labels.map((l) => (
           <span key={l} className="fm-dow" aria-hidden="true">
             {l}
           </span>
         ))}
-        {weeks.flat().map((c) => {
+        {cells.map((c, i) => {
           const day = c.day;
           if (!day) return <span key={c.key} className="fm-blank" aria-hidden="true" />;
           const date = dateLabel(day);
@@ -125,7 +145,11 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
               aria-label={label}
               aria-pressed={pick === day}
               disabled={c.future}
+              tabIndex={i === stop ? 0 : -1}
               data-day={day}
+              onKeyDown={(e) => {
+                if (arrow(i, e.key)) e.preventDefault();
+              }}
               onClick={() => setPick(pick === day ? undefined : day)}
             >
               <span className="fm-d">{Number(day.slice(8, 10))}</span>
