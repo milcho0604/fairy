@@ -166,7 +166,8 @@ export const ko = {
   'settings.chatterHint.sometimes': '보통에 더해 혼잣말을 가끔 해(30분에 한 번쯤), 한 시간에 {n}개까지.',
   'settings.chatterHint.chatty': '혼잣말을 자주 하고(4~6분마다), 한 시간에 {n}개까지.',
   'settings.quiet': '말 안 하는 시간',
-  'settings.quietHint': '이 시간에는 혼잣말과 쉬자는 말을 하지 않아. 일정 알림, 답 알림, 쪽지는 그대로야.',
+  'settings.quietHint':
+    '이 시간에는 혼잣말, 쉬자는 말, 친구 페어리와의 수다를 하지 않아. 일정 알림, 답 알림, 쪽지, 칭찬과 인사는 그대로야.',
   'settings.quietOn': '시간을 정해 쉬기',
   'settings.quietFrom': '시작',
   'settings.quietTo': '끝',
@@ -662,7 +663,7 @@ export const en: Translation<typeof ko> = {
   'settings.chatterHint.chatty': 'Chats to itself often (every 4 to 6 min), up to {n} an hour.',
   'settings.quiet': 'Quiet hours',
   'settings.quietHint':
-    'No chatter or break reminders during this time. Event alerts, answer alerts, and notes still come through.',
+    'No chatter, break reminders, or fairy-to-fairy chats during this time. Event alerts, answer alerts, notes, cheers, and greetings still come through.',
   'settings.quietOn': 'Rest at set times',
   'settings.quietFrom': 'From',
   'settings.quietTo': 'To',

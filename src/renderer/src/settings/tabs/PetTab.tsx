@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PERSONAS } from '../../../../shared/ai/persona.ts';
 import { saverOn } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
+import { styleForCopy } from '../../../../shared/persona-voice.ts';
 import { PET_CLICK_ACTIONS, type PetClickAction } from '../../../../shared/pet-click.ts';
 import { restDaysOf } from '../../../../shared/routine.ts';
 import {
@@ -14,6 +15,7 @@ import {
   starterStand,
 } from '../../../../shared/settings.ts';
 import { MAX_SCALE, MIN_SCALE } from '../../../../shared/size.ts';
+import { parseStyle } from '../../../../shared/speech-style.ts';
 import { PetNameInput } from '../../PetNameInput.tsx';
 import { Friends } from '../Friends.tsx';
 import { GaitPicker } from '../GaitPicker.tsx';
@@ -129,7 +131,21 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
         {s.persona === 'custom' ? (
           <SpeechEditor value={s.speech} petName={s.petName} onSave={(speech) => void update({ speech })} />
         ) : (
-          <SpeechPreview persona={s.persona} style={s.speech} petName={s.petName} />
+          <>
+            <SpeechPreview persona={s.persona} style={s.speech} petName={s.petName} />
+            <div className="field">
+              <button
+                type="button"
+                className="link"
+                onClick={() =>
+                  void update({ persona: 'custom', speech: parseStyle(styleForCopy(s.persona)) })
+                }
+              >
+                {t('speech.copyPreset')}
+              </button>
+              <small>{t('speech.copyPresetHint')}</small>
+            </div>
+          </>
         )}
         <Toggle
           label={t('settings.doingBubble')}
@@ -348,6 +364,13 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           hint={t('settings.dailyNotesHint')}
           on={s.dailyNotes}
           onChange={(v) => update({ dailyNotes: v })}
+        />
+        <Toggle
+          label={t('settings.eveningNotes')}
+          hint={t('settings.eveningNotesHint')}
+          on={s.eveningNotes}
+          disabled={!s.dailyNotes}
+          onChange={(v) => update({ eveningNotes: v })}
         />
       </Section>
       <Section id="pet-performance" title={t('settings.pet.performance')}>

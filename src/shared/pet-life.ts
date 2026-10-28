@@ -3,6 +3,7 @@
 import { MAKEUP_PER_LEVEL, SULK_MAX } from './coin-rules.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
+import { isMutedLine } from './i18n/index.ts';
 import { voiced } from './persona-voice.ts';
 import { FULLNESS, localDay } from './todo-store.ts';
 
@@ -64,6 +65,15 @@ export const SULK_LINES: Readonly<Record<number, string>> = {
     return voiced('pet.sulk.7');
   },
 };
+
+/**
+ * 삐진 정도(1~7)의 말. 그 말을 안 쓰기로 했으면 가까운 정도의 다른 말로, 다 안 쓰기로 했으면 undefined (말하지 않는다)
+ */
+export function sulkLine(level: number): string | undefined {
+  const near = [1, 2, 3, 4, 5, 6, 7].sort((a, b) => Math.abs(a - level) - Math.abs(b - level) || a - b);
+  const use = near.find((n) => !isMutedLine(`pet.sulk.${n}`));
+  return use === undefined ? undefined : SULK_LINES[use];
+}
 
 export type Activity = 'todo' | 'click' | 'chat' | 'feed' | 'pet' | 'play';
 

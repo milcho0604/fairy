@@ -55,7 +55,7 @@ export const ko = {
   'companion.cheer.count': (v: Cheer) => `오늘 벌써 ${v.n}개째! ${withParticle(v.name, '은')} 놀라는 중.`,
   // 만난 날 기념 (shared/companion.ts anniversaryDue)
   'companion.anniv.day': (v: Anniv) =>
-    `오늘이 우리 만난 지 ${v.n}일째 되는 날이야! 앞으로도 ${v.name} 잘 부탁해.`,
+    `오늘이 우리 만난 지 ${v.n}일째 되는 날이야! 앞으로도 ${withParticle(v.name, '을')} 잘 부탁해.`,
   'companion.anniv.late': (v: Anniv) => `우리 만난 지 ${v.n}일이 살짝 지났어! 늦었지만 축하해, 고마워.`,
   'companion.anniv.year': (v: Anniv) =>
     `우리 만난 지 벌써 ${v.n}년이야! ${withParticle(v.name, '은')} 너랑 지낸 날이 다 좋았어.`,

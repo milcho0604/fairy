@@ -91,15 +91,16 @@ export function createPout(o: PoutOptions) {
   function reasonLines(reason: PoutReason, friend?: string): string[] {
     if (reason === 'todoLate') return lines('pout.todoLate', 4, { n: Math.max(1, o.overdue()) });
     if (reason === 'friend') {
-      const all = lines('pout.friend', 4, { friend: friend ?? '' });
       // 이름을 모르면 이름이 들어가는 줄(1, 4)은 뺀다
-      return friend ? all : all.slice(1, 3);
+      return lines('pout.friend', 4, { friend: friend ?? '' }, friend ? undefined : [2, 3]);
     }
     return lines(`pout.${reason}`, 4);
   }
 
   /** 삐진 말은 system 말풍선 (수다 빈도를 따른다. 조용히면 모습만). 지금 못 하면 잠깐 뒤에 다시 */
   function talk(text: string) {
+    // 이 까닭의 말을 모두 안 쓰기로 했으면 말하지 않는다
+    if (!text) return;
     pending = { text, until: Date.now() + PENDING_MS };
     flush();
   }
@@ -159,21 +160,22 @@ export function createPout(o: PoutOptions) {
       setTimeout(() => {
         o.react('love');
         o.react('happy');
-        void o.say({ kind: 'answer', text: line(lines('pout.madeUp', 6)), ttlMs: 5000 });
+        const text = line(lines('pout.madeUp', 6));
+        if (text) void o.say({ kind: 'answer', text, ttlMs: 5000 });
       }, SOOTHE_DELAY_MS).unref();
     } else if (now - softerAt >= SOFTER_GAP_MS) {
       softerAt = now;
-      setTimeout(
-        () => void o.say({ kind: 'answer', text: line(lines('pout.softer', 6)), ttlMs: 4000 }),
-        SOOTHE_DELAY_MS,
-      ).unref();
+      setTimeout(() => {
+        const text = line(lines('pout.softer', 6));
+        if (text) void o.say({ kind: 'answer', text, ttlMs: 4000 });
+      }, SOOTHE_DELAY_MS).unref();
     }
     if (r.from !== r.to) o.onChange();
   }
 
   /** 놀란 말: 한 짓에 바로 하는 반응이라 달랠 때 말처럼 answer. 내려놓아 말할 수 있을 때까지 잠깐 기다린다 */
   function startle(text: string, until: number) {
-    if (Date.now() > until) return;
+    if (!text || Date.now() > until) return;
     if (o.calm() || !o.canTalk()) {
       setTimeout(() => startle(text, until), STARTLE_RETRY_MS).unref();
       return;

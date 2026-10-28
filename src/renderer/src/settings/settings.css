@@ -1901,3 +1901,27 @@ textarea.rules {
   flex-wrap: wrap;
   gap: 8px 16px;
 }
+
+/* 말투 미리 보기: 어떤 말인지 고르는 칸과 "다른 말로" */
+.speech-preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.speech-preview-bar select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 대사 고치기: 안 쓰기로 한 줄은 흐리게, "안 쓰기" 단추는 줄 아래 */
+.lines-row.muted textarea {
+  opacity: 0.55;
+}
+
+.lines-row .lines-mute {
+  align-self: flex-start;
+  justify-self: start;
+  padding-left: 0;
+}

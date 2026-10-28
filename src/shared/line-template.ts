@@ -4,7 +4,7 @@
 // 사전의 글 값은 이미 {name} 문법이고, 사전의 함수 값은 shared/lines.ts 가 틀로 풀어 낸다.
 import { type Particle, withParticle } from './josa.ts';
 
-const PARTICLE_NAMES: readonly Particle[] = ['이랑', '과', '이', '은', '을', '아', '이다', '으로'];
+const PARTICLE_NAMES: readonly Particle[] = ['이랑', '과', '이', '은', '을', '아', '이다', '으로', '의'];
 const isParticle = (v: string): v is Particle => (PARTICLE_NAMES as readonly string[]).includes(v);
 
 /** {이름} 또는 {이름:조사}. 이름은 영문자, 숫자, _ */

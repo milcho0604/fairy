@@ -6,7 +6,7 @@
 // 코드를 고치지 않아도 후보에 든다 (shared/variants.ts).
 // 최근에 한 말은 피하고(풀 크기에 따라 늘어나는 창), 그 밖에도 최근에 많이 한 말일수록 덜 고른다.
 // 2026-10-08 사용자 요청("수다쟁이면 말을 좀 많이"): 30분마다 하던 것을 4~6분마다로, 대사를 크게 늘렸다.
-import type { I18nKey } from './i18n/index.ts';
+import { type I18nKey, isMutedLine } from './i18n/index.ts';
 import { variantsOf } from './variants.ts';
 
 /** 혼잣말 사이 간격 (수다쟁이: 이 사이에서 고른다. 평균 5분, 시간당 12번쯤) */
@@ -296,7 +296,11 @@ export class IdleTalk {
     const skippedNow = new Set(this.#recent.slice(-Math.min(6, Math.max(0, now.length - 1))));
     const fresh = (list: IdleKey[], skip: Set<IdleKey>) =>
       list.filter(
-        (k) => !skip.has(k) && !(onceADay(k) && this.#daySaid.get(groupOf(k)) === today) && !capped(k),
+        (k) =>
+          !skip.has(k) &&
+          !isMutedLine(k) &&
+          !(onceADay(k) && this.#daySaid.get(groupOf(k)) === today) &&
+          !capped(k),
       );
     const nowFresh = fresh(now, skippedNow).filter((k) =>
       groupOf(k) === 'done' ? f.lastDoneAt !== this.#doneSaid : f.backAt !== this.#backSaid,

@@ -13,6 +13,8 @@ const PARTICLES = {
   이다: ['이', '', '(이)'],
   // ㄹ 받침은 "로"를 쓴다 (서울로). 아래 withParticle 에서 따로 본다.
   으로: ['으로', '로', '(으)로'],
+  // 이름의 (콩이의, 밤의). 나, 저는 내, 제 (withParticle 에서 따로 본다)
+  의: ['의', '의', '의'],
 } as const;
 
 export type Particle = keyof typeof PARTICLES;
@@ -58,8 +60,16 @@ function finalIsRieul(name: string): boolean {
   return /l$/i.test(last);
 }
 
+/** 내가 나를 가리키는 말 (펫 1인칭 "나", "저"). 이, 의 뒤에서 모양이 바뀐다 (나가 아니라 내가, 나의 아니라 내) */
+const SELF_FORMS: Record<string, { 이: string; 의: string }> = {
+  나: { 이: '내가', 의: '내' },
+  저: { 이: '제가', 의: '제' },
+};
+
 /** 이름에 조사를 붙인다. withParticle('밤', '이랑') === '밤이랑' */
 export function withParticle(name: string, particle: Particle): string {
+  const self = SELF_FORMS[name.trim()];
+  if (self && (particle === '이' || particle === '의')) return self[particle];
   const [withFinal, withoutFinal, unknown] = PARTICLES[particle];
   const final = hasFinalConsonant(name);
   if (final === undefined) return name + unknown;

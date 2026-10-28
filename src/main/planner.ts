@@ -370,10 +370,16 @@ export function createPlanner(o: PlannerOptions) {
       o.log('planner', '쉬는 날');
       briefing = true;
       const { events } = todayFacts(now);
+      const rest = restText(day, briefingBody({ events, dueToday: 0, overdue: 0 }, ''));
+      // 쉬는 날 말을 모두 안 쓰기로 했고 일정도 없으면 말하지 않는다
+      if (!rest) {
+        briefing = false;
+        return false;
+      }
       void o
         .say({
           kind: 'system',
-          text: restText(day, briefingBody({ events, dueToday: 0, overdue: 0 }, '')),
+          text: rest,
           ttlMs: 10_000,
         })
         .then(() => {
@@ -404,20 +410,23 @@ export function createPlanner(o: PlannerOptions) {
       o.onChange();
     }
     o.log('planner', '맞이', due.arrival, streak.n, coins, weekly);
+    const greeting = greetText({
+      day: due.day,
+      arrival: due.arrival,
+      first,
+      streak: streak.n,
+      coins,
+      weekly,
+      briefing: withBriefing ? briefingBody(todayFacts(now)) : '',
+      quiet,
+    });
+    // 맞이하는 말을 모두 안 쓰기로 했고 덧붙일 말도 없으면 말하지 않는다
+    if (!greeting) return;
     briefing = true;
     void o
       .say({
         kind: 'schedule',
-        text: greetText({
-          day: due.day,
-          arrival: due.arrival,
-          first,
-          streak: streak.n,
-          coins,
-          weekly,
-          briefing: withBriefing ? briefingBody(todayFacts(now)) : '',
-          quiet,
-        }),
+        text: greeting,
         ttlMs: withBriefing ? 15_000 : 9000,
         // 헤어질 때가 지나도록 못 보면 버린다 (놓친 알림에는 남기지 않는다: 인사는 지나면 쓸모가 없다)
         hold: { staleAt: localTime(due.day, spanEnd(due.meet)), missedLines: [] },
@@ -455,17 +464,20 @@ export function createPlanner(o: PlannerOptions) {
       else if (a === 'keep' && after) void o.say({ kind: 'answer', text: after, ttlMs: 8000 });
     };
     o.log('planner', '헤어짐', doneToday.length, left.length);
+    const farewellMsg = farewellText({
+      day: due.day,
+      doneTitles: doneToday.map((todo) => todo.title),
+      ...(next ? { next } : {}),
+      tomorrow,
+      leftToday: left.length,
+      quiet,
+    });
+    // 헤어지는 말을 모두 안 쓰기로 했으면 말하지 않는다
+    if (!farewellMsg) return;
     void o
       .say({
         kind: 'schedule',
-        text: farewellText({
-          day: due.day,
-          doneTitles: doneToday.map((todo) => todo.title),
-          ...(next ? { next } : {}),
-          tomorrow,
-          leftToday: left.length,
-          quiet,
-        }),
+        text: farewellMsg,
         buttons:
           left.length > 0
             ? [
