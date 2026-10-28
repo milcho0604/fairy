@@ -428,7 +428,7 @@ export function App() {
   const lastQuestionHasImages = !!state.messages.findLast((m) => m.role === 'user')?.images?.length;
   const alternatives = providers.filter((p) => {
     const st = status[p.id];
-    return p.id !== state.provider && !!st && isReady(st) && (!lastQuestionHasImages || p.images);
+    return !!st && isReady(st) && (!lastQuestionHasImages || p.images);
   });
 
   // 새 대화: 바로 지우되 몇 초 동안 되돌릴 수 있다 (메인이 지운 대화를 잠깐 들고 있다, UNDO_RESET_MS)
@@ -1095,9 +1095,14 @@ function Message({
               type="button"
               className="ghost ask-again"
               title={t('keep.retryTitle')}
-              onClick={onAskAgain}
+              // 이름에 적힌 AI 로 보낸다(지금 고른 AI 가 달라도 이름과 어긋나지 않게)
+              onClick={() => (m.provider && onRetryWith ? onRetryWith(m.provider) : onAskAgain())}
             >
-              {label ? t('chat.retrySame', { label }) : t('keep.retry')}
+              {m.provider === TICKET_PROVIDER_ID
+                ? t('chat.retryTicket')
+                : label
+                  ? t('chat.retrySame', { label })
+                  : t('keep.retry')}
             </button>
           </div>
         )}
@@ -1119,16 +1124,29 @@ function Message({
             m.error?.kind === 'no-tickets' ||
             m.error?.kind === 'not-installed' ||
             m.error?.kind === 'not-logged-in') &&
-          alternatives.length > 0 &&
-          onRetryWith && (
-            <div className="retry action-row">
-              {alternatives.slice(0, 3).map((p) => (
-                <button key={p.id} type="button" className="ghost" onClick={() => onRetryWith(p.id)}>
-                  {t('chat.retryWith', { label: p.label })}
-                </button>
-              ))}
-            </div>
-          )}
+          onRetryWith &&
+          (() => {
+            // 이름이 같은 단추는 하나만, 위 "같은 AI" 단추의 AI 는 뺀다
+            const seen = new Set<string>([m.provider ?? '']);
+            const list = alternatives.filter((p) => {
+              if (p.id === m.provider || seen.has(p.label)) return false;
+              seen.add(p.label);
+              return true;
+            });
+            return (
+              list.length > 0 && (
+                <div className="retry action-row">
+                  {list.slice(0, 3).map((p) => (
+                    <button key={p.id} type="button" className="ghost" onClick={() => onRetryWith(p.id)}>
+                      {p.id === TICKET_PROVIDER_ID
+                        ? t('chat.retryTicket')
+                        : t('chat.retryWith', { label: p.label })}
+                    </button>
+                  ))}
+                </div>
+              )
+            );
+          })()}
       </div>
     </div>
   );

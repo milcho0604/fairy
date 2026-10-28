@@ -211,8 +211,17 @@ input[type="range"]:disabled {
   inset: -6px -4px;
 }
 
+/* 답 아래 단추는 간격이 2px 라 가로로는 거의 넓히지 않는다(옆 단추 영역과 겹치지 않게) */
+.answer-actions button::after {
+  inset: -6px -1px;
+}
+
 @media (pointer: coarse) {
-  :is(.link, .answer-actions button, .ticket-report-open, .check, .hit)::after {
+  :is(.link, .ticket-report-open, .check, .hit)::after {
     inset: -14px -8px;
+  }
+
+  .answer-actions button::after {
+    inset: -14px -1px;
   }
 }

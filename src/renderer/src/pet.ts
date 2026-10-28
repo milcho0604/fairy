@@ -228,7 +228,7 @@ function frame() {
   // 2.5D 그림 펫과 사진 펫(밀크, 초코)은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이
   // 있을 때만). 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
   const flatImage = (use3d && model3dOf instanceof HTMLImageElement) || (!m3d && !!img);
-  const breathes = boost && flatImage && canBlink(mood) && !reducedMotion.matches;
+  const breathes = boost && flatImage && canBlink(mood) && !calmNow();
   const state: DrawState = {
     mood,
     elapsed: now - moodSince,
@@ -255,7 +255,7 @@ function frame() {
     flower,
     // 철마다 옷과 성장은 기본 펫만 (사진 펫은 그대로)
     ...(img || photo ? {} : { wear: wear?.outfit, grow: GROW_LOOK[wear?.stage ?? 'adult'].scale }),
-    calm: reducedMotion.matches,
+    calm: calmNow(),
     peer: looking?.peer,
     gait: gaitPick,
     carry: carryDraw(now),
@@ -278,7 +278,7 @@ function frame() {
     trick: trick?.type ?? '',
     back: backTurned(),
   };
-  if (firstShown && shouldBlend(poseKey, key, { calm: reducedMotion.matches, saver })) blend.snap(ctx, now);
+  if (firstShown && shouldBlend(poseKey, key, { calm: calmNow(), saver })) blend.snap(ctx, now);
   else if (!poseKey || poseKey.mood !== key.mood) blend.stop();
   poseKey = key;
   const ball = drawPet(ctx, state);
@@ -468,7 +468,7 @@ bridge.onLook((m) => {
 
 /** 지금 그릴 같이 보기 자세와 그리는 빠르기. 없으면 undefined */
 function peerAt(now: number) {
-  const calm = reducedMotion.matches;
+  const calm = calmNow();
   const study = mood === 'thinking' && aiWithImage;
   if (!canMagnify(mood) || (!look && !study)) return undefined;
   const kind = look ? look.phase : 'study';
@@ -554,7 +554,7 @@ let workStart = -1;
 
 function tapK(now: number): number {
   if (tapEdge.at < 0) return 0;
-  if (reducedMotion.matches) return tapEdge.on ? 1 : 0;
+  if (calmNow()) return tapEdge.on ? 1 : 0;
   const dt = now - tapEdge.at;
   return tapEdge.on
     ? Math.min(1, tapEdge.from + dt / TAP_IN_MS)
@@ -568,7 +568,7 @@ const canTap = () =>
 function togetherDraw(now: number) {
   const k = tapK(now);
   return {
-    ...(k > 0 ? { tap: { k, ms: reducedMotion.matches ? 0 : now - tapStart } } : {}),
+    ...(k > 0 ? { tap: { k, ms: calmNow() ? 0 : now - tapStart } } : {}),
     work: workStart >= 0 ? now - workStart : -1,
     ...(together.note ? { note: together.note } : {}),
   };
@@ -578,7 +578,7 @@ function togetherDraw(now: number) {
 function togetherFps(now: number): number {
   if (!canTap() && workStart < 0) return 0;
   const k = tapK(now);
-  const calm = reducedMotion.matches;
+  const calm = calmNow();
   if (canTap() && k > 0 && (tapEdge.on ? k < 1 : true) && !calm) return 24;
   if (canTap() && k > 0 && !calm) return TAP_FPS;
   if (workStart >= 0 && !calm && mood !== 'sleeping' && mood !== 'dozing') return 8;
@@ -685,7 +685,7 @@ let activityWake: ReturnType<typeof setTimeout> | undefined;
  * 입체는 설계도에 그 부위가 있을 때, 2D 는 냥이와 멍멍이 꼬리, 냥이, 토순이, 멍멍이, 햄찌, 곰돌이 귀. 사진 펫은 몸 전체만
  */
 function moveAsk(): MoveAsk {
-  const calm = reducedMotion.matches;
+  const calm = calmNow();
   const hungry = inputs.hungry;
   const still = photo instanceof HTMLImageElement;
   const bp = (still ? photoModel : undefined) ?? (photo ? undefined : builtinBlueprint());
@@ -754,6 +754,9 @@ const TRICK_MS = { wave: 1800, dance: 1400 } as const;
 /** 움직임 줄이기 (운영체제 설정). 빙글 춤은 건너뛰고 신남은 살짝만 들썩인다. 걷기와 창 옮기기는 그대로 */
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 reducedMotion.addEventListener('change', () => requestFrame());
+/** 메인이 설정(운영체제 따름, 항상, 줄이지 않기)과 운영체제를 합쳐 알려 준 값. 아직 못 받았으면 운영체제 설정 */
+let calmFromMain: boolean | undefined;
+const calmNow = (): boolean => calmFromMain ?? reducedMotion.matches;
 let imageLoad = 0;
 /** AI 일러스트 나이 배율 (아기, 청소년은 작게. 사용자 크기 설정 위에 곱한다, illustrate.ts) */
 let photoScale = 1;
@@ -1116,6 +1119,10 @@ bridge.onStatus((status) => {
   readAloud = status.readAloud === true;
   clickGrow = status.clickGrow === true;
   if (!clickGrow) cancelPeekPress();
+  if (typeof status.calm === 'boolean' && status.calm !== calmFromMain) {
+    calmFromMain = status.calm;
+    requestFrame();
+  }
   if ((status.saver === true) !== saver) {
     saver = status.saver === true;
     scheduleActivity();
@@ -1162,7 +1169,7 @@ bridge.onShotAsk((id, raw) => {
 // 사진, 2.5D 판, 만든 입체 펫만 (기본 펫은 예전 그대로). 움직임 줄이기면 하지 않는다
 let impact: { start: number; axis: 'x' | 'y'; k: number } | undefined;
 bridge.onImpact((hit) => {
-  if (!photo || reducedMotion.matches) return;
+  if (!photo || calmNow()) return;
   impact = { start: performance.now(), ...hit };
   requestFrame();
 });
@@ -1190,14 +1197,14 @@ bridge.onReact((kind) => {
   }
   if (kind === 'cheer') {
     // 큰 축하: 색종이가 터지고 통통 튄다. 움직임 줄이기면 색종이 대신 하트만
-    if (reducedMotion.matches) heartsStart = now;
+    if (calmNow()) heartsStart = now;
     else confettiStart = now;
     setInputs({ excitedUntil: now + EXCITED_MS });
     sound('happy');
     requestFrame();
     return;
   }
-  if (kind === 'dance' && !reducedMotion.matches) trick = { type: 'dance', start: now };
+  if (kind === 'dance' && !calmNow()) trick = { type: 'dance', start: now };
   setInputs({ excitedUntil: now + EXCITED_MS });
   sound(kind === 'fed' ? 'fed' : kind === 'dance' ? 'dance' : 'happy');
 });
@@ -1426,7 +1433,7 @@ function startPeekPress() {
   peekState = 'asking';
   peekRequestStatus = 'holding';
   void settlePeekRequest(
-    () => bridge.peek(true, reducedMotion.matches),
+    () => bridge.peek(true, calmNow()),
     () => peekRequestStatus,
     // 거절이나 IPC 오류가 놓은 뒤 도착하면 일반 클릭으로 돌린다.
     rejectPeekPress,

@@ -19,6 +19,9 @@ import { useKeepScroll } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
 
+/** 확인 상태가 된 뒤 이만큼은 구매를 받지 않는다 (두 번 누르거나 키를 누르고 있어서 뚫리지 않게) */
+const CONFIRM_DELAY_MS = 400;
+
 /** 상점 (v1): 먹이(바로 주기), 커스텀 먹이, 장난감, 집. 코인은 할 일과 집중으로만 모인다. */
 export function ShopTab({ s }: { s: PanelState }) {
   const [msg, setMsg] = useState<{ text: string; bad?: boolean }>();
@@ -26,6 +29,9 @@ export function ShopTab({ s }: { s: PanelState }) {
   const [sure, setSure] = useState('');
   // 100 코인 이상 구매는 한 번 더 눌러야 산다. 처음 누르면 이 키 (다른 곳으로 포커스가 가거나 Esc 면 풀림)
   const [ask, setAsk] = useState('');
+  const askedAt = useRef(0);
+  // 안내 글이 줄 아래에 들어갈 자리가 없으면(스크롤 칸 맨 아래) 위쪽에 띄운다. 어느 쪽이든 줄 높이는 그대로다
+  const [askUp, setAskUp] = useState(false);
   const shop = s.shop;
   const scroller = useRef<HTMLDivElement>(null);
   useKeepScroll(scroller, 'shop');
@@ -67,18 +73,27 @@ export function ShopTab({ s }: { s: PanelState }) {
           ? `${o.label}, ${t('shop.needMore', { n: short })}`
           : o.label,
       onClick: (e: MouseEvent<HTMLElement>) => {
+        // 더블클릭의 두 번째 누름은 확인으로 치지 않는다
+        if (e.detail > 1 && needsConfirm(o.cost)) return;
+
         if (!needsConfirm(o.cost) || asking) {
+          // 확인 상태가 된 직후(실수로 두 번 누름)에는 받지 않는다
+          if (asking && Date.now() - askedAt.current < CONFIRM_DELAY_MS) return;
           setAsk('');
           o.go();
           return;
         }
+        askedAt.current = Date.now();
         setAsk(o.key);
-        // 아래쪽 줄이면 "한 번 더" 안내 글이 잘리지 않게 줄째로 보이는 곳까지 내린다
-        const row = e.currentTarget.closest('li, .row-line');
-        requestAnimationFrame(() => row?.scrollIntoView({ block: 'nearest' }));
+        const row = e.currentTarget.closest('li, .row-line, .house-styles');
+        const box = scroller.current?.getBoundingClientRect();
+        const at = (row ?? e.currentTarget).getBoundingClientRect();
+        setAskUp(!!box && box.bottom - at.bottom < 90);
       },
       onBlur: () => setAsk((k) => (k === o.key ? '' : k)),
       onKeyDown: (e: KeyboardEvent) => {
+        // Enter 나 Space 를 누르고 있으면 반복해서 눌림이 온다: 확인으로 치지 않는다
+        if (e.repeat && (e.key === 'Enter' || e.key === ' ') && needsConfirm(o.cost)) e.preventDefault();
         if (e.key === 'Escape' && asking) {
           e.stopPropagation();
           setAsk('');
@@ -95,7 +110,7 @@ export function ShopTab({ s }: { s: PanelState }) {
       <div className="shop-slot" role="status">
         {msg && <p className={`shop-msg ${msg.bad ? 'bad' : ''}`}>{msg.text}</p>}
       </div>
-      <div className="scroll shop" ref={scroller}>
+      <div className="scroll shop" ref={scroller} data-ask-up={askUp || undefined}>
         <section>
           <h2>{t('shop.foods')}</h2>
           <ul className="goods">
@@ -197,7 +212,7 @@ export function ShopTab({ s }: { s: PanelState }) {
                   </span>
                   {owned ? <span className="owned">{t('shop.owned')}</span> : <Price n={toy.cost} />}
                   {!owned && (
-                    <button type="button" className={`ghost small${asking ? ' asking' : ''}`} {...btn}>
+                    <button type="button" className={`ghost small buy${asking ? ' asking' : ''}`} {...btn}>
                       {asking ? t('shop.sure') : t('shop.buy')}
                     </button>
                   )}
@@ -384,7 +399,7 @@ function HouseRow(o: {
       {nextHouse !== undefined && b && (
         <>
           <Price n={nextHouse} />
-          <button type="button" className={`ghost small${asking ? ' asking' : ''}`} {...btn}>
+          <button type="button" className={`ghost small buy${asking ? ' asking' : ''}`} {...btn}>
             {asking ? t('shop.sure') : level === 0 ? t('shop.build') : t('shop.upgrade')}
           </button>
         </>
@@ -423,10 +438,12 @@ function StyleCard(o: {
         </button>
       ) : (
         <>
-          <button type="button" className={`ghost small pick${asking ? ' asking' : ''}`} {...btn}>
+          {/* 안내가 단추 뒤에 오면 마지막 칸이 아니게 되어 단추 자리가 바뀐다(.house-styles li > :last-child). 안내를 앞에 둔다 */}
+          {asking && <BuyNote asking={asking} short={short} cost={cost} />}
+          <button type="button" className={`ghost small pick buy${asking ? ' asking' : ''}`} {...btn}>
             {asking ? t('shop.sure') : <Price n={cost} />}
           </button>
-          <BuyNote asking={asking} short={short} cost={cost} />
+          {!asking && short > 0 && <BuyNote asking={false} short={short} cost={cost} />}
         </>
       )}
     </li>

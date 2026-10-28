@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { en, ko } from '../../../shared/i18n/shop.ts';
 import { coinsShort, feedHint, needsConfirm } from './shop-rules.ts';
 
 test('100 코인 이상은 한 번 더 확인', () => {
@@ -22,4 +23,10 @@ test('배부름 안내', () => {
   assert.equal(feedHint(80, 20), undefined);
   assert.deepEqual(feedHint(99.6, 20), { kind: 'full' });
   assert.deepEqual(feedHint(99, 20), { kind: 'part', room: 1 });
+});
+
+test('모자란 코인 글: 영어는 1개일 때 단수', () => {
+  assert.equal(en['shop.needMore']({ n: 1 }), 'Need 1 more coin');
+  assert.equal(en['shop.needMore']({ n: 12 }), 'Need 12 more coins');
+  assert.equal(ko['shop.needMore']({ n: 1 }), '코인 1개 더 필요');
 });

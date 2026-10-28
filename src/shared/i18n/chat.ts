@@ -47,6 +47,7 @@ export const ko = {
   'chat.retryWith': (v: { label: string }) => `${withParticle(v.label, '으로')} 다시 묻기`,
   // 같은 AI 로 다시 묻기: 다른 AI 로 묻는 단추(위)와 이름이 겹치지 않게 AI 이름을 붙인다
   'chat.aiGeneric': 'AI',
+  'chat.retryTicket': '채팅 이용권으로 다시 묻기 (국외 전송)',
   'chat.retrySame': (v: { label: string }) => `${withParticle(v.label, '으로')} 다시 묻기`,
   'chat.copied': '복사함',
   'chat.copy': '복사',
@@ -196,6 +197,7 @@ export const en: Translation<typeof ko> = {
   'chat.sentAlt': (v) => `Sent image ${v.n}`,
   'chat.retryWith': (v) => `Ask ${v.label} instead`,
   'chat.aiGeneric': 'AI',
+  'chat.retryTicket': 'Ask again with Chat pass (sent abroad)',
   'chat.retrySame': (v) => `Ask again with ${v.label}`,
   'chat.copied': 'Copied',
   'chat.copy': 'Copy',

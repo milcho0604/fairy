@@ -28,10 +28,11 @@ test('자동은 배터리나 저전력일 때만, 항상은 늘, 끄기는 안 �
   assert.equal(saverOn('off', low), false);
 });
 
-test('운영체제 동작 줄이기는 절약 끔보다 앞서고, 배터리만으로는 걷기를 멈추지 않는다', () => {
+test('움직임 줄이기(걷기 멈춤)는 배터리 절약과 따로다', () => {
   const calm = { onBattery: false, lowPower: false, reducedMotion: true };
-  assert.equal(saverOn('off', calm), true);
-  assert.equal(saverOn('auto', calm), true);
+  assert.equal(saverOn('off', calm), false);
+  assert.equal(saverOn('auto', calm), false);
+  assert.equal(saverOn('always', plugged), true);
   assert.equal(calmOn(calm), true);
   assert.equal(calmOn(plugged), false);
   assert.equal(calmOn(battery), false);

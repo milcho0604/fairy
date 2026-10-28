@@ -137,8 +137,13 @@ try {
   await sleep(300);
   const houseBtn = `document.querySelectorAll('.shop section')[2].querySelector('.row-line button.ghost')`;
   check('집 짓기 단추 이름표에 값', (await p.ev(`${houseBtn}?.getAttribute('aria-label')`))?.includes('200') === true, await p.ev(`${houseBtn}?.getAttribute('aria-label')`));
+  await p.ev(`${houseBtn}.scrollIntoView({ block: 'center' }); 1`);
+  await sleep(900);
+  const rectOf = (sel) => p.ev(`JSON.stringify((() => { const r = (${sel}).getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map((v) => Math.round(v * 10) / 10); })())`);
+  const rBefore = await rectOf(houseBtn);
   await p.ev(`${houseBtn}.focus(); ${houseBtn}.click(); 1`);
   await sleep(300);
+  check('확인 상태가 돼도 단추 좌표가 그대로(집 짓기)', (await rectOf(houseBtn)) === rBefore, `${rBefore} -> ${await rectOf(houseBtn)}`);
   check('한 번 누르면 사지 않고 "한 번 더" 로 바뀜', (await p.ev(`${houseBtn}?.textContent`)) === T.sure && (await main('__jj.shop.state().houseLevel')) === 0, await p.ev(`${houseBtn}?.textContent`));
   const note = await p.ev(`document.querySelector('.shop small.ask')?.textContent ?? ''`);
   check('되돌릴 수 없다는 글이 보임', ko ? note.includes('되돌릴 수 없어') : note.includes("can't be undone"), note);
@@ -146,22 +151,54 @@ try {
   await key(p, 'Escape');
   await sleep(300);
   check('Esc 로 확인이 풀림', (await p.ev(`${houseBtn}?.textContent`)) !== T.sure);
+  // 40ms 간격 두 번 누름(더블클릭)과 Enter 자동 반복으로는 확인이 뚫리지 않는다
+  const center = JSON.parse(await p.ev(`JSON.stringify((() => { const r = (${houseBtn}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })())`));
+  const mouse = (type, n) => p.send('Input.dispatchMouseEvent', { type, x: center[0], y: center[1], button: 'left', clickCount: n });
+  await mouse('mousePressed', 1); await mouse('mouseReleased', 1);
+  await sleep(40);
+  await mouse('mousePressed', 2); await mouse('mouseReleased', 2);
+  await sleep(700);
+  check('더블클릭(40ms)으로는 안 사짐, 확인 상태 유지', (await main('__jj.shop.state().houseLevel')) === 0 && (await p.ev(`${houseBtn}?.textContent`)) === T.sure, String(await main('__jj.shop.state().houseLevel')));
+  await key(p, 'Escape');
+  await sleep(300);
+  await p.ev(`${houseBtn}.focus(); 1`);
+  const enter = (type, extra = {}) => p.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyUp' ? undefined : '\r', ...extra });
+  await enter('keyDown'); await sleep(40); await enter('keyDown', { autoRepeat: true }); await enter('keyDown', { autoRepeat: true }); await enter('keyUp');
+  await sleep(700);
+  check('Enter 자동 반복으로는 안 사짐', (await main('__jj.shop.state().houseLevel')) === 0 && (await p.ev(`${houseBtn}?.textContent`)) === T.sure, String(await main('__jj.shop.state().houseLevel')));
+  await key(p, 'Escape');
+  await sleep(300);
   await p.ev(`${houseBtn}.focus(); ${houseBtn}.click(); 1`);
   await sleep(200);
   await p.ev(`document.activeElement.blur(); 1`);
   await sleep(300);
   check('다른 곳으로 포커스가 가면 확인이 풀리고 안 삼', (await p.ev(`${houseBtn}?.textContent`)) !== T.sure && (await main('__jj.shop.state().houseLevel')) === 0);
   await p.ev(`${houseBtn}.focus(); ${houseBtn}.click(); 1`);
-  await sleep(200);
+  await sleep(550);
   await p.ev(`${houseBtn}.click(); 1`);
   await until(async () => (await main('__jj.shop.state().houseLevel')) === 1, '집 지어짐');
   await sleep(300);
   const msg = await p.ev(`document.querySelector('.shop-msg')?.textContent ?? ''`);
   check('집을 지은 뒤 어디에 놓였는지 한 줄', msg.includes(T.corner), msg);
   await p.shot(`shop-built-${lang}-light`);
+  // 집 모양 카드(300): 확인 상태에서도 단추 좌표가 그대로
+  await main('__jj.store.reward(400, "test", Date.now()); __jj.panel.refresh(); 1');
+  await sleep(500);
+  const cardBtn = `document.querySelectorAll('.house-styles li')[1].querySelector('button.pick')`;
+  await p.ev(`${cardBtn}.scrollIntoView({ block: 'center' }); 1`);
+  await sleep(900);
+  const cBefore = await rectOf(cardBtn);
+  console.log('scroll before', await p.ev(`JSON.stringify([document.querySelector('.shop').scrollTop, document.querySelector('.shop').scrollHeight, document.querySelector('.shop').clientHeight])`));
+  await p.ev(`${cardBtn}.focus(); ${cardBtn}.click(); 1`);
+  await sleep(300);
+  console.log('scroll after', await p.ev(`JSON.stringify([document.querySelector('.shop').scrollTop, document.querySelector('.shop').scrollHeight])`));
+  check('집 모양 카드도 확인 상태에서 단추 좌표가 그대로', (await rectOf(cardBtn)) === cBefore && (await p.ev(`${cardBtn}.textContent`)) === T.sure, `${cBefore} -> ${await rectOf(cardBtn)}`);
+  await p.shot(`shop-style-confirm-${lang}-light`);
+  await key(p, 'Escape');
+  await sleep(300);
   // 올리기(500)는 코인 50 이라 못 삼: 이유가 글로 보임
   const up = await p.ev(`[...document.querySelectorAll('.shop .row-line')].map((x) => x.querySelector('small.need')?.textContent ?? '').join('|')`);
-  check('올리기 500 은 코인 모자람 글이 보임', up.includes('4') || up.includes('45'), up);
+  check('올리기 500 은 코인 모자람 글이 보임', up.includes('50'), up);
   // 배부름: 케이크(100)는 지금은 일부만 찬다
   const hintRows = await p.ev(`JSON.stringify([...document.querySelectorAll('.shop .goods li')].slice(0, 3).map((li) => li.querySelector('small.need')?.textContent ?? ''))`);
   console.log('먹이 안내', hintRows);
@@ -297,6 +334,34 @@ try {
   check('채팅 보내기(비활성) 어두운 화면 대비', sendD >= 3, String(sendD));
   await c.shot(`chat-${lang}-dark`);
   await c.dark(false);
+  // 다시 묻기 단추: 이름에 적힌 AI 로 실제로 보낸다 (6가지 조합: 실패한 답의 AI 3 x 지금 고른 AI 2)
+  await main(`(() => { const { ipcMain } = process.mainModule.require('electron'); const h = ipcMain._invokeHandlers; globalThis.__retryLog = []; globalThis.__origRetry ??= h.get('chat:retry-with'); h.set('chat:retry-with', async (e, p) => { globalThis.__retryLog.push(p ?? null); return 'sent'; }); return 1; })()`);
+  const nameToId = (txt) => (txt.includes('Claude') ? 'claude' : /무료 AI|Free AI/.test(txt) ? 'local' : /채팅 이용권|Chat pass/.test(txt) ? 'fairy-ticket' : '?');
+  for (const msgP of ['claude', 'local', 'fairy-ticket']) {
+    for (const cur of ['claude', 'local']) {
+      await main(`globalThis.__retryLog.length = 0; __jj.chat.debugSetState((s) => ({ ...s, provider: '${cur}', messages: [
+        { id: 'u1', role: 'user', text: 'q' },
+        { id: 'e1', role: 'pet', text: '', provider: '${msgP}', status: 'error', error: { kind: 'rate-limit', message: 'x' } },
+      ] })); 1`);
+      await sleep(500);
+      const names = JSON.parse(await c.ev(`JSON.stringify([...document.querySelectorAll('.retry button')].map((b) => b.textContent.trim()))`));
+      const got = [];
+      for (let i = 0; i < names.length; i++) {
+        await c.ev(`[...document.querySelectorAll('.retry button')][${i}].click(); 1`);
+        await sleep(150);
+        got.push(JSON.parse(await main('JSON.stringify(globalThis.__retryLog)')).at(-1));
+      }
+      const ok = names.length >= 1 && new Set(names).size === names.length && names.every((n, i) => nameToId(n) === got[i]) && names[0].length > 0 && nameToId(names[0]) === msgP;
+      check(`다시 묻기 ${msgP} 답, 지금 ${cur}: 이름과 보내는 AI 일치, 이름 중복 없음`, ok, JSON.stringify(names.map((n, i) => [n, got[i]])));
+    }
+  }
+  await main(`__jj.chat.debugSetState((s) => ({ ...s, messages: [
+    { id: 'a1', role: 'pet', text: 'hello', provider: 'claude', status: 'done' },
+  ] })); 1`);
+  await sleep(400);
+  // 답 아래 단추의 눌리는 영역(::after)이 옆 단추 것과 겹치지 않는다
+  const overlap = await c.ev(`(() => { const bs = [...document.querySelectorAll('.answer-actions button')]; const box = (b) => { const r = b.getBoundingClientRect(); const a = getComputedStyle(b, '::after'); return [r.left + parseFloat(a.left), r.right - parseFloat(a.right) * 0 + 0, r.left, r.right, parseFloat(a.left), parseFloat(a.right)]; }; let worst = -99; for (let i = 0; i + 1 < bs.length; i++) { const A = bs[i].getBoundingClientRect(); const B = bs[i + 1].getBoundingClientRect(); const aa = getComputedStyle(bs[i], '::after'); const ba = getComputedStyle(bs[i + 1], '::after'); const aRight = A.left + parseFloat(aa.left) + parseFloat(aa.width); const bLeft = B.left + parseFloat(ba.left); worst = Math.max(worst, aRight - bLeft); } return worst; })()`);
+  check('복사, 메모로, 할 일로 누르는 영역이 옆 단추와 겹치지 않음', overlap <= 0.01, String(overlap));
   await main('__jj.chat.window?.close?.(); 1').catch(() => 0);
 
   // 한가할 때 행동 고르기: 동작 줄이기면 화면을 가로질러 걷는 행동(walk)이 한 번도 안 나온다
@@ -316,12 +381,12 @@ try {
   await until(() => st.ev(`!!document.querySelector('[role=tab], nav button, .tabs button')`), '설정');
   await st.ev(`[...document.querySelectorAll('button, [role=tab]')].find((b) => /^(편의|General)/.test(b.textContent.trim()))?.click(); 1`);
   await sleep(500);
-  const pick = (name) => st.ev(`(() => { const f = document.querySelector('fieldset[aria-label="${ko ? '움직임을 줄일 때' : 'When to reduce motion'}"]'); const b = [...f.querySelectorAll('button')].find((x) => x.textContent.includes(${JSON.stringify(name)})); b.click(); return 1; })()`);
-  const pressed = () => st.ev(`JSON.stringify([...document.querySelector('fieldset[aria-label="${ko ? '움직임을 줄일 때' : 'When to reduce motion'}"]').querySelectorAll('button')].map((b) => [b.textContent.trim(), b.getAttribute('aria-pressed')]))`);
+  const pick = (name) => st.ev(`(() => { const f = document.querySelector('fieldset[aria-label="${ko ? '걷기와 뛰기를 줄일 때' : 'When to reduce walking and hopping'}"]'); const b = [...f.querySelectorAll('button')].find((x) => x.textContent.includes(${JSON.stringify(name)})); b.click(); return 1; })()`);
+  const pressed = () => st.ev(`JSON.stringify([...document.querySelector('fieldset[aria-label="${ko ? '걷기와 뛰기를 줄일 때' : 'When to reduce walking and hopping'}"]').querySelectorAll('button')].map((b) => [b.textContent.trim(), b.getAttribute('aria-pressed')]))`);
   const names = ko ? { system: '운영체제 따름', always: '항상 줄이기', off: '줄이지 않기' } : { system: 'Follow system', always: 'Always reduce', off: "Don't reduce" };
   console.log('움직임 갈래', await pressed());
   check('기본은 운영체제 따름', JSON.parse(await pressed())[0][1] === 'true', await pressed());
-  await st.ev(`document.querySelector('fieldset[aria-label="${ko ? '움직임을 줄일 때' : 'When to reduce motion'}"]').scrollIntoView({ block: 'center' }); 1`);
+  await st.ev(`document.querySelector('fieldset[aria-label="${ko ? '걷기와 뛰기를 줄일 때' : 'When to reduce walking and hopping'}"]').scrollIntoView({ block: 'center' }); 1`);
   await sleep(300);
   await st.shot(`settings-motion-${lang}-light`);
   const walks = async (n) => (await ask(n)).filter((x) => x === 'walk').length;
@@ -330,6 +395,7 @@ try {
     for (let i = 0; i < 4; i++) if ((await walks(120)) > 0) return true;
     return false;
   };
+  await pet.ev(`window.__st = []; window.jjakkung.onStatus((x) => window.__st.push(x.calm)); 1`);
   // 운영체제가 줄이기를 켠 척
   await main('__jj.debugReducedMotion(true); 1');
   check('운영체제 따름 + 운영체제 줄이기 켬: 걷기 없음', (await walks(70)) === 0);
@@ -338,6 +404,7 @@ try {
   await main('__jj.debugReducedMotion(false); 1');
   await pick(names.always); await sleep(400);
   check('항상 줄이기: 운영체제가 꺼도 걷기 없음', (await walks(70)) === 0);
+  check('펫 화면에도 같은 판정(calm)이 전달됨', JSON.parse(await pet.ev('JSON.stringify(window.__st)')).includes(true), await pet.ev('JSON.stringify(window.__st)'));
   await pick(names.system); await sleep(400);
   check('운영체제 따름 + 꺼짐: 걷는다', await walksSome());
 } catch (err) {

@@ -37,8 +37,6 @@ export const motionChoiceFromOld = (saved: unknown, saver: unknown): MotionChoic
 
 /** 지금 절약할지 */
 export function saverOn(mode: SaverMode, facts: PowerFacts): boolean {
-  // 운영체제 동작 줄이기는 사용자가 접근성으로 고른 것이라 절약 설정(끔)보다 앞선다
-  if (facts.reducedMotion) return true;
   if (mode === 'off') return false;
   if (mode === 'always') return true;
   return facts.onBattery || facts.lowPower;

@@ -39,6 +39,7 @@ import { applyPendingImport, createBackup, exportPet, importPet, importPetBytes 
 import {
   debugBattery,
   debugReducedMotion,
+  motionCalm,
   onSaverChange,
   powerFacts,
   saverNow,
@@ -1301,6 +1302,7 @@ ready
         ...(pickedStand(settings.get()) ? { stand: true } : {}),
         energy: petLife.energy,
         saver: saverNow(),
+        calm: motionCalm(),
         readAloud: settings.get().readAloud,
         clickGrow: settings.get().clickGrow,
         wear: wear.look(),
@@ -1339,6 +1341,10 @@ ready
       sendStatus();
       friends.resendStatus();
       tellSaver(on);
+    });
+    // 움직임 줄이기(설정 편의)를 바꾸면 펫 화면도 같은 판정으로 맞춘다
+    settings.onChange((next, prev) => {
+      if (next.reduceMotion !== prev.reduceMotion) sendStatus();
     });
     /**
      * 처음 배터리로 바뀌어 움직임을 줄이면 펫이 한 번 알린다 (몰래 바꾸지 않게, 사용자 요청 2026-10-11).
