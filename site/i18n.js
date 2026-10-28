@@ -291,7 +291,7 @@ window.I18N = {
     'req.ai': 'AI 대화',
     'req.aiV': 'Claude Code, Codex, Cursor, Gemini CLI 중 하나, 또는 무료 AI 모델(Qwen3 1.7B 약 940MB, 0.6B 약 400MB). 없어도 페어리, 할 일, 메모, 일정은 다 돼요.',
     'req.later': '쓸 때만 받는 것',
-    'req.laterV': '사진 페어리 배경 지우기 모델 약 170MB와 엔진 약 17MB, 2.5D 깊이 모델 약 27MB, 무료 AI 엔진 5~11MB',
+    'req.laterV': '사진 페어리 배경 지우기 모델 약 84MB와 엔진 약 17MB, 2.5D 깊이 모델 약 50MB, 무료 AI 엔진 5~11MB',
     'req.draw': '내 컴퓨터에서 그리기',
     'req.drawV': '메모리 8GB 이상, 빈 공간 7~20GB (엔진에 따라 약 5.2GB 또는 약 16GB를 받아요)',
 
@@ -888,7 +888,7 @@ window.I18N = {
     'req.ai': 'AI chat',
     'req.aiV': 'One of Claude Code, Codex, Cursor or Gemini CLI, or a free AI model (Qwen3 1.7B about 940MB, 0.6B about 400MB). Fairies, to-dos, notes and calendar work without any',
     'req.later': 'Downloaded only when used',
-    'req.laterV': 'Photo background-removal model about 170MB plus engine about 17MB; 2.5D depth model about 27MB; free AI engine 5–11MB',
+    'req.laterV': 'Photo background-removal model about 84MB plus engine about 17MB; 2.5D depth model about 50MB; free AI engine 5–11MB',
     'req.draw': 'Drawing on your computer',
     'req.drawV': '8GB+ memory and 7–20GB free space (downloads about 5.2GB or 16GB depending on the engine)',
 

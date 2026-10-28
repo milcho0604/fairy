@@ -971,6 +971,11 @@ li.pin-end {
   margin-top: 12px;
 }
 
+/* 한 줄로 쌓인 두 열(좁음, 보통)은 열 사이도 구역 간격을 둔다 */
+.today-col + .today-col {
+  margin-top: 12px;
+}
+
 .today h2,
 .events-list h2 {
   display: flex;
@@ -1026,6 +1031,10 @@ li.pin-end {
 
   .today-col {
     min-width: 0;
+  }
+
+  .today-col + .today-col {
+    margin-top: 0;
   }
 
   .today .today-col-title {
@@ -1636,7 +1645,7 @@ li.pin-end {
 
 /* 상점 */
 .shop {
-  padding: 8px 14px 12px;
+  padding: 6px 14px 12px;
 }
 
 .shop section + section {
@@ -1826,21 +1835,26 @@ ul.house-styles li > :last-child {
   flex-direction: column;
 }
 
-.shop-msg {
-  /* 스크롤 칸 위쪽 바깥 고정 자리에 겹쳐 그린다(목록을 밀지 않고, 마우스는 통과). 아래로 내려 집을 사도 보인다 */
-  position: absolute;
-  top: 8px;
-  right: 14px;
-  left: 14px;
-  z-index: 2;
-  margin: 0;
+.shop-slot {
+  /* 띠가 있든 없든 높이가 같다. 목록은 늘 이 아래에서 시작한다 */
+  flex: none;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 2px 14px 0;
   pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  padding: 5px 10px;
+}
+
+.shop-msg {
+  margin: 0;
+  padding: 1px 10px;
   border-radius: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: color-mix(in srgb, var(--ok) 14%, var(--panel));
   color: var(--ok);
   font-size: 12.5px;
+  line-height: 20px;
 }
 
 .shop-msg.bad {

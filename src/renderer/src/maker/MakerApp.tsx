@@ -1323,7 +1323,7 @@ export function MakerApp() {
                         ? t('maker.3d.refining')
                         : t('maker.3d.working')
                       : shapeTask === 'reliefDownload'
-                        ? t('maker.relief.downloading', { mb: info?.depth.mb ?? 27 })
+                        ? t('maker.relief.downloading', { mb: info?.depth.mb ?? 50 })
                         : t('maker.relief.working')
                 }
                 startedAt={shapeAt}
@@ -1430,7 +1430,7 @@ export function MakerApp() {
                       <p className="hint">
                         {depth
                           ? t('maker.relief.ready')
-                          : t('maker.relief.hint', { mb: info?.depth.mb ?? 27 })}
+                          : t('maker.relief.hint', { mb: info?.depth.mb ?? 50 })}
                       </p>
                     )}
                     {!shaping && !depth && (
