@@ -67,6 +67,15 @@ export const ko = {
   'friends.shareTitleOff': '일정 제목 보여 주기를 껐어. 올린 제목은 서버에서 지웠어.',
   'friends.theyShareTitle': '나에게 일정 제목도 보여 줘',
   'friends.theyShare': '나에게 바쁜 시간을 보여 줘',
+  'friends.visit': '펫 놀러 가기',
+  'friends.visitHint':
+    '켜면 내 펫의 종류와 이름이 서버를 거쳐 이 친구에게 가고, 이 친구도 켜면 서로 가끔 상대 화면에 잠깐 놀러 가. 내 펫은 내 화면에 그대로 있어. 끄면 서버에서 바로 지워.',
+  'friends.visitWaiting': '친구도 켜면 시작돼.',
+  'friends.visitCustom':
+    '사진이나 직접 만든 그림은 보내지 않아. 이 친구 화면에는 기본 모습의 대역 펫이 내 펫 이름으로 가.',
+  'friends.visitOn': '이 친구에게 내 펫이 놀러 갈 수 있어.',
+  'friends.visitOff': '놀러 가기를 껐어. 이 친구 몫의 펫 카드는 더 안 가고, 켠 친구가 없으면 서버에서 지워.',
+  'friends.theyVisit': '내 화면에 놀러 올 수 있어',
   'friends.shareOn': '이 친구에게 바쁜 시간을 보여 줄게.',
   'friends.shareOff': '바쁜 시간 보여 주기를 껐어. 올린 시간은 서버에서 지웠어.',
   'friends.left': '떠난 친구',
@@ -170,6 +179,16 @@ export const en: Translation<typeof ko> = {
   'friends.shareTitleOff': 'Stopped showing event titles. They were deleted from the server.',
   'friends.theyShareTitle': 'Shows you their event titles too',
   'friends.theyShare': 'Shows you their busy times',
+  'friends.visit': 'Pet visits',
+  'friends.visitHint':
+    "When on, your pet's kind and name go through the server to this friend. If they turn it on too, your pets sometimes drop by each other's screens for a few minutes. Your pet stays on your own screen. Turning it off deletes it from the server right away.",
+  'friends.visitWaiting': 'Starts when your friend turns it on too.',
+  'friends.visitCustom':
+    "Photos and drawings you made are never sent. This friend sees a stand-in pet in a default look, with your pet's name.",
+  'friends.visitOn': 'Your pet can now visit this friend.',
+  'friends.visitOff':
+    'Pet visits are off. Your pet card no longer goes to this friend, and it is deleted from the server when no friend is left.',
+  'friends.theyVisit': 'Their pet can visit your screen',
   'friends.shareOn': 'Your busy times are now shown to this friend.',
   'friends.shareOff': 'Stopped showing your busy times. They were deleted from the server.',
   'friends.left': 'Former friend',

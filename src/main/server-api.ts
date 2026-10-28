@@ -1,6 +1,7 @@
 // 페어리 서버 API 부르기 (기획서 11절, 서버 PR #106). Electron 없이 돌아 시험에서 fetch 를 바꿔 끼운다.
 // 토큰과 코드는 기록에 남기지 않는다. 실패 대답은 { error: '<까닭>' }.
 import { createHash } from 'node:crypto';
+import type { PetCard } from '../shared/pet-card.ts';
 import {
   type AccountSummary,
   type AdminLogFilter,
@@ -18,6 +19,7 @@ import type {
   FriendRequestItem,
   FriendsList,
   TitledBlock,
+  VisitorCard,
 } from '../shared/server-friends.ts';
 import {
   APP_VERSION_HEADER,
@@ -317,11 +319,24 @@ function friendItemOf(v: unknown): FriendItem | undefined {
     since,
     iShare: o.iShare === true,
     theyShare: o.theyShare === true,
+    iVisit: o.iVisit === true,
+    theyVisit: o.theyVisit === true,
     busyAt: iso(o.busyAt),
     canTitle: o.canTitle === true,
     iTitle: o.iTitle === true,
     theyTitle: o.theyTitle === true,
   };
+}
+
+/** 받은 손님 카드. 종류 id 는 모양만 본다 (이 앱이 아는지는 쓰는 쪽이 lookOf 로 가린다) */
+function visitorOf(v: unknown): VisitorCard | undefined {
+  const o = obj(v);
+  const p = personOf(o);
+  const pet = obj(o.pet);
+  if (!p || typeof pet.species !== 'string' || !/^(kind|starter):[a-z0-9]{2,12}$/.test(pet.species))
+    return undefined;
+  const name = typeof pet.name === 'string' && pet.name.length <= 12 ? pet.name : null;
+  return { ...p, pet: { species: pet.species, name, stand: pet.stand === true } };
 }
 
 function requestOf(v: unknown): FriendRequestItem | undefined {
@@ -784,6 +799,28 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
         },
         read: (j) => ({ stored: nat(j.stored) ?? 0 }),
       }),
+    /** 이 친구에게 내 펫 놀러 가기 켜고 끄기 (#141). 끄고 켠 친구가 없으면 서버가 카드를 지운다 */
+    friendVisit: (token: string, code: string, on: boolean) =>
+      call<{ visiting: number }>('PUT', `/v1/friends/${encodeURIComponent(code)}/visit`, {
+        token,
+        body: { on },
+        read: (j) => ({ visiting: nat(j.visiting) ?? 0 }),
+      }),
+    /** 내 펫 카드 올리기 (종류 id, 이름, 네 발 서기뿐. 그림 파일은 보내지 않는다) */
+    visitCard: (token: string, card: PetCard) =>
+      call('PUT', '/v1/friends/visit/card', {
+        token,
+        body: { species: card.species, ...(card.name ? { name: card.name } : {}), stand: card.stand },
+        read: () => true,
+      }),
+    /** 놀러 올 친구 펫 카드 (서로 켠 친구만) */
+    visits: (token: string) =>
+      call<VisitorCard[]>('GET', '/v1/friends/visits', {
+        token,
+        read: (j) => (Array.isArray(j.visitors) ? listOf(j.visitors, visitorOf, 100) : undefined),
+      }),
+    /** 모든 친구에게 놀러 가기를 끄고 올린 카드를 지운다 (로그아웃) */
+    visitStop: (token: string) => call('DELETE', '/v1/friends/visit', { token, read: () => true }),
     busyStop: (token: string) => call('DELETE', '/v1/friends/calendar', { token, read: () => true }),
     friendBusy: (token: string, code: string) =>
       call<BusyView>('GET', `/v1/friends/${encodeURIComponent(code)}/busy`, {

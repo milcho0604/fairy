@@ -7,6 +7,7 @@
 //   구글 일정은 제목을 보내지 않는다 (비공개 표시 private 를 로컬에 저장하지 않아 가릴 수 없으니 통째로 뺀다, shareableTitle).
 // - 토큰은 server-core 의 sessionCall 안에만 있다.
 import { randomBytes } from 'node:crypto';
+import type { PetCard } from '../shared/pet-card.ts';
 import {
   type BusyBlock,
   type BusyView,
@@ -15,6 +16,7 @@ import {
   type FriendsState,
   friendCodeFrom,
   type TitledBlock,
+  type VisitorCard,
 } from '../shared/server-friends.ts';
 import type { ApiResult } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
@@ -25,6 +27,9 @@ export const BUSY_REFRESH_MS = 30 * 60_000;
 export const BUSY_DAYS = 14;
 /** 끝이 없는 일정은 30분으로 본다 (event-overlap.ts 와 같다) */
 const NO_END_MS = 30 * 60_000;
+
+/** 펫 카드는 내용이 같아도 이만큼 지나면 다시 올린다 (서버는 14일 안 올리면 지운다) */
+export const CARD_REFRESH_MS = 6 * 3600_000;
 
 /** 올리는 제목 길이 (서버 TITLE_MAX) */
 export const TITLE_MAX = 80;
@@ -62,6 +67,10 @@ export interface ServerFriendsDeps {
   /** [from, to) 와 겹치는 시각 일정 (종일 일정은 뺀다). 끝이 없으면 null */
   events: (from: number, to: number) => BusySource[];
   now: () => number;
+  /** 지금 내 펫 카드 (shared/pet-card-of.ts cardOf). 없으면 카드를 올리지 않는다 */
+  card?: () => PetCard;
+  /** 내 펫이 직접 가져온 그림이라 대역으로 가는가 (설정 칸의 안내) */
+  customPet?: () => boolean;
   onChange: (s: FriendsState) => void;
   log: (tag: string, ...rest: unknown[]) => void;
   random?: (n: number) => Uint8Array;
@@ -128,6 +137,8 @@ export function createServerFriends(d: ServerFriendsDeps) {
   let refreshing: Promise<void> | null = null;
   let lastUpload: { key: string; at: number } | null = null;
   let uploading = false;
+  let lastCard: { key: string; at: number } | null = null;
+  let cardBusy = false;
 
   const status = () => d.core()?.status();
 
@@ -152,6 +163,8 @@ export function createServerFriends(d: ServerFriendsDeps) {
         s.age === 'adult' &&
         s.ai,
       calendar: on && s?.features?.friend_calendar === true,
+      visit: on && s?.features?.friend_visit === true,
+      visitCustom: d.customPet?.() ?? false,
       balance: s?.balance ?? null,
       passes: s?.tickets ?? null,
       prefill: on ? prefill : null,
@@ -173,6 +186,7 @@ export function createServerFriends(d: ServerFriendsDeps) {
         if (list) {
           list = null;
           lastUpload = null;
+          lastCard = null;
         }
         return;
       }
@@ -246,11 +260,76 @@ export function createServerFriends(d: ServerFriendsDeps) {
     }
   }
 
+  /** 내 펫이 놀러 가기로 켠 친구가 있나 */
+  const visiting = (): boolean => list?.friends.some((f) => f.iVisit) ?? false;
+
+  /**
+   * 펫 카드 올리기 (몇 분마다, 켠 직후). 놀러 갈 친구가 없으면 아무것도 보내지 않는다. 카드는 종류 id, 이름, 네 발 서기뿐이다
+   * (사진, 그림 파일은 없다). 내용이 같으면 CARD_REFRESH_MS 마다만 다시 올린다
+   */
+  async function uploadCard(force = false): Promise<void> {
+    if (cardBusy || !available() || !d.card || !state().visit) return;
+    if (!visiting()) {
+      lastCard = null;
+      return;
+    }
+    cardBusy = true;
+    try {
+      const card = d.card();
+      const key = JSON.stringify(card);
+      const now = d.now();
+      if (!force && lastCard && lastCard.key === key && now - lastCard.at < CARD_REFRESH_MS) return;
+      const r = await call<true>((api, t) => api.visitCard(t, card));
+      if (r.ok) lastCard = { key, at: now };
+      else {
+        d.log('friends', '펫 카드 못 올림', r.status, r.error);
+        if (r.error === 'not_visiting') await refresh();
+      }
+    } finally {
+      cardBusy = false;
+    }
+  }
+
+  /**
+   * 서버가 조용히 쉬는 때인가 (손님을 새로 부르지 않는다): 친구 기능이 안 보이거나, 펫 놀러 가기 키가 꺼졌거나, 서버가 꺼졌거나
+   * 업데이트 관문(426)에 막혔다. 말풍선, 알림 없이 다음 차례를 기다린다
+   */
+  function visitQuiet(): boolean {
+    const s = status();
+    return !available() || !state().visit || !!s?.problem;
+  }
+
   return {
     available,
     state,
     refresh,
     uploadBusy,
+    uploadCard,
+    visitQuiet,
+    /** 서로 켠 친구가 있나 (목록에서. 없으면 손님 목록을 받으러 가지 않는다) */
+    mutualVisit: (): boolean => list?.friends.some((f) => f.iVisit && f.theyVisit) ?? false,
+    /** 놀러 올 친구 펫 카드. 실패(오프라인, 426, 키 꺼짐)는 undefined: 조용히 넘어간다 */
+    async visitors(): Promise<VisitorCard[] | undefined> {
+      if (visitQuiet()) return undefined;
+      const r = await call<VisitorCard[]>((api, t) => api.visits(t));
+      if (!r.ok) {
+        d.log('friends', '손님 목록 못 받음', r.status, r.error);
+        return undefined;
+      }
+      return r.data;
+    },
+    /** 이 친구에게 내 펫 놀러 가기. 켜면 바로 카드를 올린다 */
+    async visit(code: string, on: boolean): Promise<FriendResult> {
+      const r = await act(on ? '놀러 가기 켬' : '놀러 가기 끔', (api, t) => api.friendVisit(t, code, on));
+      if (r.ok && on) await uploadCard(true);
+      return r;
+    },
+    /** 모든 친구에게 놀러 가기를 끄고 카드를 지운다 (로그아웃 전에 부른다. 실패해도 로그아웃은 한다) */
+    async stopVisit(): Promise<void> {
+      if (!available()) return;
+      lastCard = null;
+      await call((api, t) => api.visitStop(t));
+    },
     /** 초대 링크(fairy://friend/<코드>)로 열었다: 칸에 코드를 미리 넣는다 */
     prefill(code: string) {
       prefill = code;

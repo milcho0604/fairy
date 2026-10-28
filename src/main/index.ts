@@ -19,6 +19,7 @@ import { runnerLookOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
 import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
+import { cardOf, isCustomPet } from '../shared/pet-card-of.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { DoingSet } from '../shared/pet-status.ts';
 import { starterFigureOf, starterModelOf } from '../shared/pet3d/starters.ts';
@@ -1602,6 +1603,9 @@ ready
       },
       // 친구 일정 공유 1차 (#110): 시각 일정의 시작과 끝만 올린다 (제목 없음). 구글 일정은 빼고 직접 넣은 일정만
       friendEvents: (from, to) => events.timedOverlapping(from, to),
+      // 친구 펫 놀러 가기 (#141): 종류 id, 이름, 네 발 서기뿐. 직접 가져온 그림과 사진은 카드에 넣지 않는다 (대역으로)
+      petCard: () => cardOf(settings.get()),
+      customPet: () => isCustomPet(settings.get()),
       log,
     });
     serverCore = server.core;

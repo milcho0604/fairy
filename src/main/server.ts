@@ -18,6 +18,7 @@ import { spendRule } from '../shared/coin-rules.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { isHouseStyle } from '../shared/house-art.ts';
 import { t } from '../shared/i18n/index.ts';
+import type { PetCard } from '../shared/pet-card.ts';
 import { isLoginService, type RewardOutcome, SERVER, type ServerStatus } from '../shared/server-account.ts';
 import { FRIENDS, type FriendsState, inviteLink } from '../shared/server-friends.ts';
 import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.ts';
@@ -87,6 +88,9 @@ export function createServer(o: {
   calendarLinked?: () => boolean;
   /** 친구 일정 공유 (#110): [from, to) 의 시각 일정 (어느 것을 보낼지는 server-friends.ts shareableEvent) */
   friendEvents?: (from: number, to: number) => BusySource[];
+  /** 친구 펫 놀러 가기 (#141): 지금 내 펫 카드 (종류 id, 이름, 네 발 서기. 그림은 없다) */
+  petCard?: () => PetCard;
+  customPet?: () => boolean;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const url = appServerUrl();
@@ -178,6 +182,8 @@ export function createServer(o: {
   const friends = createServerFriends({
     core: () => core,
     events: (from, to) => o.friendEvents?.(from, to) ?? [],
+    ...(o.petCard ? { card: o.petCard } : {}),
+    ...(o.customPet ? { customPet: o.customPet } : {}),
     now: Date.now,
     onChange: (s) => sendFriends(s),
     log: o.log,
@@ -221,6 +227,7 @@ export function createServer(o: {
     void friends
       .refresh()
       .then(() => friends.uploadBusy())
+      .then(() => friends.uploadCard())
       .catch((err) => o.log('friends', '오류', err instanceof Error ? err.message : String(err)));
   }, SYNC_EVERY_MS);
   friendsEvery.unref?.();
@@ -306,7 +313,12 @@ export function createServer(o: {
   ipcMain.on(SERVER.cancelLogin, (e) => {
     if (o.isSettings(e.sender)) core.cancelLogin();
   });
-  ipcMain.handle(SERVER.logout, (e) => (ok(e) ? core.logout() : undefined));
+  // 로그아웃하면 서버의 내 펫 카드도 지운다 (세션이 살아 있을 때 먼저)
+  ipcMain.handle(SERVER.logout, async (e) => {
+    if (!ok(e)) return undefined;
+    await friends.stopVisit().catch(() => undefined);
+    return core.logout();
+  });
   ipcMain.handle(SERVER.merge, (e, yes: unknown) => (ok(e) ? core.merge(yes === true) : undefined));
   ipcMain.handle(SERVER.remove, async (e) => (ok(e) ? core.remove() : { ok: false, status: undefined }));
   // 서버 백업 (#102)
@@ -364,6 +376,9 @@ export function createServer(o: {
   );
   ipcMain.handle(FRIENDS.shareTitle, (e, to: unknown, on: unknown) =>
     ok(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
+  );
+  ipcMain.handle(FRIENDS.visit, (e, to: unknown, on: unknown) =>
+    ok(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
   );
   ipcMain.handle(FRIENDS.busy, (e, to: unknown) => (ok(e) && code(to) ? friends.busy(code(to)) : refused));
   ipcMain.handle(FRIENDS.copyCode, (e) => {

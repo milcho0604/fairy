@@ -340,6 +340,7 @@ function FriendRow(o: {
         <small className="friends-sub">{f.code}</small>
         {f.theyShare && <small className="friends-tag">{t('friends.theyShare')}</small>}
         {f.theyTitle && <small className="friends-tag">{t('friends.theyShareTitle')}</small>}
+        {s.visit && f.theyVisit && <small className="friends-tag">{t('friends.theyVisit')}</small>}
         <span className="friends-actions">
           {s.gifts && (
             <button type="button" className="ghost small" disabled={o.off} onClick={o.onGift}>
@@ -415,6 +416,28 @@ function FriendRow(o: {
       )}
       {s.calendar && f.iShare && !f.canTitle && (
         <small className="friends-note">{t('friends.shareTitleAdults')}</small>
+      )}
+      {s.visit && (
+        <label className="friends-visit">
+          <input
+            type="checkbox"
+            checked={f.iVisit}
+            disabled={o.off}
+            onChange={(e) => {
+              const on = e.target.checked;
+              void o.run('visit', () => b.visit(f.code, on), t(on ? 'friends.visitOn' : 'friends.visitOff'));
+            }}
+          />
+          <span>{t('friends.visit')}</span>
+        </label>
+      )}
+      {s.visit && f.iVisit && (
+        <small className="friends-note">
+          {f.theyVisit ? t('friends.visitHint') : `${t('friends.visitHint')} ${t('friends.visitWaiting')}`}
+        </small>
+      )}
+      {s.visit && f.iVisit && s.visitCustom && (
+        <small className="friends-note">{t('friends.visitCustom')}</small>
       )}
       {o.giftOpen && <GiftForm f={f} s={s} off={o.off} run={o.run} b={b} close={o.closeGift} />}
       {o.busyView && (
