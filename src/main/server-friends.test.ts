@@ -614,3 +614,52 @@ test('로그아웃 전 stopVisit 는 서버의 카드를 지우는 호출을 하
   await friends.stopVisit();
   assert.ok(f.calls.some((c) => c.startsWith('visitStop')));
 });
+
+test('로그아웃 때 카드를 못 지우면 표시를 남기고, 다음에 같은 계정으로 연결되면 다시 지운다. 다른 계정이면 표시만 버린다', async () => {
+  let mark: string | null = null;
+  const cleanup = {
+    get: () => mark,
+    set: (c: string | null) => {
+      mark = c;
+    },
+  };
+  const f = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true), visitStop: { ok: false, status: 0, error: 'offline', body: {} } },
+  });
+  const friends = createServerFriends({ ...visitDeps(f.core, () => T0), cleanup });
+  await friends.refresh();
+  await friends.stopVisit();
+  assert.equal(mark, 'F-AB12-CD34', '못 지웠으니 표시가 남는다');
+  // 연결이 돌아오면 (같은 계정) 다시 지우고 표시를 거둔다
+  const g = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  const again = createServerFriends({ ...visitDeps(g.core, () => T0), cleanup });
+  await again.refresh();
+  assert.ok(
+    g.calls.some((c) => c.startsWith('visitStop')),
+    g.calls.join('\n'),
+  );
+  assert.equal(mark, null);
+  assert.equal(again.state().list?.friends[0]?.iVisit, false);
+  // 다른 계정으로 연결되면 지우지 않고 표시만 버린다
+  mark = 'F-ZZZZ-ZZZZ';
+  const h = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  await createServerFriends({ ...visitDeps(h.core, () => T0), cleanup }).refresh();
+  assert.equal(h.calls.filter((c) => c.startsWith('visitStop')).length, 0);
+  assert.equal(mark, null);
+  // 지웠으면 표시를 남기지 않는다
+  const ok = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  const clean = createServerFriends({ ...visitDeps(ok.core, () => T0), cleanup });
+  await clean.refresh();
+  await clean.stopVisit();
+  assert.equal(mark, null);
+});

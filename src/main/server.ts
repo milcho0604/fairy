@@ -35,10 +35,12 @@ import { type BusySource, createServerFriends } from './server-friends.ts';
 import { SERVER_RESTORE_MARK } from './server-mark.ts';
 import { sealedSecret } from './server-secret.ts';
 import { appServerUrl } from './server-url.ts';
-import { readJson, writeJson } from './store.ts';
+import { readJson, removeJson, writeJson } from './store.ts';
 import { memorySecrets } from './test-keychain.ts';
 
 /** 켤 때 처음 맞추기까지, 그 뒤로 이만큼마다 */
+/** 로그아웃 때 서버의 펫 카드를 못 지웠다는 표시 파일 (server-friends.ts cleanup) */
+const VISIT_CLEANUP = 'friend-visit-cleanup';
 const FIRST_SYNC_MS = 5_000;
 export const SYNC_EVERY_MS = 3 * 60_000;
 /** 장부가 바뀌고 이만큼 조용하면 대기열에 넣고 보낸다 */
@@ -90,6 +92,8 @@ export function createServer(o: {
   friendEvents?: (from: number, to: number) => BusySource[];
   /** 친구 펫 놀러 가기 (#141): 지금 내 펫 카드 (종류 id, 이름, 네 발 서기. 그림은 없다) */
   petCard?: () => PetCard;
+  /** 로그아웃했다 (와 있던 놀러 온 친구 펫을 돌려보낸다) */
+  onLogout?: () => void;
   customPet?: () => boolean;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
@@ -184,6 +188,13 @@ export function createServer(o: {
     events: (from, to) => o.friendEvents?.(from, to) ?? [],
     ...(o.petCard ? { card: o.petCard } : {}),
     ...(o.customPet ? { customPet: o.customPet } : {}),
+    cleanup: {
+      get: () => {
+        const v = (readJson(VISIT_CLEANUP) as { code?: unknown } | undefined)?.code;
+        return typeof v === 'string' ? v : null;
+      },
+      set: (code) => (code ? writeJson(VISIT_CLEANUP, { code }) : removeJson(VISIT_CLEANUP)),
+    },
     now: Date.now,
     onChange: (s) => sendFriends(s),
     log: o.log,
@@ -317,6 +328,7 @@ export function createServer(o: {
   ipcMain.handle(SERVER.logout, async (e) => {
     if (!ok(e)) return undefined;
     await friends.stopVisit().catch(() => undefined);
+    o.onLogout?.();
     return core.logout();
   });
   ipcMain.handle(SERVER.merge, (e, yes: unknown) => (ok(e) ? core.merge(yes === true) : undefined));

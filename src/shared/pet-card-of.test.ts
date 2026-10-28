@@ -38,11 +38,23 @@ test('직접 가져온 그림, 사진, 만든 그림, 펫 파일은 카드에 �
     const s = { ...base, ...extra };
     assert.equal(isCustomPet(s), true, JSON.stringify(extra));
     const c = cardOf(s);
-    assert.deepEqual(c, { species: 'kind:cat', name: '나비', stand: false }, JSON.stringify(extra));
+    assert.deepEqual(c, { species: 'kind:cat', name: null, stand: false }, JSON.stringify(extra));
     assert.ok(!JSON.stringify(c).includes('.png') && !JSON.stringify(c).includes('model'));
   }
   assert.equal(isCustomPet({ ...base, petImage: undefined }), false);
   assert.equal(isCustomPet({ ...base, petImage: 'pet-milk-1.png' }), false);
+});
+
+test('개인 용도로 표시한 펫(petPersonal)은 이름을 보내지 않는다. 기본 펫은 보낸다', () => {
+  const personal = {
+    ...base,
+    petImage: 'pet-milk-1.png',
+    petModel: 'm.json',
+    petPersonal: { 'm.json': true },
+  };
+  assert.equal(cardOf(personal).name, null);
+  assert.equal(cardOf({ ...base, petImage: 'pet-milk-1.png', petPersonal: {} }).name, '나비');
+  assert.equal(cardOf({ ...base, petPersonal: {} }).name, '나비');
 });
 
 test('이름: 규칙에 안 맞으면 null (한 글자, 주소, @, 너무 긴 이름)', () => {

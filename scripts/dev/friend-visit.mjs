@@ -678,10 +678,10 @@ async function flow() {
       // A 가 직접 가져온 그림(사진 펫)을 쓰면 카드에는 종류와 이름만 (사진 없음) → B 화면에는 기본 모습 대역
       await a.main("(__jj.settings.set({ petImage: 'pet-1700000000000.png', petName: '사진펫' }), 1)");
       await a.main('__jj.server.friends.uploadCard(true).then(() => 1)');
-      await soft(until('사진 펫 카드', () => sql(`SELECT name FROM pet_card WHERE account_id = ${A.id}`) === '사진펫', 10_000));
+      await soft(until('사진 펫 카드', () => sql(`SELECT species FROM pet_card WHERE account_id = ${A.id}`).startsWith('kind:'), 10_000));
       const row = sql(`SELECT species || '|' || coalesce(name, '') || '|' || stand FROM pet_card WHERE account_id = ${A.id}`);
       const kindA = await a.main('__jj.settings.get().petKind');
-      check(F, '사진 펫의 카드: 기본 펫 종류 + 이름, 네 발 서기 없음, 그림 이름이 없음', row === `kind:${kindA}|사진펫|false` && !row.includes('pet-'), row);
+      check(F, '사진 펫의 카드: 기본 펫 종류만 (이름도 없음), 네 발 서기 없음, 그림 이름이 없음', row === `kind:${kindA}||false` && !row.includes('pet-'), row);
       await a.main('__jj.server.friends.refresh().then(() => 1)');
       await sleep(600);
       check(F, '설정 줄에 "사진이나 직접 만든 그림은 보내지 않아" 안내', (await boxText(pa)).includes(t('friends.visitCustom')), (await boxText(pa)).slice(0, 300));
@@ -689,7 +689,7 @@ async function flow() {
       await b.main('(__jj.visitors.setState({ lastAt: 0, count: 0, last: {}, pausedDay: null }), 1)');
       const r1 = await callVisitor(b);
       const lk = (await vstate(b)).look;
-      check(F, 'B 화면 손님 = 기본 펫 모양 + 사진 펫 이름', r1?.went === true && lk?.species === `kind:${kindA}` && lk.name === '사진펫' && !lk.starter, JSON.stringify(lk));
+      check(F, 'B 화면 손님 = 기본 펫 모양, 이름 없음 (사진 펫이라 이름도 안 감)', r1?.went === true && lk?.species === `kind:${kindA}` && lk.name === null && !lk.starter, JSON.stringify(lk));
       await b.main("(__jj.visitors.dismiss('test'), 1)");
       await sleep(800);
       await a.main("(__jj.settings.set({ petImage: null, petName: __jj.settings.get().petName === '사진펫' ? '콩' : __jj.settings.get().petName }), 1)");
@@ -698,7 +698,7 @@ async function flow() {
       await b.main('(__jj.visitors.setState({ lastAt: 0, count: 0, last: {} }), 1)');
       const r2 = await callVisitor(b);
       const lk2 = (await vstate(b)).look;
-      check(F, '모르는 종류(kind:dragon) → 대역 콩이 (이름은 그대로)', r2?.went === true && lk2?.known === false && lk2.kind === 'kong' && lk2.name === '사진펫', JSON.stringify(lk2));
+      check(F, '모르는 종류(kind:dragon) → 대역 콩이', r2?.went === true && lk2?.known === false && lk2.kind === 'kong', JSON.stringify(lk2));
       await b.main("(__jj.visitors.dismiss('test'), 1)");
       await sleep(800);
       // 앱에 든 밀크는 번들 그림으로
@@ -716,6 +716,18 @@ async function flow() {
     // --- 일정, 기능 키, 서버 꺼짐: 조용히 미룬다 ---
     {
       const F = '조용히';
+      await clearAll(a);
+      // 와 있는 손님은 기능 키가 꺼지면(서버가 켜 준 것이 없어지면) 돌아간다
+      const come = await callVisitor(a);
+      check(F, '손님을 부름', come?.went === true, JSON.stringify(come));
+      await soft(until('손님', async () => (await windowsOf(a)) === 1, 15_000));
+      sql(`UPDATE feature_flag SET mode = 'off' WHERE key = 'friend_visit'`);
+      await sleep(5500);
+      await clickSync(a, pa);
+      check(F, '와 있던 손님이 기능 키 끔으로 돌아감 (로그아웃, 나이 변경도 같은 길)', await soft(until('손님 돌아감', async () => (await windowsOf(a)) === 0, 20_000)));
+      sql(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'friend_visit'`);
+      await sleep(5500);
+      await clickSync(a, pa);
       await clearAll(a);
       const soon = Date.now() + 2 * 60_000;
       await a.main(`(__jj.events.add({ title: 'meeting', startAt: ${soon}, endAt: ${soon + 30 * 60_000}, reminds: [] }, Date.now()), 1)`);

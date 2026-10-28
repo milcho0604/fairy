@@ -71,6 +71,11 @@ export interface ServerFriendsDeps {
   card?: () => PetCard;
   /** 내 펫이 직접 가져온 그림이라 대역으로 가는가 (설정 칸의 안내) */
   customPet?: () => boolean;
+  /**
+   * 로그아웃 때 서버의 카드와 놀러 가기를 못 지웠다는 표시 (내 친구 코드). 다음에 이 계정으로 연결되면 다시 지운다 (파일에 남긴다).
+   * 다른 계정이 연결되면 지울 수 없으니 표시만 버린다 (카드는 서버가 14일 뒤 지운다)
+   */
+  cleanup?: { get: () => string | null; set: (code: string | null) => void };
   onChange: (s: FriendsState) => void;
   log: (tag: string, ...rest: unknown[]) => void;
   random?: (n: number) => Uint8Array;
@@ -179,6 +184,22 @@ export function createServerFriends(d: ServerFriendsDeps) {
     return (await core.sessionCall(f)) as ApiResult<T>;
   }
 
+  /** 로그아웃 때 못 지운 카드와 놀러 가기를 다시 지운다 */
+  async function retryCleanup(): Promise<void> {
+    const pending = d.cleanup?.get();
+    if (!pending || !list) return;
+    if (list.me.code !== pending) {
+      d.cleanup?.set(null);
+      return;
+    }
+    const r = await call((api, t) => api.visitStop(t));
+    if (r.ok) {
+      d.cleanup?.set(null);
+      list = { ...list, friends: list.friends.map((f) => ({ ...f, iVisit: false })) };
+      lastCard = null;
+    } else d.log('friends', '지우기 다시 못 함', r.status, r.error);
+  }
+
   async function refresh(): Promise<void> {
     if (refreshing) return refreshing;
     const run = async () => {
@@ -194,6 +215,7 @@ export function createServerFriends(d: ServerFriendsDeps) {
       if (r.ok) {
         list = r.data;
         problem = null;
+        await retryCleanup();
       } else {
         problem = errorOf(r);
         d.log('friends', '목록을 못 받음', r.status, r.error);
@@ -328,7 +350,12 @@ export function createServerFriends(d: ServerFriendsDeps) {
     async stopVisit(): Promise<void> {
       if (!available()) return;
       lastCard = null;
-      await call((api, t) => api.visitStop(t));
+      const code = list?.me.code ?? null;
+      // 못 지우면(오프라인) 표시를 남겨 다음에 다시 지운다
+      if (code) d.cleanup?.set(code);
+      const r = await call((api, t) => api.visitStop(t));
+      if (r.ok) d.cleanup?.set(null);
+      else d.log('friends', '로그아웃 때 카드를 못 지움', r.status, r.error);
     },
     /** 초대 링크(fairy://friend/<코드>)로 열었다: 칸에 코드를 미리 넣는다 */
     prefill(code: string) {

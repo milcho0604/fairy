@@ -1611,6 +1611,7 @@ ready
       // 친구 펫 놀러 가기 (#141): 종류 id, 이름, 네 발 서기뿐. 직접 가져온 그림과 사진은 카드에 넣지 않는다 (대역으로)
       petCard: () => cardOf(settings.get()),
       customPet: () => isCustomPet(settings.get()),
+      onLogout: () => visitors?.dismiss('logout'),
       log,
     });
     serverCore = server.core;

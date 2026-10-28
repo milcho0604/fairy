@@ -3,10 +3,14 @@
 // AI 로 만든 그림, 펫 파일은 싣지 않는다: 그런 펫은 기본 펫 모양의 대역으로 가고 이름만 따라간다.
 import { checkNickname } from './account-profile.ts';
 import { CARD_KINDS, type CardSpecies, type PetCard } from './pet-card.ts';
-import { isPetKind, type PetKind, pickedStand, type Settings } from './settings.ts';
+import { isPersonalPet, isPetKind, type PetKind, pickedStand, type Settings } from './settings.ts';
 import { isStarterId, type StarterId, starterOf } from './starter-pets.ts';
 
-type CardFacts = Pick<Settings, 'petName' | 'petKind' | 'petImage' | 'petModel' | 'petStands' | 'petSprites'>;
+type CardFacts = Pick<
+  Settings,
+  'petName' | 'petKind' | 'petImage' | 'petModel' | 'petStands' | 'petSprites'
+> &
+  Partial<Pick<Settings, 'petPersonal'>>;
 
 /** 이 펫은 앱에 든 그림이 아니다 (직접 가져온 그림, 사진, 만든 그림, 펫 파일): 친구 화면에는 대역으로 간다 */
 export const isCustomPet = (s: Pick<Settings, 'petImage' | 'petSprites'>): boolean =>
@@ -14,7 +18,10 @@ export const isCustomPet = (s: Pick<Settings, 'petImage' | 'petSprites'>): boole
 
 /** 서버에 올릴 내 펫 카드 */
 export function cardOf(s: CardFacts): PetCard {
-  const name = checkNickname(s.petName);
+  // 직접 가져온 펫이나 개인 용도로 표시한 펫은 이름도 보내지 않는다 (상업 캐릭터 이름이 친구에게 보이지 않게).
+  // 받는 쪽은 "{닉네임}의 펫"으로 부른다
+  const own = isCustomPet(s) || isPersonalPet({ ...s, petPersonal: s.petPersonal ?? {} });
+  const name = own ? ({ ok: false } as const) : checkNickname(s.petName);
   const starter = isCustomPet(s) ? undefined : starterOf(s.petImage);
   const kind: PetKind = isPetKind(s.petKind) ? s.petKind : 'kong';
   const species: CardSpecies = starter ? `starter:${starter}` : `kind:${kind}`;

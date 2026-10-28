@@ -46,26 +46,40 @@ export const emptyState = (today: string): VisitState => ({
 
 const CODE = /^F-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 
-/** 파일에서 읽은 값을 믿지 않고 모양을 확인한다. 날짜가 바뀌었으면 센 수를 0으로 */
-export function parseState(raw: unknown, today: string): VisitState {
+/** 다음 날 (YYYY-MM-DD) */
+function nextDay(day: string): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 파일에서 읽은 값을 믿지 않고 모양을 확인한다. 날짜가 지났으면 센 수를 0으로. 시계가 앞서 갔다 돌아온 흔적은 지금으로 자른다
+ * (미래 시각이 남으면 그만큼 손님이 안 온다). 시간대를 서쪽으로 옮겨 저장 날짜가 하루 앞서면 센 수를 그대로 둔다
+ */
+export function parseState(raw: unknown, today: string, now: number = Date.now()): VisitState {
   const o =
     typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(v, now) : 0);
+  const count0 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+  // 오늘이거나 하루 앞선 날짜(서쪽으로 옮김)까지만 믿는다
+  const sameOrAhead = (v: unknown): v is string => typeof v === 'string' && v >= today && v <= nextDay(today);
   const last: Record<string, number> = {};
   if (typeof o.last === 'object' && o.last !== null && !Array.isArray(o.last))
     for (const [k, v] of Object.entries(o.last))
       if (CODE.test(k) && num(v) > 0 && Object.keys(last).length < 200) last[k] = num(v);
-  const day = typeof o.day === 'string' ? o.day : today;
+  const day = sameOrAhead(o.day) ? o.day : null;
   return {
-    day: today,
-    count: day === today ? Math.min(Math.floor(num(o.count)), 999) : 0,
-    pausedDay: o.pausedDay === today ? today : null,
+    day: day ?? today,
+    count: day ? Math.min(Math.floor(count0(o.count)), 999) : 0,
+    pausedDay: sameOrAhead(o.pausedDay) ? o.pausedDay : null,
     lastAt: num(o.lastAt),
     last,
   };
 }
 
-export const isPaused = (s: VisitState, today: string): boolean => s.pausedDay === today;
+export const isPaused = (s: VisitState, today: string): boolean =>
+  s.pausedDay !== null && s.pausedDay >= today;
 
 /** 지금 손님을 부르면 안 되는 까닭 (판정 순서대로). 위 줄이 먼저 말한다 */
 export type DeferReason =
@@ -127,7 +141,7 @@ export function interruptReason(
 export function deferReason(s: VisitState, f: VisitFacts): DeferReason | null {
   if (f.present) return 'present';
   if (isPaused(s, f.today)) return 'paused';
-  if (s.day === f.today && s.count >= VISIT.dayMax) return 'dayMax';
+  if (s.day >= f.today && s.count >= VISIT.dayMax) return 'dayMax';
   if (f.now - s.lastAt < VISIT.cooldownMs) return 'cooldown';
   if (!f.serverOk) return 'server';
   const i = interruptReason(f);
@@ -168,15 +182,15 @@ export function decide<T extends { code: string }>(
 
 /** 손님이 왔다고 적는다 */
 export function recordVisit(s: VisitState, code: string, now: number, today: string): VisitState {
-  const base = s.day === today ? s : { ...s, day: today, count: 0 };
+  const base = s.day >= today ? s : { ...s, day: today, count: 0 };
   return { ...base, count: base.count + 1, lastAt: now, last: { ...base.last, [code]: now } };
 }
 
 export function setPaused(s: VisitState, on: boolean, today: string): VisitState {
   return {
     ...s,
-    day: s.day === today ? s.day : today,
-    count: s.day === today ? s.count : 0,
+    day: s.day >= today ? s.day : today,
+    count: s.day >= today ? s.count : 0,
     pausedDay: on ? today : null,
   };
 }

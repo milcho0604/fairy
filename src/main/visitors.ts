@@ -294,6 +294,8 @@ export function createVisitors(o: VisitorsOptions) {
           saver: saverNow(),
         });
         if (why) return dismiss(why);
+        // 로그아웃, 나이 변경, 친구 기능이나 놀러 가기를 껐으면 와 있던 손님도 돌려보낸다
+        if (!o.friends.available() || !o.friends.state().visit) return dismiss('off');
         if (!rechecking && now - lastRecheck >= VISIT.recheckMs) {
           rechecking = true;
           lastRecheck = now;
@@ -302,6 +304,7 @@ export function createVisitors(o: VisitorsOptions) {
             .then((cards) => {
               // 못 받았으면(오프라인, 막힘) 쫓아내지 않는다. 받았는데 목록에 없으면 허락이 거둬진 것
               if (cards && !cards.some((c) => c.code === live.code)) dismiss('revoked');
+              else if (!cards && (!o.friends.available() || !o.friends.state().visit)) dismiss('off');
             })
             .finally(() => {
               rechecking = false;
@@ -366,7 +369,7 @@ export function createVisitors(o: VisitorsOptions) {
   async function tick(force = false): Promise<{ went: boolean; reason?: string }> {
     const now = Date.now();
     const today = localDay(now);
-    state = parseState(state, today);
+    state = parseState(state, today, now);
     const f = facts(now);
     const why = deferReason(state, f);
     if (why) return { went: false, reason: why };

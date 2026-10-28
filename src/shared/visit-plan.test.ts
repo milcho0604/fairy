@@ -144,3 +144,31 @@ test('파일 읽기: 깨진 값, 이상한 코드, 다른 날짜의 오늘은 �
   assert.deepEqual(s.last, { 'F-AAAA-AAAA': 7 });
   assert.equal(parseState({ day: TODAY, pausedDay: TODAY }, TODAY).pausedDay, TODAY);
 });
+
+test('시계가 미래로 갔다 돌아와도 미래 기록은 지금으로 잘려 쉬는 시간이 풀린다', () => {
+  const future = NOW + 365 * 86400_000;
+  const s = parseState({ day: TODAY, count: 1, lastAt: future, last: { [A.code]: future } }, TODAY, NOW);
+  assert.equal(s.lastAt, NOW);
+  assert.equal(s.last[A.code], NOW);
+  assert.equal(deferReason(s, { ...ok, now: NOW + VISIT.cooldownMs }), null);
+  assert.deepEqual(pickVisitor([A], s, NOW + VISIT.perFriendMs, first), A);
+  assert.equal(pickVisitor([A], s, NOW, first), undefined, '지금 막 온 것으로 본다');
+});
+
+test('시간대를 서쪽으로 옮겨 저장 날짜가 하루 앞서면 센 수와 오늘은 그만이 유지된다. 며칠 앞선 날짜는 버린다', () => {
+  const s = parseState(
+    { day: '2026-10-28', count: VISIT.dayMax, pausedDay: '2026-10-28' },
+    '2026-10-27',
+    NOW,
+  );
+  assert.equal(s.count, VISIT.dayMax);
+  assert.equal(s.day, '2026-10-28');
+  assert.equal(deferReason(s, { ...ok, today: '2026-10-27' }), 'paused');
+  assert.equal(deferReason({ ...s, pausedDay: null }, { ...ok, today: '2026-10-27' }), 'dayMax');
+  const far = parseState({ day: '2027-10-28', count: 5, pausedDay: '2027-10-28' }, '2026-10-27', NOW);
+  assert.equal(far.count, 0);
+  assert.equal(far.pausedDay, null);
+  // 날짜가 지나면 풀린다
+  assert.equal(deferReason(s, { ...ok, today: '2026-10-29' }), null);
+  assert.equal(parseState(s, '2026-10-29', NOW).count, 0);
+});
