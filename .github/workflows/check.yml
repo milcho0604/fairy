@@ -41,6 +41,9 @@ jobs:
             echo "app=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           app=$(printf '%s\n' "$files" | grep -vE '^(server/|docs/|site/|\.github/workflows/(server-[^/]*|site)\.yml$|\.github/ISSUE_TEMPLATE/|LICENSE$)|\.md$' | grep -c . || true)
+          # 앱 시험이 글로 읽는 서버 파일 (src/shared/admin-web.test.ts). 이것만 바뀌어도 앱 검사를 돌린다
+          read=$(printf '%s\n' "$files" | grep -cxF 'server/src/admin-page.ts' || true)
+          app=$((app + read))
           echo "앱에 닿는 파일 $app 개"
           [ "$app" -gt 0 ] && echo "app=true" >> "$GITHUB_OUTPUT" || echo "app=false" >> "$GITHUB_OUTPUT"
 
