@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
 import { type JsonTrouble, readJsonFile, writeJsonFile } from './json-file.ts';
@@ -43,4 +43,13 @@ export function writeJson(name: string, value: unknown): void {
 /** 지운다. 없으면 그냥 넘어간다 (떠난 친구 펫의 위치 파일 등) */
 export function removeJson(name: string): void {
   rmSync(pathOf(name), { force: true });
+}
+
+/** 이름 뒤에 꼬리를 붙여 옮겨 둔다 (옛 저장 파일을 새 저장소로 옮긴 뒤 그대로 남길 때: daily-note.json -> daily-note.json.migrated). 없으면 넘어간다 */
+export function renameJson(name: string, suffix: string): void {
+  try {
+    renameSync(pathOf(name), `${pathOf(name)}${suffix}`);
+  } catch {
+    // 파일이 없거나 못 옮겨도 켜기를 막지 않는다 (다음에 켜도 같은 쪽지는 쪽지함에 이미 있어 중복되지 않는다)
+  }
 }

@@ -14,7 +14,7 @@ export const GAZE_POLL_MS = 250;
 /** 부스트 모드에서 커서가 가까울 때 보는 간격 (칸도 잘게 나눠 부드럽게 따라간다) */
 export const GAZE_BOOST_POLL_MS = 100;
 /** 커서가 모든 펫에서 멀 때(보는 반경의 두 배 밖) 보는 간격. 다가오는 동안 늦어도 이만큼만 늦게 본다 */
-export const GAZE_FAR_POLL_MS = 500;
+export const GAZE_FAR_POLL_MS = 1500;
 
 /** 커서를 보는 반경: 펫 크기의 3배, 적어도 320px */
 const gazeRadius = (pet: Rect) => Math.max(320, pet.width * 3);

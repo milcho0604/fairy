@@ -7,6 +7,7 @@
 // 방해하지 않는다: 집중, 숨김(발표 포함), 노는 중에는 새로 삐지지 않고 시간도 세지 않는다.
 // 말은 부르는 쪽이 수다 빈도(system 말풍선)와 떠 있는 말풍선(일정 알림 등)을 보고 한다.
 
+import { isMutedLine } from './i18n/index.ts';
 import { voiced } from './persona-voice.ts';
 
 /** 삐지는 까닭. 앱이 실제로 아는 신호만 */
@@ -354,6 +355,7 @@ export function isPraise(text: string): boolean {
  * 같은 말이 연달아 나오지 않게 (말 반복 줄이기)
  */
 export function pickLine(pool: readonly string[], recent: readonly string[], rand: () => number): string {
+  if (pool.length === 0) return '';
   const fresh = pool.filter((l) => !recent.includes(l));
   const from = fresh.length > 0 ? fresh : pool;
   return from[Math.min(from.length - 1, Math.floor(rand() * from.length))] ?? '';
@@ -369,5 +371,15 @@ const VOICED = voiced as unknown as (key: string, vars?: Record<string, string |
  * 토라진 말 n 줄 (prefix.1 ~ prefix.n). 고른 성격 말투로 (shared/persona-voice.ts):
  * 예전엔 t 로 읽어 존댓말 비서도 토라진 말만 반말이었고, 고양이체 같은 말투 규칙도 붙지 않았다
  */
-export const poutLines = (prefix: string, n: number, vars?: Record<string, string | number>): string[] =>
-  Array.from({ length: n }, (_, i) => VOICED(`${prefix}.${i + 1}`, vars));
+export const poutLines = (
+  prefix: string,
+  n: number,
+  vars?: Record<string, string | number>,
+  only?: readonly number[],
+): string[] =>
+  Array.from({ length: n }, (_, i) => i + 1)
+    .filter((k) => !only || only.includes(k))
+    .map((k) => `${prefix}.${k}`)
+    // 안 쓰기로 한 말은 뺀다 (다 빼면 빈 목록, 부르는 쪽이 말하지 않는다)
+    .filter((key) => !isMutedLine(key))
+    .map((key) => VOICED(key, vars));

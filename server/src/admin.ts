@@ -875,6 +875,20 @@ export class AdminService {
     return [...ids];
   }
 
+  #actions?: { at: number; rows: { action: string }[] };
+
+  /** 운영 기록의 동작 종류 목록: 기록 전체를 훑어 모으므로 추이와 같은 시간(ADMIN_TREND_CACHE_MS) 동안 기억한다 */
+  private async actionsCached(): Promise<{ action: string }[]> {
+    const ttl = this.config.adminTrendCacheMs ?? 0;
+    const now = Date.now();
+    if (ttl > 0 && this.#actions && now - this.#actions.at < ttl) return this.#actions.rows;
+    const r = await this.db.pool.query<{ action: string }>(
+      'SELECT DISTINCT action FROM admin_log ORDER BY action',
+    );
+    if (ttl > 0) this.#actions = { at: now, rows: r.rows };
+    return r.rows;
+  }
+
   /** 운영 기록 한 쪽: 대상 이용자, 동작 종류, 글 검색으로 걸러 50건씩 (옛 기록은 actor_name 이 비어 있다) */
   private async logs(o: LogOptions): Promise<{ rows: AdminView['log']; page: AdminView['logPage'] }> {
     const user = (o.user ?? '').trim().slice(0, 40);
@@ -904,9 +918,7 @@ export class AdminService {
          ${join} ${where} ORDER BY l.id DESC LIMIT $5 OFFSET $6`,
       [...args, LOG_PAGE_SIZE, (page - 1) * LOG_PAGE_SIZE],
     );
-    const actions = await this.db.pool.query<{ action: string }>(
-      'SELECT DISTINCT action FROM admin_log ORDER BY action',
-    );
+    const actions = { rows: await this.actionsCached() };
     return {
       rows: rows.rows,
       page: {
@@ -2044,7 +2056,7 @@ export class AdminService {
       await lockSwitch(c, key);
       const row = await c.query<{ mode: string }>('SELECT mode FROM feature_flag WHERE key = $1', [key]);
       const dbMode = row.rows[0]?.mode;
-      const before = isAiMode(dbMode) ? dbMode : await this.features.featureMode(key);
+      const before = isAiMode(dbMode) ? dbMode : await this.features.featureMode(key, c);
       staleSwitch(f, before);
       await this.features.setFeatureMode(key, mode, c);
       return {
@@ -2387,7 +2399,12 @@ export class AdminService {
       try {
         const ref = (f.account ?? '').trim();
         const found = await findAccount(c, ref);
-        id = await this.aiAdmin.setAllowed(c, ref, on, !!found && (await this.access.isAdminAccount(found)));
+        id = await this.aiAdmin.setAllowed(
+          c,
+          ref,
+          on,
+          !!found && (await this.access.isAdminAccount(found, c)),
+        );
       } catch (err) {
         throw refusedFrom(err);
       }

@@ -1055,7 +1055,7 @@ ${v.features.map((x) => featureAllow(x, v)).join('\n')}
 <label>질문 한 번에 쓸 글자 수 (.env 상한 ${ai.capInputChars} 이하, 비우면 상한) <input name="input_chars" type="number" min="1" max="${ai.capInputChars}" value="${esc(val(dLim, 'input_chars', String(ai.setInputChars ?? '')))}"></label>
 <button type="submit">예산 저장</button>
 </form>
-<p class="hint">지금 쓰는 값: 월 ${usd(ai.monthlyBudgetMicros)}, 하루 ${ai.dailyLimit}번, 질문 ${ai.inputChars}자 이하. 이번 달 ${usd(v.summary.aiCostMicros)} 썼어요.</p>
+<p class="hint">지금 쓰는 값: 월 ${usd(ai.monthlyBudgetMicros)}, 하루 ${ai.dailyLimit}번, 질문 ${ai.inputChars}자 이하. 이번 달(UTC 기준) ${usd(v.summary.aiCostMicros)} 썼어요.</p>
 ${budgetWarn(v.summary.aiCostMicros, ai.monthlyBudgetMicros)}
 <form method="post" action="/admin/ai/policy" class="grid">${formErr(v, 'ai/policy')}${hidden(csrf)}
 <p class="wide">정책: 허용된 계정은 매달 1일(한국) N장까지 채우기 정기 지급이 저절로 걸려요 (쪽지로, 이월 없음). 자리는 ${ai.seatsUsed}/${ai.seatLimit}.</p>
@@ -1190,8 +1190,8 @@ ${trendSection(v)}
 <div><dt>남은 채팅 이용권 합</dt><dd>${s.tickets}</dd></div>
 <div><dt>지난 24시간 번 코인</dt><dd>${s.earnedDay}</dd></div>
 <div><dt>지난 24시간 쓴 코인</dt><dd>${s.spentDay}</dd></div>
-<div><dt>이번 달 질문</dt><dd>${s.aiAsks}</dd></div>
-<div><dt>이번 달 추정 비용</dt><dd>${usd(s.aiCostMicros)} / ${usd(v.ai.monthlyBudgetMicros)}</dd></div>
+<div><dt>이번 달 질문 (UTC 기준)</dt><dd>${s.aiAsks}</dd></div>
+<div><dt>이번 달 추정 비용 (UTC 기준)</dt><dd>${usd(s.aiCostMicros)} / ${usd(v.ai.monthlyBudgetMicros)}</dd></div>
 <div><dt>남은 예산</dt><dd>${usd(Math.max(0, v.ai.monthlyBudgetMicros - s.aiCostMicros))}</dd></div>
 </dl>
 ${versionTable(v)}</section>

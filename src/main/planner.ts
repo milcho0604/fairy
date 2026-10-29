@@ -8,10 +8,12 @@ import {
   DUE_PM_FROM,
   deadlineText,
   dueSlot,
+  isInstallDay,
   nextUp,
   reviewText,
   undoMoved,
 } from '../shared/briefing.ts';
+import { talksToSelf } from '../shared/chatter.ts';
 import { plusDays, weekdayOf } from '../shared/day.ts';
 import type { EventStore } from '../shared/event-store.ts';
 import {
@@ -27,9 +29,18 @@ import {
   tickFocus,
 } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
-import { ActivityWatch, type IdleFacts, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
+import {
+  ActivityWatch,
+  IDLE_GAP_MS,
+  type IdleFacts,
+  type IdleKey,
+  IdleTalker,
+  idleVars,
+  SOMETIMES_GAP_MS,
+} from '../shared/idle-talk.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { nextMinuteTurn, onTick, PLAN_TICK_MS, wakeDelay, wakeNow, zoneKey } from '../shared/planner-wake.ts';
+import { isQuietNow } from '../shared/quiet-hours.ts';
 import {
   coversBriefing,
   coversReview,
@@ -285,6 +296,12 @@ export function createPlanner(o: PlannerOptions) {
     if (!s.review || reviewedDay === day || minuteOfDay(now) < s.reviewMinute) return false;
     // 만나는 날 만났으면 헤어지는 인사가 회고를 같이 한다
     if (coversReview(s.routine, memo, day)) return false;
+    // 설치 첫날은 회고하지 않는다 (끝낸 할 일 0개를 말풍선이나 놓친 알림으로 남기지 않게)
+    if (isInstallDay(o.stats.firstDay(), day, o.todos.list(now).doneToday.length)) {
+      reviewedDay = day;
+      store();
+      return false;
+    }
     if (powerMonitor.getSystemIdleTime() > 60) return true;
     reviewedDay = day;
     store();
@@ -360,10 +377,16 @@ export function createPlanner(o: PlannerOptions) {
       o.log('planner', '쉬는 날');
       briefing = true;
       const { events } = todayFacts(now);
+      const rest = restText(day, briefingBody({ events, dueToday: 0, overdue: 0 }, ''));
+      // 쉬는 날 말을 모두 안 쓰기로 했고 일정도 없으면 말하지 않는다
+      if (!rest) {
+        briefing = false;
+        return false;
+      }
       void o
         .say({
           kind: 'system',
-          text: restText(day, briefingBody({ events, dueToday: 0, overdue: 0 }, '')),
+          text: rest,
           ttlMs: 10_000,
         })
         .then(() => {
@@ -394,20 +417,23 @@ export function createPlanner(o: PlannerOptions) {
       o.onChange();
     }
     o.log('planner', '맞이', due.arrival, streak.n, coins, weekly);
+    const greeting = greetText({
+      day: due.day,
+      arrival: due.arrival,
+      first,
+      streak: streak.n,
+      coins,
+      weekly,
+      briefing: withBriefing ? briefingBody(todayFacts(now)) : '',
+      quiet,
+    });
+    // 맞이하는 말을 모두 안 쓰기로 했고 덧붙일 말도 없으면 말하지 않는다
+    if (!greeting) return;
     briefing = true;
     void o
       .say({
         kind: 'schedule',
-        text: greetText({
-          day: due.day,
-          arrival: due.arrival,
-          first,
-          streak: streak.n,
-          coins,
-          weekly,
-          briefing: withBriefing ? briefingBody(todayFacts(now)) : '',
-          quiet,
-        }),
+        text: greeting,
         ttlMs: withBriefing ? 15_000 : 9000,
         // 헤어질 때가 지나도록 못 보면 버린다 (놓친 알림에는 남기지 않는다: 인사는 지나면 쓸모가 없다)
         hold: { staleAt: localTime(due.day, spanEnd(due.meet)), missedLines: [] },
@@ -423,7 +449,10 @@ export function createPlanner(o: PlannerOptions) {
    */
   function farewell(now: number, due: Extract<RoutineDue, { what: 'farewell' }>, quiet: boolean) {
     const s = settings.get();
-    const asks = s.review && reviewedDay !== due.day;
+    const asks =
+      s.review &&
+      reviewedDay !== due.day &&
+      !isInstallDay(o.stats.firstDay(), due.day, o.todos.list(now).doneToday.length);
     memo = { ...memo, farewelled: due.day };
     if (asks) reviewedDay = due.day;
     store();
@@ -445,17 +474,20 @@ export function createPlanner(o: PlannerOptions) {
       else if (a === 'keep' && after) void o.say({ kind: 'answer', text: after, ttlMs: 8000 });
     };
     o.log('planner', '헤어짐', doneToday.length, left.length);
+    const farewellMsg = farewellText({
+      day: due.day,
+      doneTitles: doneToday.map((todo) => todo.title),
+      ...(next ? { next } : {}),
+      tomorrow,
+      leftToday: left.length,
+      quiet,
+    });
+    // 헤어지는 말을 모두 안 쓰기로 했으면 말하지 않는다
+    if (!farewellMsg) return;
     void o
       .say({
         kind: 'schedule',
-        text: farewellText({
-          day: due.day,
-          doneTitles: doneToday.map((todo) => todo.title),
-          ...(next ? { next } : {}),
-          tomorrow,
-          leftToday: left.length,
-          quiet,
-        }),
+        text: farewellMsg,
         buttons:
           left.length > 0
             ? [
@@ -521,15 +553,28 @@ export function createPlanner(o: PlannerOptions) {
   if (o.talkRecent) talker.talk.restore(o.talkRecent.load(), o.talkRecent.known);
   let activity = new ActivityWatch();
   let talking = false;
+  /** 일정을 쓰는 사람인지 (보름 앞뒤에 일정이 하나라도). 반 시간마다만 다시 센다 */
+  let eventsUsedAt = Number.NEGATIVE_INFINITY;
+  let eventsUsedNow = false;
+  function eventsUsed(now: number): boolean {
+    if (now - eventsUsedAt >= 30 * 60_000) {
+      const span = 14 * 24 * 3_600_000;
+      eventsUsedNow = o.events.between(now - span, now + span).length > 0;
+      eventsUsedAt = now;
+    }
+    return eventsUsedNow;
+  }
   function talk(now: number) {
     const idleSec = powerMonitor.getSystemIdleTime();
     activity.observe(now, idleSec, screen.getCursorScreenPoint());
     if (talking) return;
     const pet = o.talkFacts?.() ?? {};
+    talker.setGap(settings.get().chatter === 'sometimes' ? SOMETIMES_GAP_MS : IDLE_GAP_MS);
     const r = talker.due(
       now,
       {
-        chatty: settings.get().chatter === 'chatty',
+        chatty: talksToSelf(settings.get().chatter),
+        quiet: isQuietNow(settings.get().quietHours, now),
         briefing,
         focusing: focus.phase === 'focus',
         hidden: o.petHidden(),
@@ -548,12 +593,16 @@ export function createPlanner(o: PlannerOptions) {
           (m, e) => (m === undefined ? e.startAt : Math.min(m, e.startAt)),
           undefined,
         );
+        const firstOpen = open.find((t) => t.due !== null && t.due <= day);
         const lastDone = doneToday.reduce((m, t) => Math.max(m, t.doneAt ?? 0), 0);
         return {
           now,
           doneToday: doneToday.length,
           ...(lastDone > 0 ? { lastDoneAt: lastDone } : {}),
           openToday: open.filter((t) => t.due !== null && t.due <= day).length,
+          overdue: open.filter((t) => t.due !== null && t.due < day).length,
+          ...(firstOpen ? { todoTitle: firstOpen.title } : {}),
+          eventsUsed: eventsUsed(now),
           ...(next !== undefined ? { nextEventMin: (next - now) / 60_000 } : {}),
           eventsLeftToday: timed.length,
           workedMin: activity.workedMin(now),
@@ -766,7 +815,7 @@ export function createPlanner(o: PlannerOptions) {
   function schedule() {
     if (stopped) return;
     const now = Date.now();
-    const poll = waiting || focus.phase !== 'idle' || settings.get().chatter === 'chatty';
+    const poll = waiting || focus.phase !== 'idle' || talksToSelf(settings.get().chatter);
     const at = poll ? undefined : nextAt(now);
     dueAt = at === undefined ? (poll ? now + TICK_MS : Number.POSITIVE_INFINITY) : onTick(at, origin || now);
     armed = { wall: now, mono: performance.now(), zone: zoneKey(now) };
@@ -796,7 +845,7 @@ export function createPlanner(o: PlannerOptions) {
   }
   const stopSettings = settings.onChange((next, prev) => {
     // 수다쟁이로 바꾸면 입력과 커서를 다시 15초마다 본다. 드문드문 본 기록은 버린다 (자리를 비웠다 온 것으로 잘못 보지 않게)
-    if (next.chatter === 'chatty' && prev.chatter !== 'chatty') activity = new ActivityWatch();
+    if (talksToSelf(next.chatter) && !talksToSelf(prev.chatter)) activity = new ActivityWatch();
     soon();
   });
   const onResume = () => soon();

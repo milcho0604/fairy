@@ -7,6 +7,7 @@ import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { cutText } from '../shared/cut-text.ts';
+import { plusDays } from '../shared/day.ts';
 import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
@@ -18,7 +19,7 @@ import { ownsLoginItem } from '../shared/login-item.ts';
 import { runnerLookOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
-import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
+import { setSpeechSource, setVoiceSource, voiced, voicedLive, voicedPick } from '../shared/persona-voice.ts';
 import { cardOf, isCustomPet } from '../shared/pet-card-of.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { DoingSet } from '../shared/pet-status.ts';
@@ -35,7 +36,15 @@ import { localModelReady, stopLocal } from './ai/local.ts';
 import { cachedMcpServers, knownMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet, importPetBytes } from './backup.ts';
-import { debugBattery, onSaverChange, powerFacts, saverNow, watchPower } from './battery.ts';
+import {
+  debugBattery,
+  debugReducedMotion,
+  motionCalm,
+  onSaverChange,
+  powerFacts,
+  saverNow,
+  watchPower,
+} from './battery.ts';
 import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
@@ -98,7 +107,7 @@ import { createServerInbox, type ServerInbox } from './server-inbox.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { watchSiteEvents } from './site-events.ts';
-import { onJsonTrouble, readJson, writeJson } from './store.ts';
+import { onJsonTrouble, readJson, renameJson, writeJson } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { testKeychainSwitches } from './test-keychain.ts';
 import { createTogether } from './together.ts';
@@ -404,6 +413,8 @@ ready
         focusRunning: () => planner.focus.phase !== 'idle',
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
         openKnows: () => knows.open(),
+        openMailbox: () => openMailbox(),
+        mailUnread: () => dailyNotes.unread(),
         whatFirst: () => sayWhatFirst(),
         askChips: () => void petChips?.ask(),
         // 집 숨기기, 다시 보이기 (shared/house-stow.ts). 집을 숨기면 집 우클릭을 못 하니 펫 메뉴에 둔다
@@ -566,6 +577,7 @@ ready
       store,
       stats,
       notes,
+      mail,
       events,
       gcalLinks,
       life,
@@ -849,14 +861,16 @@ ready
           }
           return ok;
         }
-        void pet.say({ kind: 'answer', text: voiced('pet.play.walkStart'), ttlMs: 2000 });
+        const walkHi = voicedLive('pet.play.walkStart');
+        if (walkHi !== undefined) void pet.say({ kind: 'answer', text: walkHi, ttlMs: 2000 });
         await new Promise((r) => setTimeout(r, 2200));
         const started = Date.now();
         const ok = await pet.stroll(walkMin);
         const minutes = Math.round((Date.now() - started) / 60_000);
         stats.addWalk(Date.now(), minutes);
         if (minutes > 0) petLife.activity('play');
-        if (ok) void pet.say({ kind: 'answer', text: voiced('pet.play.walkEnd'), ttlMs: 4000 });
+        const walkBye = voicedLive('pet.play.walkEnd');
+        if (ok && walkBye !== undefined) void pet.say({ kind: 'answer', text: walkBye, ttlMs: 4000 });
         return ok;
       } finally {
         playing = false;
@@ -889,7 +903,7 @@ ready
       busy: () => pet.isHidden() || playing || pet.held() || planner.focus.phase === 'focus',
       giggle: (text) => {
         pet.react('dance');
-        void pet.say({ kind: 'answer', text, ttlMs: 3000 });
+        if (text) void pet.say({ kind: 'answer', text, ttlMs: 3000 });
       },
       log,
     });
@@ -1129,12 +1143,8 @@ ready
         pet.react('fed');
         petLife.activity('feed');
         const image = food.image ? foodImageDataUrl(food.image) : undefined;
-        void pet.say({
-          kind: 'answer',
-          text: voiced('pet.fedWith', { food: food.name }),
-          ttlMs: 3500,
-          image,
-        });
+        const fedWith = voicedPick('pet.fedWith', { food: food.name });
+        if (fedWith !== undefined) void pet.say({ kind: 'answer', text: fedWith, ttlMs: 3500, image });
         sendStatus();
       },
       openFoodMaker: () => maker.open('food'),
@@ -1179,7 +1189,10 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
+        {
+          const fed = voicedPick('pet.fed');
+          if (fed !== undefined) void pet.say({ kind: 'answer', text: fed, ttlMs: 3000 });
+        }
       },
       onChanged: () => sendStatus(),
       openChat: () => chat.open(pet.bounds()),
@@ -1251,7 +1264,10 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
+        {
+          const fed = voicedPick('pet.fed');
+          if (fed !== undefined) void pet.say({ kind: 'answer', text: fed, ttlMs: 3000 });
+        }
       } else {
         void pet.say({
           kind: 'answer',
@@ -1289,6 +1305,7 @@ ready
         ...(pickedStand(settings.get()) ? { stand: true } : {}),
         energy: petLife.energy,
         saver: saverNow(),
+        calm: motionCalm(),
         readAloud: settings.get().readAloud,
         clickGrow: settings.get().clickGrow,
         wear: wear.look(),
@@ -1327,6 +1344,10 @@ ready
       sendStatus();
       friends.resendStatus();
       tellSaver(on);
+    });
+    // 움직임 줄이기(설정 편의)를 바꾸면 펫 화면도 같은 판정으로 맞춘다
+    settings.onChange((next, prev) => {
+      if (next.reduceMotion !== prev.reduceMotion) sendStatus();
     });
     /**
      * 처음 배터리로 바뀌어 움직임을 줄이면 펫이 한 번 알린다 (몰래 바꾸지 않게, 사용자 요청 2026-10-11).
@@ -1589,6 +1610,8 @@ ready
       onReverted: (text) => void pet.say({ kind: 'answer', text, ttlMs: 8000 }),
       onStatus: () => {
         chat.ticketChanged();
+        // 서버 모드를 껐거나 로그아웃, 탈퇴, 계정이 바뀌면 담아 둔 서버 쪽지를 바로 비운다
+        serverInbox?.sync();
         const on = server.friends.available();
         if (on !== friendsAvailable) {
           friendsAvailable = on;
@@ -1612,6 +1635,13 @@ ready
       petCard: () => cardOf(settings.get()),
       customPet: () => isCustomPet(settings.get()),
       onLogout: () => visitors?.dismiss('logout'),
+      // 새 친구 신청: 쪽지가 오기(몇 분) 전에 펫이 바로 알린다
+      onFriendRequest: (names) =>
+        void pet.say({
+          kind: 'system',
+          text: voiced('friends.incomingSay', { name: names.slice(0, 3).join(', ') }),
+          ttlMs: 10_000,
+        }),
       log,
     });
     serverCore = server.core;
@@ -1757,6 +1787,16 @@ ready
             : {}),
           ...(habit && habit.streak >= 2 ? { habit: { title: habit.title, streak: habit.streak } } : {}),
           facts: settings.get().petFacts,
+          yesterdayFocusMin: Math.round(stats.diaryFacts([plusDays(localDay(now), -1)])[0]?.focusMin ?? 0),
+          streak: companion.memoryFacts(now).streak ?? 0,
+        };
+      },
+      // 주간 편지와 저녁 쪽지: 그 날짜들에 끝낸 할 일 수와 집중한 분
+      totals: (days) => {
+        const rows = stats.diaryFacts(days);
+        return {
+          done: rows.reduce((n, r) => n + r.done, 0),
+          focusMin: rows.reduce((n, r) => n + r.focusMin, 0),
         };
       },
       canTalk,
@@ -1766,16 +1806,37 @@ ready
       reward: (coins, reason, now) => store.reward(coins, reason, now),
       surface: () => panel.activeSurface(),
       fromSurface: (wc) => panel.fromSurface(wc),
-      openToday: () => panel.openTab('today'),
+      mail,
+      readLegacy: () => readJson('daily-note'),
+      doneLegacy: () => renameJson('daily-note', '.migrated'),
+      openMailbox: () => openMailbox(),
+      openLink: (url) => openLink(url, log),
       onChange: () => panel.refresh(),
       log,
     });
+    // 쪽지함 열기: 큰 창이면 쪽지함 구역, 작은 패널이면 쪽지함 덮개 (패널 쪽이 탭 이름 mail 을 알아본다)
+    function openMailbox() {
+      panel.openTab('mail');
+    }
+    // 휴지통에 30일 지난 쪽지는 켤 때와 하루에 한 번 영구 삭제한다 (할 일 휴지통과 같다)
+    const tidyMail = () => {
+      try {
+        const r = mail.tidy(Date.now());
+        if (r.purged + r.trashed > 0) log('mail', '쪽지함 정리', r.purged, r.trashed);
+      } catch (err) {
+        log('mail', '쪽지함 정리 못 함', err instanceof Error ? err.message : String(err));
+      }
+    };
+    tidyMail();
+    setInterval(tidyMail, 24 * 3_600_000).unref();
     // 서버 쪽지함 (#101): 운영자 쪽지와 정기 지급 쪽지. 매일 쪽지와 같은 펫 손, 같은 쪽지함에 섞인다
     serverInbox = createServerInbox({
       core: () => server.core,
+      mail,
       say: (o) => pet.say(o),
       react: (kind) => pet.react(kind),
       canTalk,
+      openMailbox: () => openMailbox(),
       onChange: () => dailyNotes.changed(),
       onGot: () => panel.refresh(),
       openFriends: () => settingsWindow.open('friends'),
@@ -1878,6 +1939,7 @@ ready
       newerAvailable: () => updates.newerAvailable(),
       setMinVersion: (min) => updates.setNoticeMin(min),
       install: () => void updates.install(),
+      onShown: (n) => dailyNotes.announce(n),
     });
     const updates = watchUpdates({ say: (o) => pet.say(o), log, askForce: notices.askForce });
     updateSink = { min: (m) => updates.setServerMin(m), install: () => void updates.install() };
@@ -2161,6 +2223,8 @@ ready
           dayTools,
           // 고친 펫 대사 (#125)
           lines: debugLines(),
+          // 쪽지함 저장 (feat/mailbox)
+          mail,
           habits,
           whatFirst,
           sayWhatFirst,
@@ -2169,6 +2233,7 @@ ready
           openBackupFile,
           saverNow,
           debugBattery,
+          debugReducedMotion,
           trayTitle,
           knows,
           journey,

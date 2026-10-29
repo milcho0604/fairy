@@ -1,5 +1,5 @@
-import { powerMonitor } from 'electron';
-import { lowPowerOf, type PowerFacts, saverOn } from '../shared/battery.ts';
+import { powerMonitor, systemPreferences } from 'electron';
+import { calmOn, lowPowerOf, type PowerFacts, reducedMotionOf, saverOn } from '../shared/battery.ts';
 import { settings } from './settings.ts';
 
 /**
@@ -15,11 +15,39 @@ let watching = false;
 /** 개발용: 배터리인 척 (메인 디버거 __jj.debugBattery). 시험 컴퓨터에는 배터리가 없다 */
 let fakeBattery: boolean | undefined;
 
+/** 개발용: 운영체제 동작 줄이기를 켠(끈) 척 (__jj.debugReducedMotion) */
+let fakeReduced: boolean | undefined;
+
+/** 운영체제 "동작 줄이기" (맥 손쉬운 사용, 윈도 애니메이션 끔). 못 읽으면 꺼진 것으로 */
+function osReducedMotion(): boolean {
+  try {
+    return systemPreferences.getAnimationSettings().prefersReducedMotion;
+  } catch {
+    return false;
+  }
+}
+
+/** 설정(운영체제 따름, 항상, 줄이지 않기)까지 합친 지금 줄일지 */
+function reducedMotionNow(): boolean {
+  return reducedMotionOf(settings.get().reduceMotion, fakeReduced ?? osReducedMotion());
+}
+
 export function powerFacts(): PowerFacts {
   return {
     onBattery: fakeBattery ?? powerMonitor.isOnBatteryPower(),
     lowPower: lowPowerOf(speedLimit, thermal),
+    reducedMotion: reducedMotionNow(),
   };
+}
+
+/** 화면을 가로지르는 움직임(돌아다니기, 손님 걷기, 집 문 걷기)을 줄일지. 절약 판정(saverNow)과 같은 사실에서 정한다 */
+export function motionCalm(): boolean {
+  return calmOn(powerFacts());
+}
+
+export function debugReducedMotion(on: boolean | undefined): void {
+  fakeReduced = on;
+  check();
 }
 
 export function debugBattery(on: boolean | undefined): void {
@@ -62,7 +90,7 @@ export function watchPower(log: (tag: string, ...rest: unknown[]) => void): () =
     check();
   };
   const stopSettings = settings.onChange((next, prev) => {
-    if (next.batterySaver !== prev.batterySaver) check();
+    if (next.batterySaver !== prev.batterySaver || next.reduceMotion !== prev.reduceMotion) check();
   });
   powerMonitor.on('on-ac', check);
   powerMonitor.on('on-battery', check);

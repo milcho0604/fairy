@@ -248,8 +248,8 @@ const press = (p, text) =>
     `(() => { const b = [...document.querySelectorAll('.server-box button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) return false; b.click(); return true; })()`,
   );
 const T = {
-  ko: { nick: '계정시험', start: '서버 모드 시작', adult: '만 18세 이상', under14: '만 14세 미만', change: '나이 바꾸기', remove: '서버 계정 지우기', sure: '정말 지우기' },
-  en: { nick: 'Tester', start: 'Start server mode', adult: '18 or older', under14: 'Under 14', change: 'Change age', remove: 'Delete server account', sure: 'Really delete' },
+  ko: { nick: '계정시험', start: '서버 계정 시작', adult: '만 18세 이상', under14: '만 14세 미만', change: '나이 바꾸기', remove: '서버 계정 지우기', sure: '정말 지우기' },
+  en: { nick: 'Tester', start: 'Start server account', adult: '18 or older', under14: 'Under 14', change: 'Change age', remove: 'Delete server account', sure: 'Really delete' },
 }[LANG];
 
 let failed = false;
@@ -272,7 +272,7 @@ try {
   await p.ev(
     `(() => { const el = document.querySelector('.server-nickname-step input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(T.nick)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   );
-  check('서버 모드 시작', await press(p, T.start));
+  check('서버 계정 시작', await press(p, T.start));
   await until('기기 계정과 첫 맞추기', async () => {
     const s = await status();
     return s.device && s.balance !== null && !s.syncing;

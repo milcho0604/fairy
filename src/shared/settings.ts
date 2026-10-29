@@ -1,7 +1,13 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
 import { isPersona, type PersonaId } from './ai/persona.ts';
-import { isSaverMode, type SaverMode } from './battery.ts';
-import type { ChatterLevel } from './chatter.ts';
+import {
+  isMotionChoice,
+  isSaverMode,
+  type MotionChoice,
+  motionChoiceFromOld,
+  type SaverMode,
+} from './battery.ts';
+import { type ChatterLevel, isChatter } from './chatter.ts';
 import { cutText } from './cut-text.ts';
 import { isFocusMinutes } from './focus.ts';
 import { isPanelView, type PanelView } from './home-policy.ts';
@@ -17,6 +23,7 @@ import { cleanPetMeta, type PetMeta } from './pet-share.ts';
 import { cleanSpriteFiles, type PetSprites } from './pet-sprites.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
+import { DEFAULT_QUIET, parseQuiet, type QuietHours } from './quiet-hours.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
 import {
   isAccelerator,
@@ -42,6 +49,8 @@ export interface Settings {
    */
   petNameEdited: boolean;
   chatter: ChatterLevel;
+  /** 말 안 하는 시간 (혼잣말과 휴식 권유를 쉰다. shared/quiet-hours.ts) */
+  quietHours: QuietHours;
   /** 가만히 있다가 가끔 걷고 앉기 (P1-06) */
   wander: boolean;
   /** AI 를 사용자 설정(훅, MCP, 스킬) 없이 부르기. 끄면 "내 AI 설정 그대로" */
@@ -146,6 +155,8 @@ export interface Settings {
   urlScheme: boolean;
   /** 배터리 절약 (편의): 자동(배터리, 저전력일 때), 항상, 끄기. shared/battery.ts */
   batterySaver: SaverMode;
+  /** 움직임 줄이기 (편의): 운영체제 따름(기본), 항상, 줄이지 않기. 줄이면 화면을 가로질러 걷지 않는다. shared/battery.ts */
+  reduceMotion: MotionChoice;
   /** 말풍선을 화면 읽기 프로그램이 읽어 준다 (편의, 기본 켬) */
   readAloud: boolean;
   /** 펫 우클릭 "물어보기" 질문 칩 (이슈 #124, 기본 켬) */
@@ -228,6 +239,8 @@ export interface Settings {
   typeAlong: boolean;
   /** 매일 쪽지 (2026-10-11, 기본 켬): 하루 한 번 펫이 이 컴퓨터 기록으로 쓴 쪽지를 들고 온다 (shared/daily-note.ts) */
   dailyNotes: boolean;
+  /** 저녁 쪽지 (기본 끔): 밤 9시 뒤 오늘 한 일을 돌아보는 쪽지 한 통 (shared/daily-note.ts) */
+  eveningNotes: boolean;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -462,7 +475,8 @@ export type SettingsPatch = Partial<
 export const DEFAULT_SETTINGS: Settings = {
   petName: '콩이',
   petNameEdited: false,
-  chatter: 'normal',
+  chatter: 'sometimes',
+  quietHours: DEFAULT_QUIET,
   wander: true,
   aiIsolation: true,
   persona: 'friend',
@@ -501,6 +515,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lookAtCursor: true,
   urlScheme: true,
   batterySaver: 'auto',
+  reduceMotion: 'system',
   readAloud: true,
   petChips: true,
   doingBubble: true,
@@ -526,6 +541,7 @@ export const DEFAULT_SETTINGS: Settings = {
   illustEngine: 'cloud',
   typeAlong: true,
   dailyNotes: true,
+  eveningNotes: false,
 };
 
 /** 설정 초기화에서 사용자 콘텐츠와 선택한 페어리를 남긴다. */
@@ -676,6 +692,15 @@ export function photoPetName(taken: readonly string[]): string {
   return base;
 }
 
+/**
+ * 가끔 한마디가 생기기 전부터 쓰던 사람은 설정 파일에 수다 빈도가 없어도 예전 기본(보통)을 지킨다.
+ * 설정 파일이 아예 없는 새 사용자는 건드리지 않아 새 기본(가끔 한마디)이 된다
+ */
+export function keepOldChatter(raw: Record<string, unknown>): Record<string, unknown> {
+  if (Object.keys(raw).length === 0 || raw.chatter !== undefined) return raw;
+  return { ...raw, chatter: 'normal' };
+}
+
 /** 저장 파일이나 화면에서 온 값을 설정으로 만든다. 모르는 값, 틀린 값은 기본값으로. */
 export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): Settings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
@@ -683,8 +708,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   return {
     petName: cleanPetName(r.petName) ?? base.petName,
     petNameEdited: bool(r.petNameEdited, base.petNameEdited),
-    chatter:
-      r.chatter === 'quiet' || r.chatter === 'normal' || r.chatter === 'chatty' ? r.chatter : base.chatter,
+    chatter: isChatter(r.chatter) ? r.chatter : base.chatter,
+    quietHours: parseQuiet(r.quietHours, base.quietHours),
     wander: bool(r.wander, base.wander),
     aiIsolation: bool(r.aiIsolation, base.aiIsolation),
     persona: isPersona(r.persona) ? r.persona : base.persona,
@@ -748,6 +773,12 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     urlScheme: bool(r.urlScheme, base.urlScheme),
     batterySaver: isSaverMode(r.batterySaver) ? r.batterySaver : base.batterySaver,
+    // 파일에서 처음 읽을 때(base 가 기본값) 값이 없으면 예전 배터리 절약 "항상"을 이어받는다. 바꾸기 조각은 지금 값을 지킨다
+    reduceMotion: isMotionChoice(r.reduceMotion)
+      ? r.reduceMotion
+      : base === DEFAULT_SETTINGS
+        ? motionChoiceFromOld(undefined, r.batterySaver)
+        : base.reduceMotion,
     readAloud: bool(r.readAloud, base.readAloud),
     petChips: bool(r.petChips, base.petChips),
     doingBubble: bool(r.doingBubble, base.doingBubble),
@@ -768,6 +799,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     illustEngine: illustEngineOf(r.illustEngine) ?? base.illustEngine,
     typeAlong: bool(r.typeAlong, base.typeAlong),
     dailyNotes: bool(r.dailyNotes, base.dailyNotes),
+    eveningNotes: bool(r.eveningNotes, base.eveningNotes),
     ...bodiesOf(r, base),
     petKindNames: kindNamesOf(r.petKindNames, base.petKindNames),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)

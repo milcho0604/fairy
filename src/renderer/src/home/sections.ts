@@ -9,6 +9,8 @@ export interface HomeSection {
   /** tab: 본문 칸을 바꾼다. chat: 본문 칸 자리에 채팅을 품는다 (#165). window: 따로 창을 연다 (설정의 친구 칸) */
   kind: 'tab' | 'chat' | 'window';
   label: I18nKey;
+  /** true 면 Cmd/Ctrl+번호에 넣지 않는다 (쪽지함: 친구가 켜졌을 때 8번이던 친구 단축키와 시험이 그대로이게) */
+  noKey?: boolean;
 }
 
 export const HOME_SECTIONS: readonly HomeSection[] = [
@@ -20,6 +22,8 @@ export const HOME_SECTIONS: readonly HomeSection[] = [
   { id: 'shop', kind: 'tab', label: 'panel.tab.shop' },
   // 집중 월간 잔디, 이번 주, 일기, 휴지통을 한 구역에 (#166). 작은 패널에는 없다
   { id: 'records', kind: 'tab', label: 'home.nav.records' },
+  // 받은 펫 쪽지, 서버 쪽지, 공지를 다시 읽고 보관하고 지운다 (feat/mailbox). 단축키 번호는 기록 다음이라 1~7번은 그대로다
+  { id: 'mail', kind: 'tab', label: 'home.nav.mail', noKey: true },
   // 서버 모드, 로그인, 친구 기능이 켜졌을 때만
   { id: 'friends', kind: 'window', label: 'home.nav.friends' },
 ];
@@ -29,16 +33,19 @@ export function visibleSections(friendsOn: boolean): HomeSection[] {
   return HOME_SECTIONS.filter((s) => s.id !== 'friends' || friendsOn);
 }
 
-/** Cmd/Ctrl + 1~(보이는 구역 수) 로 고른 구역 */
+/** 번호 단축키가 있는 구역들 (쪽지함은 번호가 없다) */
+const keyed = (friendsOn: boolean) => visibleSections(friendsOn).filter((s) => !s.noKey);
+
+/** Cmd/Ctrl + 1~(번호가 있는 구역 수) 로 고른 구역 */
 export function sectionForKey(e: ModKeyLike, mac: boolean, friendsOn: boolean): HomeSection | undefined {
-  const list = visibleSections(friendsOn);
+  const list = keyed(friendsOn);
   const i = tabByKey(e, mac, list.length);
   return i === undefined ? undefined : list[i];
 }
 
 /** 구역 풀이에 보이는 단축키 ("Cmd+3"). 안 보이는 구역이면 undefined */
 export function sectionShortcut(id: HomeSection['id'], friendsOn: boolean, mod: string): string | undefined {
-  const i = visibleSections(friendsOn).findIndex((s) => s.id === id);
+  const i = keyed(friendsOn).findIndex((s) => s.id === id);
   return i < 0 ? undefined : `${mod}+${i + 1}`;
 }
 

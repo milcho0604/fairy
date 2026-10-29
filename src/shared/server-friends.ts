@@ -232,3 +232,24 @@ export function titlesByDay(
     };
   });
 }
+
+/**
+ * 바쁜 시간대 중 제목 있는 일정이 다 덮지 못한 것. 제목 줄에 이미 시간이 있어 같은 시간을 두 번 적지 않으려고 쓴다
+ * (바쁜 시간대는 겹친 일정을 합친 것이라, 제목 일정 여럿이 이어 한 시간대를 덮을 수 있다)
+ */
+export function spansWithoutTitles(
+  spans: readonly { from: number; to: number }[],
+  items: readonly { from: number; to: number }[],
+): { from: number; to: number }[] {
+  const sorted = [...items].sort((a, b) => a.from - b.from);
+  return spans.filter((sp) => {
+    let at = sp.from;
+    for (const it of sorted) {
+      if (it.to <= at) continue;
+      if (it.from > at) break;
+      at = it.to;
+      if (at >= sp.to) return false;
+    }
+    return true;
+  });
+}

@@ -721,7 +721,7 @@ async function appPart() {
   const p = await page('settings');
   await until('서버 칸', () => p.ev(`!!document.querySelector('.server-box')`));
   const adultLabel = LANG === 'ko' ? '만 18세 이상' : '18 or older';
-  const startLabel = LANG === 'ko' ? '서버 모드 시작' : 'Start server mode';
+  const startLabel = LANG === 'ko' ? '서버 계정 시작' : 'Start server account';
   const NICK = LANG === 'ko' ? '운영고양이' : 'OpCat';
   await press(p, '.server-box', adultLabel);
   await until('닉네임 칸', () => p.ev(`!!document.querySelector('.server-nickname-step input')`));

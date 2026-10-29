@@ -3,6 +3,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { CoinIcon, GearIcon } from '../panel/icons.tsx';
+import { useMailUnread } from '../panel/mail-state.ts';
 import { HOME_SECTIONS, type HomeSection, sectionShortcut, visibleSections } from './sections.ts';
 
 const bridge = window.jjakkungPanel;
@@ -44,6 +45,8 @@ export function HomeShell({
   toastStack,
 }: HomeShellProps) {
   const sections = visibleSections(s.friendsOn);
+  /** 쪽지함 구역 옆 안 읽음 숫자 */
+  const mailUnread = useMailUnread();
   const current = HOME_SECTIONS.find((x) => x.id === (chatOn ? 'chat' : tab));
   /** 지금 고른 구역인가 (창을 여는 구역은 늘 아니다) */
   const picked = (sec: HomeSection) =>
@@ -107,6 +110,11 @@ export function HomeShell({
                 onClick={() => pick(sec)}
               >
                 <span className="name">{t(sec.label)}</span>
+                {sec.id === 'mail' && mailUnread > 0 && (
+                  <span className="mail-badge" role="img" aria-label={t('mail.unreadN', { n: mailUnread })}>
+                    {mailUnread > 99 ? '99+' : mailUnread}
+                  </span>
+                )}
                 {own && (
                   <span className="out" aria-hidden="true">
                     ↗

@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
+import { type Db, migrate } from '../shared/db-schema.ts';
 import { setLang } from '../shared/i18n/index.ts';
+import { MailStore } from '../shared/mail-store.ts';
 import type { ServerStatus } from '../shared/server-account.ts';
-import { busyByDay, friendCodeFrom, inviteLink, titlesByDay } from '../shared/server-friends.ts';
+import {
+  busyByDay,
+  friendCodeFrom,
+  inviteLink,
+  spansWithoutTitles,
+  titlesByDay,
+} from '../shared/server-friends.ts';
 import { parseJjUrl } from '../shared/url-scheme.ts';
+import { serverLines, serverTitle } from './mail-view.ts';
 import { friendsListOf, inboxItemOf } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
 import {
@@ -15,7 +25,7 @@ import {
   shareableTitle,
   titledBlocks,
 } from './server-friends.ts';
-import { createServerInbox, inboxLines, inboxTitle } from './server-inbox.ts';
+import { createServerInbox } from './server-inbox.ts';
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 9, 16, 1);
@@ -115,14 +125,15 @@ test('서버 대답 읽기: 친구 목록과 친구 쪽지 (옛 앱이 모르는
   });
   assert.ok(gift);
   setLang('ko');
-  assert.equal(inboxTitle(gift), '친구가 보낸 선물');
-  assert.ok(inboxLines(gift).some((x) => x.includes('콩')));
+  // 제목은 종류와 들어 있는 것 (열기 전에 구분된다)
+  assert.equal(serverTitle(gift), '친구 선물: 코인 50개, 채팅 이용권 1장 (콩)');
+  assert.ok(serverLines(gift).some((x) => x.includes('콩')));
   const left = inboxItemOf({ id: 10, kind: 'friend', sender: { code: null, nickname: null } });
   assert.ok(left);
   assert.equal(left.sender?.code, null);
-  assert.ok(inboxLines(left)[0]?.includes('떠난 친구'));
+  assert.ok(serverLines(left)[0]?.includes('떠난 친구'));
   setLang('en');
-  assert.ok(!/[가-힣]/.test(inboxLines(left).join(' ')), '영어판에 한글이 없다');
+  assert.ok(!/[가-힣]/.test(serverLines(left).join(' ')), '영어판에 한글이 없다');
   setLang('ko');
   assert.equal(inboxItemOf({ id: 11, kind: 'party' }), undefined);
 });
@@ -274,6 +285,13 @@ test('선물: 끊겨 답을 못 받으면 같은 요청 번호로 한 번 더, �
   assert.ok(f.calls.includes('run'));
 });
 
+/** 시험용 쪽지함 저장 (메모리 저장 파일) */
+const memoryMail = () => {
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  migrate(db);
+  return new MailStore(db);
+};
+
 test('칸이 숨은 때 받기가 바로 끝나도 다음 받기는 돈다 (끝난 약속이 남지 않는다)', async () => {
   const f = fakeCore({ features: { friends: false }, replies: { friends: LIST } });
   const friends = createServerFriends({
@@ -295,11 +313,13 @@ test('칸이 숨은 때 받기가 바로 끝나도 다음 받기는 돈다 (끝�
     core: () =>
       ({
         allowed: () => allowed,
+        accountKey: () => 'A',
         inbox: async () => {
           calls++;
           return { items: [], next: null, unopened: 0 };
         },
       }) as unknown as ServerCore,
+    mail: memoryMail(),
     say: async () => undefined,
     react: () => {},
     canTalk: () => false,
@@ -323,6 +343,7 @@ test('쪽지를 열 때 410 이 받을 수 없게 된 것이면 돌려줬다고 
         inbox: async () => ({ items: [], next: null, unopened: 0 }),
         openInbox: async () => ({ ok: false, status: 410, error, body: {} }),
       }) as unknown as ServerCore,
+    mail: memoryMail(),
     say: async (s) => {
       said.push(s.text ?? '');
       return undefined;
@@ -662,4 +683,55 @@ test('로그아웃 때 카드를 못 지우면 표시를 남기고, 다음에 �
   await clean.refresh();
   await clean.stopVisit();
   assert.equal(mark, null);
+});
+
+test('바쁜 시간대에서 제목 일정이 덮은 부분은 빼서 같은 시간을 두 번 적지 않는다', () => {
+  const span = (from: number, to: number) => ({ from, to });
+  // 제목 일정이 시간대를 그대로 덮는다
+  assert.deepEqual(spansWithoutTitles([span(900, 960)], [span(900, 960)]), []);
+  // 이어 붙은 제목 일정 둘이 합쳐진 시간대 하나를 덮는다
+  assert.deepEqual(spansWithoutTitles([span(900, 1020)], [span(900, 960), span(960, 1020)]), []);
+  // 제목이 없는 바쁜 시간은 남는다
+  assert.deepEqual(spansWithoutTitles([span(540, 600), span(900, 960)], [span(900, 960)]), [span(540, 600)]);
+  // 일부만 덮으면 남는다
+  assert.deepEqual(spansWithoutTitles([span(900, 1020)], [span(900, 960)]), [span(900, 1020)]);
+  // 제목이 하나도 없으면 그대로
+  assert.deepEqual(spansWithoutTitles([span(900, 960)], []), [span(900, 960)]);
+});
+
+test('새 친구 신청: 앱을 켜고 처음 받은 목록은 기준일 뿐이고, 그 뒤 처음 보는 신청만 알린다', async () => {
+  const incoming = (ids: number[]) => ({
+    ...LIST,
+    data: {
+      ...LIST.data,
+      incoming: ids.map((id) => ({
+        id,
+        code: `F-AAAA-000${id}`,
+        nickname: id === 2 ? null : `이웃${id}`,
+        sentAt: '2026-10-28T00:00:00Z',
+        expiresAt: '2026-11-11T00:00:00Z',
+      })),
+    },
+  });
+  const f = fakeCore({ replies: { friends: incoming([1]) } });
+  const heard: string[][] = [];
+  const friends = createServerFriends({
+    core: () => f.core,
+    events: () => [],
+    now: () => T0,
+    onChange: () => {},
+    onIncoming: (names) => heard.push(names),
+    log: () => {},
+  });
+  await friends.refresh();
+  assert.deepEqual(heard, [], '처음 받은 목록은 알리지 않는다');
+  await friends.refresh();
+  assert.deepEqual(heard, [], '같은 신청은 다시 알리지 않는다');
+  (f.core as unknown as { sessionCall: unknown }).sessionCall = (
+    g: (api: unknown, s: string) => Promise<unknown>,
+  ) => g({ friends: async () => incoming([1, 2]) }, 'fs_x');
+  await friends.refresh();
+  assert.deepEqual(heard, [['F-AAAA-0002']], '닉네임이 없으면 코드로, 새 신청만');
+  await friends.refresh();
+  assert.equal(heard.length, 1);
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { GestureTracker, RubTracker } from './gesture.ts';
+import { GestureTracker, isGesture, RubTracker } from './gesture.ts';
 
 const LEFT = 0;
 const RIGHT = 2;
@@ -75,4 +75,22 @@ test('쓰다듬기: 너무 느리거나 너무 작게 움직이면 아니다', (
   hit = false;
   for (let i = 0; i <= 2; i++) hit ||= away.move(i % 2 ? 20 : 0, 400 + i * 100);
   assert.equal(hit, false);
+});
+
+test('isGesture: 모양이 맞는 알림만 받는다', () => {
+  assert.equal(isGesture({ type: 'click' }), true);
+  assert.equal(isGesture({ type: 'drag-start', offset: { x: 1, y: 2 } }), true);
+  for (const bad of [
+    undefined,
+    null,
+    1,
+    'click',
+    {},
+    { type: 'nope' },
+    { type: 'drag-start' },
+    { type: 'drag-start', offset: null },
+    { type: 'drag-start', offset: { x: 'a', y: 1 } },
+    { type: 'drag-start', offset: { x: Number.NaN, y: 1 } },
+  ])
+    assert.equal(isGesture(bad), false);
 });

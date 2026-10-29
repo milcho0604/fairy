@@ -1,7 +1,7 @@
 // 서버 친구 (이슈 #110 1부): 설정 > 데이터의 친구 칸. 친구 맺기(코드, 초대 링크), 받은 신청, 선물, 바쁜 시간 공유, 친구별 일정 제목 공유.
 // 칸은 서버 모드(만 14세 이상, 서버 주소 있음), 로그인, 서버가 켠 친구 기능일 때만 보인다 (아니면 아무것도 그리지 않는다).
 // 다른 서버 칸(ServerAccountBox 등)과 따로 둔다: 그 칸들의 마크업은 건드리지 않는다. 모양은 friends.css 에만.
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { type I18nKey, locale, t } from '../../../shared/i18n/index.ts';
 import {
   type BusyView,
@@ -11,9 +11,11 @@ import {
   type FriendResult,
   type FriendsBridge,
   type FriendsState,
+  spansWithoutTitles,
   titlesByDay,
   type VisitInfo,
 } from '../../../shared/server-friends.ts';
+import { useNear } from './NearResult.tsx';
 import './friends.css';
 
 declare global {
@@ -56,8 +58,12 @@ const errorText = (e: string) =>
 const nameOf = (p: FriendPerson) => p.nickname ?? (p.code || t('friends.left'));
 const dayText = (iso: string) =>
   new Date(iso).toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
+/** 시각 글: 앞에 0을 붙이지 않는다 ("오후 3:00", 설정 창의 다른 시각과 같은 모양) */
 const clock = (dayStart: number, minute: number) =>
-  new Date(dayStart + minute * 60_000).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+  new Date(dayStart + minute * 60_000).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+
+/** 설정 창이 열려 있는 동안 친구 목록을 다시 받는 간격 (서버는 계정마다 1분 120번까지 받는다) */
+export const FRIENDS_POLL_MS = 20_000;
 
 /** 상태를 받아 두고 바뀌면 다시 그린다 */
 function useFriends(): [FriendsState | undefined, (s: FriendsState | undefined) => void] {
@@ -88,7 +94,20 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
   const [busyOf, setBusyOf] = useState<({ code: string } & BusyView) | null>(null);
   const boxRef = useRef<HTMLElement>(null);
   const [vi, setVi] = useState<VisitInfo>();
+  const [refreshNear, refreshSay] = useNear();
+  const [refreshing, setRefreshing] = useState(false);
   const b = bridge();
+  const available = !!s?.available;
+
+  // 칸이 보이는 동안은 몇 분을 기다리지 않고 조금씩 다시 받는다 (새 신청이 바로 보이게). 다른 탭이나 숨은 창에서는 쉰다
+  useEffect(() => {
+    if (!b || !available) return;
+    const timer = setInterval(() => {
+      if (document.hidden || !boxRef.current || boxRef.current.offsetParent === null) return;
+      void b.refresh().catch(() => undefined);
+    }, FRIENDS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [b, available]);
 
   // 오늘 놀러 온 친구 펫 수와 "오늘은 그만" (손님 창을 맡은 메인이 답한다). 상태가 바뀔 때마다 다시 읽는다
   // biome-ignore lint/correctness/useExhaustiveDependencies: s?.list 는 읽지 않지만 목록이 바뀔 때 다시 읽으려고 넣었다
@@ -171,6 +190,18 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
   };
 
   const off = busy !== null;
+  const refreshNow = async () => {
+    setRefreshing(true);
+    try {
+      const r = await b.refresh();
+      if (r?.problem) refreshSay(() => errorText(r.problem as string), true);
+      else refreshSay(() => t('friends.refreshed'));
+    } catch {
+      refreshSay(() => t('friends.err.other'), true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   return (
     <section ref={boxRef} id="friends" className="friends-box">
       <h2>{t('friends.title')}</h2>
@@ -298,9 +329,22 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
 
         {list && (
           <div className="friends-group">
-            <small className="friends-head">
-              {t('friends.list', { n: list.friends.length, max: list.limits.friends })}
-            </small>
+            <div className="friends-headline">
+              <small className="friends-head">
+                {t('friends.list', { n: list.friends.length, max: list.limits.friends })}
+              </small>
+              <button
+                type="button"
+                className="ghost small friends-refresh"
+                disabled={refreshing}
+                aria-label={t('friends.refresh')}
+                title={t('friends.refresh')}
+                onClick={() => void refreshNow()}
+              >
+                ↻
+              </button>
+            </div>
+            {refreshNear}
             {list.friends.length === 0 ? (
               <small className="below">{t('friends.none')}</small>
             ) : (
@@ -372,6 +416,37 @@ function FriendRow(o: {
   b: FriendsBridge;
 }) {
   const { f, s, b } = o;
+  const notes: ReactNode[] = [];
+  if (s.calendar && f.iShare)
+    notes.push(
+      <small key="share" className="friends-note">
+        {t('friends.shareHint')}
+      </small>,
+    );
+  if (s.calendar && f.iShare && f.canTitle && f.iTitle)
+    notes.push(
+      <small key="title" className="friends-note">
+        {t('friends.shareTitleHint')}
+      </small>,
+    );
+  if (s.calendar && f.iShare && !f.canTitle)
+    notes.push(
+      <small key="adults" className="friends-note">
+        {t('friends.shareTitleAdults')}
+      </small>,
+    );
+  if (s.visit && f.iVisit)
+    notes.push(
+      <small key="visit" className="friends-note">
+        {t('friends.visitHint')}
+      </small>,
+    );
+  if (s.visit && f.iVisit && s.visitCustom)
+    notes.push(
+      <small key="custom" className="friends-note">
+        {t('friends.visitCustom')}
+      </small>,
+    );
   return (
     <li className="friends-friend">
       <div className="friends-line">
@@ -431,7 +506,6 @@ function FriendRow(o: {
           <span>{t('friends.share')}</span>
         </label>
       )}
-      {s.calendar && f.iShare && <small className="friends-note">{t('friends.shareHint')}</small>}
       {s.calendar && f.iShare && f.canTitle && (
         <label className="friends-titleshare">
           <input
@@ -450,12 +524,6 @@ function FriendRow(o: {
           <span>{t('friends.shareTitle')}</span>
         </label>
       )}
-      {s.calendar && f.iShare && f.canTitle && f.iTitle && (
-        <small className="friends-note">{t('friends.shareTitleHint')}</small>
-      )}
-      {s.calendar && f.iShare && !f.canTitle && (
-        <small className="friends-note">{t('friends.shareTitleAdults')}</small>
-      )}
       {s.visit && (
         <label className="friends-visit">
           <input
@@ -470,13 +538,16 @@ function FriendRow(o: {
           <span>{t('friends.visit')}</span>
         </label>
       )}
-      {s.visit && f.iVisit && (
-        <small className="friends-note">
-          {f.theyVisit ? t('friends.visitHint') : `${t('friends.visitHint')} ${t('friends.visitWaiting')}`}
-        </small>
+      {s.visit && <small className="friends-note">{t('friends.visitDirection', { name: nameOf(f) })}</small>}
+      {s.visit && f.iVisit && !f.theyVisit && (
+        <small className="friends-note">{t('friends.visitWaiting')}</small>
       )}
-      {s.visit && f.iVisit && s.visitCustom && (
-        <small className="friends-note">{t('friends.visitCustom')}</small>
+      {/* 스위치 설명은 접어 둔다 (친구마다 같은 긴 글이 늘어서지 않게) */}
+      {notes.length > 0 && (
+        <details className="friends-more">
+          <summary>{t('friends.more')}</summary>
+          {notes}
+        </details>
       )}
       {o.giftOpen && <GiftForm f={f} s={s} off={o.off} run={o.run} b={b} close={o.closeGift} />}
       {o.busyView && (
@@ -593,42 +664,47 @@ function BusyWeek(o: {
       <small className="friends-head">{t('friends.busyTitle', { name: o.name })}</small>
       {!any && <small className="below">{t('friends.busyNone')}</small>}
       <ul>
-        {days.map((d) => (
-          <li key={d.day}>
-            <small className="friends-day">
-              {new Date(d.day).toLocaleDateString(locale(), {
-                weekday: 'short',
-                month: 'numeric',
-                day: 'numeric',
-              })}
-            </small>
-            <span className="friends-bar" aria-hidden="true">
-              {d.spans.map((x) => (
-                <i
-                  key={`${x.from}-${x.to}`}
-                  style={{ left: `${(x.from / 1440) * 100}%`, width: `${((x.to - x.from) / 1440) * 100}%` }}
-                />
-              ))}
-            </span>
-            <small className="friends-times">
-              {d.spans.length === 0
-                ? t('friends.busyFree')
-                : d.spans.map((x) => `${clock(d.day, x.from)}~${clock(d.day, x.to)}`).join(', ')}
-            </small>
-            {(titled.find((x) => x.day === d.day)?.items.length ?? 0) > 0 && (
-              <span className="friends-titles">
-                {titled
-                  .find((x) => x.day === d.day)
-                  ?.items.map((x) => (
+        {days.map((d) => {
+          const items = titled.find((x) => x.day === d.day)?.items ?? [];
+          // 제목이 있는 일정은 제목 줄에 시간이 있다. 같은 시간을 한 번 더 적지 않고, 제목 없는 바쁜 시간만 따로 적는다
+          const plain = spansWithoutTitles(d.spans, items);
+          return (
+            <li key={d.day}>
+              <small className="friends-day">
+                {new Date(d.day).toLocaleDateString(locale(), {
+                  weekday: 'short',
+                  month: 'numeric',
+                  day: 'numeric',
+                })}
+              </small>
+              <span className="friends-bar" aria-hidden="true">
+                {d.spans.map((x) => (
+                  <i
+                    key={`${x.from}-${x.to}`}
+                    style={{ left: `${(x.from / 1440) * 100}%`, width: `${((x.to - x.from) / 1440) * 100}%` }}
+                  />
+                ))}
+              </span>
+              {(d.spans.length === 0 || plain.length > 0) && (
+                <small className="friends-times">
+                  {d.spans.length === 0
+                    ? t('friends.busyFree')
+                    : plain.map((x) => `${clock(d.day, x.from)}~${clock(d.day, x.to)}`).join(', ')}
+                </small>
+              )}
+              {items.length > 0 && (
+                <span className="friends-titles">
+                  {items.map((x) => (
                     <span className="friends-event" key={`${x.from}-${x.to}-${x.title}`}>
                       <small className="friends-when">{`${clock(d.day, x.from)}~${clock(d.day, x.to)}`}</small>
                       <span className="friends-event-title">{x.title}</span>
                     </span>
                   ))}
-              </span>
-            )}
-          </li>
-        ))}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {o.at && (
         <small className="friends-note">

@@ -82,6 +82,8 @@ test('정상 파일: 이름, 설명, 개인 용도, 서기가 본 그림, 자세
     'walk-3',
     'walk-4',
     'walk-5',
+    'walk-6',
+    'walk-7',
     'wave',
   ]);
   for (const url of Object.values(pet.sprites ?? {})) {
@@ -103,7 +105,7 @@ test('정상 파일: 이름, 설명, 개인 용도, 서기가 본 그림, 자세
   assert.equal(back.description, undefined, '설명은 .fairy 로 내보내지 않는다');
 });
 
-test('자세 나누기 표: 줄마다 쓰는 장 수 안에서, 가운데 장, 걷기는 여섯 장을 고르게', async () => {
+test('자세 나누기 표: 줄마다 쓰는 장 수 안에서, 가운데 장, 달리기 여덟 장은 걷기 여덟 장으로', async () => {
   const all = Array.from({ length: 9 }, () => Array(8).fill(true));
   assert.deepEqual(codexSpriteCells(all), {
     idle: [0, 0],
@@ -111,9 +113,11 @@ test('자세 나누기 표: 줄마다 쓰는 장 수 안에서, 가운데 장, �
     'walk-0': [1, 0],
     'walk-1': [1, 1],
     'walk-2': [1, 2],
-    'walk-3': [1, 4],
-    'walk-4': [1, 5],
-    'walk-5': [1, 6],
+    'walk-3': [1, 3],
+    'walk-4': [1, 4],
+    'walk-5': [1, 5],
+    'walk-6': [1, 6],
+    'walk-7': [1, 7],
     wave: [3, 2],
     happy: [4, 2],
     sulky: [5, 4],

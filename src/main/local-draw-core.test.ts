@@ -5,9 +5,11 @@ import { setupRatio, setupStageOf } from '../shared/local-draw.ts';
 import {
   checkDrawn,
   classifyFailure,
+  DRAW_TIMEOUT_MS,
   drawArgs,
   drawRatio,
   drawSize,
+  drawTimeoutMs,
   drawTmpBase,
   installArgs,
   installRatio,
@@ -377,4 +379,11 @@ test('그린 그림 확인: 그림 형식, 부탁한 크기, 너무 작지 않�
   assert.equal(checkDrawn(png(768, 1024, 1000), want).ok, false);
   assert.equal(checkDrawn(png(512, 512, MIN_DRAWN_BYTES + 1), want).ok, false);
   assert.equal(checkDrawn(new Uint8Array(MIN_DRAWN_BYTES + 1), want).ok, false);
+});
+
+test('drawTimeoutMs: 사진은 그대로 8분, 한 줄 띠도 8분, 두 줄 시트는 줄마다 2분 더', () => {
+  assert.equal(drawTimeoutMs(), DRAW_TIMEOUT_MS);
+  assert.equal(drawTimeoutMs({ width: 1024, height: 256 }), DRAW_TIMEOUT_MS);
+  assert.equal(drawTimeoutMs({ width: 1024, height: 512 }), DRAW_TIMEOUT_MS + 2 * 60_000);
+  assert.equal(drawTimeoutMs({ width: 1024, height: 768 }), DRAW_TIMEOUT_MS + 4 * 60_000);
 });

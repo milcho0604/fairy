@@ -7,6 +7,7 @@ import { LINE_TEXT_MAX, renderTemplate } from '../../../shared/line-template.ts'
 import type { LineGroupId, LineLang } from '../../../shared/lines.ts';
 import type { LineSaveResult, LinesState, LineView } from '../../../shared/lines-ipc.ts';
 
+import { useReturnFocus } from '../focus-return.ts';
 import { isEsc, takeEsc } from '../panel/keys.ts';
 
 const lines = () => window.jjakkungLines;
@@ -39,6 +40,7 @@ function errorText(r: Extract<LineSaveResult, { ok: false }>): string {
 }
 
 export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m: string) => void }) {
+  useReturnFocus(true);
   const sheetRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [lang, setLang] = useState<LineLang>(getLang());
@@ -81,6 +83,10 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
       setErrors(({ [line.key]: _gone, ...rest }) => rest);
       onMsg(t('records.lines.saved'));
     } else setErrors((e) => ({ ...e, [line.key]: errorText(r) }));
+  };
+  const mute = async (line: LineView, on: boolean) => {
+    const v = await lines().mute(lang, line.key, on);
+    if (v) setState(v);
   };
   const reset = async (key?: string) => {
     const v = await lines().reset(lang, key);
@@ -171,6 +177,11 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
           {state && (
             <div className="lines-count">
               <small>{t('records.lines.count', { n: state.edited })}</small>
+              {state.mutedCount > 0 && (
+                <small title={t('records.lines.muteHint')}>
+                  {t('records.lines.mutedCount', { n: state.mutedCount })}
+                </small>
+              )}
               {state.edited > 0 &&
                 (confirmAll ? (
                   <span className="lines-confirm" role="alertdialog" aria-label={t('records.lines.resetAll')}>
@@ -206,7 +217,11 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
                   const value = drafts[l.key] ?? l.text;
                   const err = errors[l.key];
                   return (
-                    <div key={l.key} className={`lines-row${l.edited ? ' edited' : ''}`} data-key={l.key}>
+                    <div
+                      key={l.key}
+                      className={`lines-row${l.edited ? ' edited' : ''}${l.muted ? ' muted' : ''}`}
+                      data-key={l.key}
+                    >
                       <textarea
                         rows={2}
                         value={value}
@@ -235,6 +250,17 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
                           {t('records.lines.vars', { vars: l.vars.map((v) => `{${v}}`).join(', ') })}
                         </small>
                       )}
+                      <button
+                        type="button"
+                        className="link lines-mute"
+                        aria-pressed={l.muted}
+                        aria-label={t(l.muted ? 'records.lines.unmuteOf' : 'records.lines.muteOf', {
+                          line: l.base,
+                        })}
+                        onClick={() => void mute(l, !l.muted)}
+                      >
+                        {t(l.muted ? 'records.lines.unmute' : 'records.lines.mute')}
+                      </button>
                       {l.edited && (
                         <span className="lines-edited">
                           <small>

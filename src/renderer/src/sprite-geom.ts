@@ -58,7 +58,8 @@ export function spriteGeom(
   // 가운데에서 가장 먼 쪽 두 배가 폭 (좌우로 뒤집어 걸어도 캔버스 안에)
   let tallest = 0;
   let widest = 0;
-  for (const pose of CUTE_POSES) {
+  // 그림 세트만 갖는 추가 자세(걷기 7, 8번째, 위, 아래 시선)도 키와 폭에 넣는다
+  for (const pose of new Set<CutePose>([...CUTE_POSES, ...(Object.keys(boxes) as CutePose[])])) {
     const b = box(pose);
     tallest = Math.max(tallest, b.bottom - b.top);
     widest = Math.max(widest, 2 * Math.max(cx - b.left, b.right - cx));

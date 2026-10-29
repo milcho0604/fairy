@@ -772,6 +772,8 @@ export interface PetStatus {
   energy?: EnergyLook;
   /** 배터리 절약 중 (shared/battery.ts): 그리기 15fps 상한, 한가한 행동을 드물게. 없으면 끔 */
   saver?: boolean;
+  /** 움직임 줄이기 (설정 "움직임 줄이기"와 운영체제를 합친 판정). 없으면 화면이 운영체제 설정을 직접 본다 */
+  calm?: boolean;
   /** 말풍선을 화면 읽기 프로그램에 읽어 준다 (설정 읽어 주기). 친구 펫은 끔 (같은 말을 두 번 읽지 않게) */
   readAloud?: boolean;
   /** 꾹 누르면 커지기 (설정 clickGrow, 이슈 #124). 없으면 끔 */
@@ -814,6 +816,10 @@ export const MAKER = {
   refine3d: 'maker:refine3d',
   /** 깊이 모델 준비 (없으면 받음, 2.5D). 진행률은 progress 로 */
   ensureDepth: 'maker:ensure-depth',
+  /** 그림용 배경 제거 모델 준비 (없으면 받음). 진행률은 progress 로 */
+  ensureAnime: 'maker:ensure-anime',
+  /** 그림용 모델 파일이 지금 있고 해시가 맞는지만 본다 (받지 않는다. 자동 다시 지우기가 쓴다) */
+  verifyAnime: 'maker:verify-anime',
   /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
   visionAi: 'maker:vision-ai',
   /** 사진을 Hugging Face 무료 Space 에 보내 AI 일러스트로 다시 그린다 (사용자가 고를 때만) */
@@ -859,6 +865,8 @@ export const MODEL_SCHEME = 'jj-model';
 export const MODEL_URL = `${MODEL_SCHEME}://bg/model.onnx`;
 /** 깊이 모델 파일 주소 (2.5D) */
 export const DEPTH_URL = `${MODEL_SCHEME}://depth/model.onnx`;
+/** 그림용 배경 제거 모델 파일 주소 (사진 모델이 바탕을 못 지운 만화, 그림용) */
+export const ANIME_URL = `${MODEL_SCHEME}://anime/model.onnx`;
 /** 사진 AI 엔진 wasm 주소 (설치 파일에 없고 처음 쓸 때 받는다, src/shared/ort-wasm.ts) */
 export const ORT_WASM_URL = `${MODEL_SCHEME}://ort/engine.wasm`;
 
@@ -902,6 +910,8 @@ export interface MakerInfo {
   /** 사진을 볼 수 있는 AI(claude, codex)가 있는지. 처음엔 false, visionAi() 로 따로 받는다 */
   visionAi: boolean;
   depth: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
+  /** 그림용 배경 제거 모델 (받아 뒀는지, 받을 크기, 입력 값) */
+  anime: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
   /** 무료 Hugging Face 토큰을 넣었는지 (토큰 글은 창에 주지 않는다) */
   hfToken: boolean;
   /** 내 Mac에서 그리기: 이 컴퓨터가 되는지, 준비됐는지 */
@@ -924,6 +934,9 @@ export interface MakerBridge {
   /** 다듬은 그림(PNG data URL, 움직이는 그림은 gif, webp 그대로)과 이름을 저장하고 펫을 바꾼다. 입체 설계도가 있으면 같이 */
   save(png: string, name: string, look?: PetLook): Promise<{ ok: boolean; error?: string }>;
   ensureDepth(): Promise<{ ok: true } | { ok: false; error: string }>;
+  ensureAnime(): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** 받지 않고 있는지만 (없거나 깨졌으면 false) */
+  verifyAnime(): Promise<boolean>;
   /**
    * AI 가 사진을 보고 입체 설계도를 만든다. wish 는 사용자 요청사항(선택, 200자, 메인이 다시 자른다).
    * 쓸 AI 가 없으면 noAi. 창을 닫으면 멈춘다
@@ -1150,6 +1163,8 @@ export const PANEL = {
 export interface PanelState {
   /** 메뉴에서 새 메모를 열라는 요청. 편집기가 준비되면 한 번만 가져간다 */
   newNoteRequest?: number;
+  /** 같은 반복의 다른 회차 시각으로 옮기려다 막힌 횟수. 올라가면 화면이 안내 알림을 한 번 띄운다 */
+  eventSlotTaken?: number;
   petName: string;
   /** 현지 날짜 YYYY-MM-DD */
   today: string;
@@ -1296,7 +1311,8 @@ export interface NoteHit {
 }
 
 // records 는 큰 창 사이드바에만 있다 (이슈 #166). 작은 패널의 탭 줄(renderer panel/tabs.ts)에는 없다
-export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop', 'records'] as const;
+// mail(쪽지함)은 큰 창에서는 사이드바 구역이고, 작은 패널에서는 탭이 아니라 머리줄 봉투가 여는 덮개다 (feat/mailbox)
+export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop', 'records', 'mail'] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 export const isPanelTab = (v: unknown): v is PanelTab => PANEL_TABS.includes(v as PanelTab);
 
@@ -1381,7 +1397,7 @@ export interface PanelBridge {
   onState(listener: (state: PanelState) => void): void;
   noteGet(id: number): Promise<Note | undefined>;
   /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기) */
-  noteAdd(text?: string): Promise<Note>;
+  noteAdd(text?: string): Promise<Note | { ok: false; error?: string }>;
   /**
    * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
    */

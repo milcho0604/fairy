@@ -4,7 +4,7 @@
 import type { ChatterLevel } from './chatter.ts';
 import { timeLabel } from './event-store.ts';
 import { t } from './i18n/index.ts';
-import { voiced } from './persona-voice.ts';
+import { voiced, voicedPick } from './persona-voice.ts';
 import { localDay } from './todo-store.ts';
 
 /** 이 시각(현지, 분) 전에는 브리핑하지 않는다. 새벽에 켠 컴퓨터에 "좋은 아침"을 하지 않게. */
@@ -109,14 +109,14 @@ export interface BriefingInput {
 }
 
 function greeting(minute: number): string {
-  // 인사는 고른 성격 말투로 (shared/persona-voice.ts)
-  if (minute < 11 * 60) return voiced('briefing.hi.morning');
-  if (minute < 17 * 60) return voiced('briefing.hi.day');
-  return voiced('briefing.hi.evening');
+  // 인사는 고른 성격 말투로 (shared/persona-voice.ts). 인사를 모두 안 쓰기로 했으면 빈 글
+  const base =
+    minute < 11 * 60 ? 'briefing.hi.morning' : minute < 17 * 60 ? 'briefing.hi.day' : 'briefing.hi.evening';
+  return voicedPick(base) ?? '';
 }
 
 export function briefingText(b: BriefingInput): string {
-  return `${greeting(b.nowMinute)} ${briefingBody(b)}`;
+  return `${greeting(b.nowMinute)} ${briefingBody(b)}`.trim();
 }
 
 /**
@@ -170,6 +170,15 @@ export interface ReviewInput {
   leftToday: number;
 }
 
+/**
+ * 저녁 회고를 건너뛸 설치 첫날인가 (첫 기록이 없거나 첫 기록이 오늘이고, 오늘 끝낸 할 일이 0개).
+ * 아직 할 일을 한 번도 안 끝낸 사람에게 "끝낸 할 일 0개"를 말하거나 놓친 알림으로 남기지 않게 한다.
+ * 첫날이라도 끝낸 것이 있으면 회고를 한다
+ */
+export function isInstallDay(firstDay: string | null, today: string, doneToday: number): boolean {
+  return doneToday === 0 && (firstDay === null || firstDay >= today);
+}
+
 /** 퇴근 때 말풍선. 끝낸 일을 칭찬하고, 남은 오늘 마감이 있으면 내일로 넘길지 묻는다 */
 export function reviewText(r: ReviewInput): string {
   const n = r.doneTitles.length;
@@ -213,7 +222,11 @@ export type DueSlot = 'am' | 'pm';
 /** 오전 알림은 이 시각부터 오후 알림 전까지 (수다쟁이만) */
 export const DUE_AM_FROM = 10 * 60;
 /** 오후 알림. 보통은 14시, 수다쟁이는 15시부터. 하루 회고 시각 전까지만 (회고가 남은 마감을 묻는다) */
-export const DUE_PM_FROM: Record<'normal' | 'chatty', number> = { normal: 14 * 60, chatty: 15 * 60 };
+export const DUE_PM_FROM: Record<Exclude<ChatterLevel, 'quiet'>, number> = {
+  normal: 14 * 60,
+  sometimes: 14 * 60,
+  chatty: 15 * 60,
+};
 
 /** 지금 분에 해당하는 마감 알림 칸. 조용히거나 칸 밖이면 undefined */
 export function dueSlot(minute: number, level: ChatterLevel, reviewMinute: number): DueSlot | undefined {

@@ -65,6 +65,12 @@ export const ko = {
     '일정 제목은 둘 다 만 18세 이상일 때만 보여 줄 수 있어. 지금은 바쁜 시간만 보여.',
   'friends.shareTitleOn': '이 친구에게 일정 제목도 보여 줄게.',
   'friends.shareTitleOff': '일정 제목 보여 주기를 껐어. 올린 제목은 서버에서 지웠어.',
+  'friends.refresh': '새로 고침',
+  'friends.refreshed': '친구 목록을 새로 받았어.',
+  'friends.more': '설명 보기',
+  'friends.visitDirection': (v: Name) =>
+    `이 스위치를 켜면 내 펫이 ${v.name} 님 화면에 놀러 가. ${v.name} 님 펫이 내 화면에 오는 건 그쪽이 켜야 해.`,
+  'friends.incomingSay': (v: Name) => `${v.name} 님이 친구 신청을 보냈어. 설정의 친구 칸에서 받을지 정해 줘.`,
   'friends.theyShareTitle': '나에게 일정 제목도 보여 줘',
   'friends.theyShare': '나에게 바쁜 시간을 보여 줘',
   'friends.visit': '펫 놀러 가기',
@@ -119,7 +125,7 @@ export const ko = {
   'inbox.giftTitle': '친구가 보낸 선물',
   'inbox.friendTitle': '친구 신청',
   'inbox.friendLine': (v: Name) =>
-    `${v.name} 님이 친구가 되고 싶대. 설정 > 데이터의 친구 칸에서 받을지 정해 줘.`,
+    `${v.name} 님이 친구가 되고 싶대. 설정 > 데이터와 계정의 친구 칸에서 받을지 정해 줘.`,
   'inbox.fromFriend': (v: Name) => `보낸 친구: ${v.name}`,
   'inbox.leftFriend': '떠난 친구',
   'inbox.giftBackTitle': '돌아온 선물',
@@ -189,6 +195,13 @@ export const en: Translation<typeof ko> = {
     'Event titles can only be shown when you are both 18 or older. For now only busy times are shown.',
   'friends.shareTitleOn': 'Your event titles are now shown to this friend too.',
   'friends.shareTitleOff': 'Stopped showing event titles. They were deleted from the server.',
+  'friends.refresh': 'Refresh',
+  'friends.refreshed': 'Friend list refreshed.',
+  'friends.more': 'Show details',
+  'friends.visitDirection': (v: Name) =>
+    `Turning this on sends my pet to ${v.name}'s screen. Their pet comes to my screen only if they turn theirs on.`,
+  'friends.incomingSay': (v: Name) =>
+    `${v.name} sent you a friend request. Decide in the Friends box in Settings.`,
   'friends.theyShareTitle': 'Shows you their event titles too',
   'friends.theyShare': 'Shows you their busy times',
   'friends.visit': 'Pet visits',
@@ -244,7 +257,7 @@ export const en: Translation<typeof ko> = {
   'inbox.giftTitle': 'Gift from a friend',
   'inbox.friendTitle': 'Friend request',
   'inbox.friendLine': (v: Name) =>
-    `${v.name} wants to be friends. Decide in the Friends box under Settings > Data.`,
+    `${v.name} wants to be friends. Decide in the Friends box under Settings > Data and account.`,
   'inbox.fromFriend': (v: Name) => `From: ${v.name}`,
   'inbox.leftFriend': 'Former friend',
   'inbox.giftBackTitle': 'Gift returned',

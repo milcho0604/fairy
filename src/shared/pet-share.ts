@@ -26,6 +26,7 @@ export const SHARE_VERSION = 2;
 /**
  * 파일 하나 상한. 그림 네 장(본 그림, 포즈 셋, 각 8MB)과 깊이 그림, 작은 그림을 base64 로 하면 44.4MB 쯤이고,
  * 2D 그림 세트(SPRITES_MAX_BYTES 4MB, base64 로 5.4MB)를 더하면 49.8MB 쯤이라 48MB 에서 56MB 로 올렸다 (2026-10-13).
+ * 그림 세트 상한을 6MB(base64 8MB)로 올린 뒤(2026-10-28)에도 52.4MB 쯤이라 56MB 안이다.
  * 옛 앱은 48MB 가 넘는 파일만 "너무 크다" 고 받지 않는다 (보통 파일은 1MB 안팎)
  */
 export const SHARE_MAX_BYTES = 56 * 1024 * 1024;
@@ -216,11 +217,12 @@ function cleanImage(v: unknown): string | undefined {
 }
 
 /** PNG 가 움직이는 그림(APNG)인지: 첫 그림 조각(IDAT) 앞에 acTL 조각이 있으면 */
-function isAnimatedPng(bytes: Buffer): boolean {
+export function isAnimatedPng(bytes: Uint8Array): boolean {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let at = 8;
   while (at + 8 <= bytes.length) {
-    const len = bytes.readUInt32BE(at);
-    const type = bytes.toString('latin1', at + 4, at + 8);
+    const len = dv.getUint32(at);
+    const type = String.fromCharCode(...bytes.subarray(at + 4, at + 8));
     if (type === 'acTL') return true;
     if (type === 'IDAT' || type === 'IEND') return false;
     at += 12 + len;

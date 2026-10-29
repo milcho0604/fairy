@@ -51,6 +51,17 @@ export function setLineOverrides(o: Record<Lang, Record<string, string>>): void 
   }
 }
 
+// 사용자가 안 쓰기로 한 대사 (shared/lines.ts, main/lines.ts). 고르는 쪽(혼잣말, 변형)이 건너뛴다
+const mutedLines: Record<Lang, Set<string>> = { ko: new Set(), en: new Set() };
+
+/** 안 쓰기로 한 대사 열쇠들을 통째로 바꿔 넣는다 (언어마다) */
+export function setMutedLines(m: Record<Lang, readonly string[]>): void {
+  for (const l of ['ko', 'en'] as const) mutedLines[l] = new Set(m[l] ?? []);
+}
+
+/** 지금 말에서 이 대사를 안 쓰기로 했는지 */
+export const isMutedLine = (key: string): boolean => mutedLines[lang].has(key);
+
 /** 지금 말에서 사용자가 이 키의 대사를 고쳤는지 */
 export const hasLineOverride = (key: string): boolean => lineOverrides[lang].has(key);
 
@@ -61,7 +72,8 @@ function lookup(key: string, vars: Vars | undefined): string {
   if (typeof v === 'function') return (v as (vars?: Vars) => string)(vars);
   if (typeof v !== 'string') return key;
   if (!vars) return v;
-  return v.replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m));
+  // {이름} 과 {이름:은} (값 뒤에 받침에 맞는 조사). 값이 없는 자리는 그대로 둔다
+  return renderTemplate(v, vars);
 }
 
 /** 시험용: 사전을 직접 보고 싶을 때 */

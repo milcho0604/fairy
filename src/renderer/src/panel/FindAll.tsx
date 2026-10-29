@@ -5,6 +5,7 @@ import type { FindAllResult } from '../../../shared/find-all.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelTab } from '../../../shared/ipc.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
+import { useReturnFocus } from '../focus-return.ts';
 import { currentQueryResult, type FindQuerySnapshot } from './find-query.ts';
 import { dayHeading, timeOf } from './format.ts';
 import { SearchIcon } from './icons.tsx';
@@ -28,6 +29,7 @@ export function FindAll({
   /** 고른 곳으로 간다 (탭을 바꾸고 그 줄을 보인다) */
   onPick: (tab: PanelTab, pick: Pick) => void;
 }) {
+  useReturnFocus(true);
   const [query, setQuery] = useState('');
   const [composing, setComposing] = useState(false);
   const [found, setFound] = useState<FindQuerySnapshot<FindAllResult>>();

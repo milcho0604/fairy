@@ -28,6 +28,18 @@ export function moveTarget(list: readonly Row[], id: number, dir: MoveDir): Plac
   return near ? { target: near.id, after: dir === 'down' } : undefined;
 }
 
+/** moveTarget 이 줄마다 목록을 훑는 것을 한 번에: 각 줄이 네 방향으로 옮겨지는지 (목록이 길어도 한 번만 훑는다) */
+export function moveCans(list: readonly Row[]): ReadonlyMap<number, Record<MoveDir, boolean>> {
+  const free = list.filter((x) => x.pinnedAt === null);
+  const out = new Map<number, Record<MoveDir, boolean>>();
+  free.forEach((x, i) => {
+    const up = i > 0;
+    const down = i < free.length - 1;
+    out.set(x.id, { top: up, up, down, bottom: down });
+  });
+  return out;
+}
+
 /** 줄을 끌어 다른 줄 위에 놓았다: 위에서 끌어 내렸으면 그 줄 뒤에, 아래에서 끌어 올렸으면 그 줄 앞에. 고정한 줄이 끼면 undefined */
 export function dropPlace(list: readonly Row[], dragId: number, overId: number): Place | undefined {
   const free = list.filter((x) => x.pinnedAt === null);

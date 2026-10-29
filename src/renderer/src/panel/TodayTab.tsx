@@ -11,8 +11,8 @@ import { FocusMonth } from './FocusMonth.tsx';
 import { dayHeading, timeOf } from './format.ts';
 import { HabitBox } from './HabitBox.tsx';
 import { JourneyCard } from './JourneyCard.tsx';
+import { MailCard } from './MailCard.tsx';
 import { PlanCard } from './MorningPlan.tsx';
-import { NoteBox } from './NoteBox.tsx';
 import { RemindCard } from './RemindCard.tsx';
 import { useSurface } from './surface.tsx';
 import { TodoRow } from './TodoTab.tsx';
@@ -201,7 +201,13 @@ export function TodayTab({
               </>
             )}
           </div>
-          <button type="button" className="primary" disabled={badLen} onClick={() => bridge.focusStart(len)}>
+          <button
+            type="button"
+            className="primary"
+            disabled={badLen}
+            aria-label={t('panel.today.startLabel', { n: len })}
+            onClick={() => bridge.focusStart(len)}
+          >
             {t('panel.today.start')}
           </button>
         </>
@@ -310,6 +316,7 @@ export function TodayTab({
                     <button
                       type="button"
                       className="primary next-go"
+                      aria-label={t('panel.today.nextFocusLabel', { n: len, title: next.title })}
                       onClick={() => bridge.focusStart(len, next.id)}
                     >
                       {t('panel.today.nextFocus', { n: len })}
@@ -465,8 +472,8 @@ export function TodayTab({
             {/* 첫 7일 여정 (shared/journey.ts). 여정 밖이면 그리지 않는다 */}
             <JourneyCard s={s} />
 
-            {/* 매일 쪽지함 (shared/daily-note.ts). 쪽지가 없고 꺼져 있으면 그리지 않는다 */}
-            <NoteBox />
+            {/* 새 쪽지 카드: 안 읽은 쪽지가 있으면 알리고 쪽지함(머리줄 봉투, 큰 창 구역)을 연다 */}
+            <MailCard />
 
             <DiaryBox s={s} open={wide} />
           </div>

@@ -1,9 +1,9 @@
 // 페어리 서버 계정 (이슈 #99, 기획서 5, 6, 21절): 설정 > 데이터 칸. 나이 확인과 두 모드, 서버 코인, 구글 로그인,
 // 합치기 확인, 탈퇴. 창은 상태(ServerStatus)만 받는다. 토큰과 네트워크는 메인(main/server.ts)에만 있다.
 // 서버 주소 없이 만든 판에서는 칸을 통째로 숨긴다 (serverView 'hidden').
-// 칸은 뜻 묶음 차례로: 내 정보, 로그인, 채팅 이용권(쓸 수 있을 때만), 코인 맞추기, 서버 백업, 서버로 가는 것, 맨 아래 따로 둔 되돌릴 수 없는 일.
-// 운영자 쪽지 안내는 묶음 밖 한 줄이다 (코인 맞추기 아래).
-// 단추는 두 크기: 줄 끝 동작(복사, 바꾸기, 지금 맞추기)은 작은 것, 묶음 동작(로그인, 올리기)은 보통. 위험한 것은 빨간 테두리
+// 칸은 뜻 묶음 차례로: 내 정보, 로그인, 채팅 이용권(쓸 수 있을 때만), 코인 동기화, 서버 백업, 서버로 가는 것, 맨 아래 따로 둔 되돌릴 수 없는 일.
+// 운영자 쪽지 안내는 묶음 밖 한 줄이다 (코인 동기화 아래).
+// 단추는 두 크기: 줄 끝 동작(복사, 바꾸기, 코인 동기화)은 작은 것, 묶음 동작(로그인, 올리기)은 보통. 위험한 것은 빨간 테두리
 // 하나 (줄 격자와 간격은 settings.css "서버 계정과 코인").
 import { useEffect, useRef, useState } from 'react';
 import { locale, t } from '../../../shared/i18n/index.ts';
@@ -15,6 +15,7 @@ import {
   type ServerStatus,
   serverView,
 } from '../../../shared/server-account.ts';
+import { useNear } from './NearResult.tsx';
 import { ServerBackupBox } from './ServerBackupBox.tsx';
 import { NicknameStep, ProfileRows, Row } from './ServerProfile.tsx';
 import { Section } from './ui.tsx';
@@ -26,6 +27,17 @@ declare global {
 }
 
 const server = () => window.jjakkungServer;
+
+/** 다음 채움일 "2026-11-01" 을 다른 날짜 칸(서버 백업)과 같은 모양으로 ("2026년 11월 1일", "Nov 1, 2026") */
+const fillDay = (iso: string | null): string => {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso) : null;
+  if (!m) return iso ?? '-';
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString(locale(), {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
 
 const AGE_KEY = {
   under14: 'server.age.under14',
@@ -71,11 +83,13 @@ function viaText(logins: readonly LoginService[]): string {
     : (names[0] ?? '');
 }
 
-export function ServerAccountBox({ flash }: { flash: (message: string, error?: boolean) => void }) {
+export function ServerAccountBox() {
   const [s, setS] = useServerStatus();
   const [busy, setBusy] = useState(false);
   const [changingAge, setChangingAge] = useState(false);
   const [sureRemove, setSureRemove] = useState(false);
+  // 지우기 결과는 단추 아래에 남긴다 (지운 뒤 칸이 처음으로 돌아가도 거기에 보인다)
+  const [removeNear, removeFlash] = useNear();
   /** 나이 답을 고르고 닉네임을 기다리는 중 (서버 모드를 처음 켤 때, #101) */
   const [nickFor, setNickFor] = useState<AgeAnswer | null>(null);
   const mergeRef = useRef<HTMLButtonElement>(null);
@@ -111,9 +125,9 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
     try {
       const r = await b.remove();
       setS(r.status);
-      flash(t(r.ok ? 'server.removed' : 'server.removeFailed'), !r.ok);
+      removeFlash(() => t(r.ok ? 'server.removed' : 'server.removeFailed'), !r.ok);
     } catch {
-      flash(t('server.removeFailed'), true);
+      removeFlash(() => t('server.removeFailed'), true);
     } finally {
       setBusy(false);
     }
@@ -160,12 +174,15 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
   if (view === 'askAge')
     return (
       <Section title={t('server.title')}>
-        <div className="server-box">
+        <div className="server-box" data-search={t('server.searchKeys')}>
+          {/* 나이를 묻기 전에 서버 계정이 해 주는 것부터 (이 칸이 왜 있는지 모르고 지나치지 않게) */}
+          <small className="server-benefit">{t('server.benefit')}</small>
           <div className="server-group">
             <h3 className="server-group-title server-ask">{t('server.ask.title')}</h3>
             <small>{t('server.ask.why')}</small>
             {ageButtons('ghost')}
           </div>
+          {removeNear}
         </div>
       </Section>
     );
@@ -211,6 +228,7 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
           {sureRemove ? t('server.removeSure') : t('server.remove')}
         </button>
       </div>
+      {removeNear}
     </div>
   );
   const problem = s.problem ? (
@@ -284,7 +302,7 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
       <div className="server-box">
         {problem}
         {updateNow}
-        <ProfileRows s={s} b={b} setS={setS} flash={flash} after={changingAge && ageButtons('ghost small')}>
+        <ProfileRows s={s} b={b} setS={setS} after={changingAge && ageButtons('ghost small')}>
           {ageRow}
         </ProfileRows>
 
@@ -392,7 +410,10 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
             )}
             {s.subscription && (
               <small>
-                {t('ticket.subscription', { n: s.subscription.monthly, day: s.subscription.nextFill ?? '-' })}
+                {t('ticket.subscription', {
+                  n: s.subscription.monthly,
+                  day: fillDay(s.subscription.nextFill),
+                })}
               </small>
             )}
             {s.aiWaitlisted && <small className="warn">{t('ticket.waitlisted')}</small>}
@@ -418,7 +439,7 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
         {s.inbox > 0 && <small className="server-inbox">{t('server.inbox', { n: s.inbox })}</small>}
 
         {!s.merge && !s.loggingIn && s.signedIn && s.backup && (
-          <ServerBackupBox b={b} view={s.backup} setS={setS} flash={flash} />
+          <ServerBackupBox b={b} view={s.backup} setS={setS} />
         )}
 
         <details className="server-what">

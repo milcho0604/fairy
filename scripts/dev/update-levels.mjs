@@ -273,7 +273,7 @@ const typeByLabel = (p, prefix, value) =>
 const T = {
   ko: {
     adult: '만 18세 이상',
-    start: '서버 모드 시작',
+    start: '서버 계정 시작',
     save: '버전 저장',
     sure: '정말 할까? 한 번 더 눌러',
     update: '업데이트',
@@ -283,7 +283,7 @@ const T = {
   },
   en: {
     adult: '18 or older',
-    start: 'Start server mode',
+    start: 'Start server account',
     save: 'Save versions',
     sure: 'Sure? Press again',
     update: 'Update',
@@ -314,7 +314,7 @@ try {
   check('나이 누르기', await press(p, '.server-box', T.adult));
   await until('닉네임 칸', () => p.ev(`!!document.querySelector('.server-nickname-step input')`));
   await typeInto(p, '.server-nickname-step input', NICK);
-  check('서버 모드 시작', await press(p, '.server-box', T.start));
+  check('서버 계정 시작', await press(p, '.server-box', T.start));
   await until('기기 계정', async () => {
     const s = await status();
     return s.device && s.code && !s.syncing;

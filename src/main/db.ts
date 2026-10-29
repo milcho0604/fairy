@@ -9,6 +9,7 @@ import { type ExportTodo, readExportTodos } from '../shared/export.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
 import { HabitStore } from '../shared/habit.ts';
 import { locale, t } from '../shared/i18n/index.ts';
+import { MailStore } from '../shared/mail-store.ts';
 import type { MissedMsg } from '../shared/missed-msg.ts';
 import { NoteStore } from '../shared/note-store.ts';
 import { PetLife } from '../shared/pet-life.ts';
@@ -28,6 +29,8 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   store: TodoStore;
   stats: StatStore;
   notes: NoteStore;
+  /** 쪽지함 (shared/mail-store.ts) */
+  mail: MailStore;
   events: EventStore;
   /** 구글 캘린더로 보낸 일정 (6단계 쓰기) */
   gcalLinks: GcalStore;
@@ -90,6 +93,7 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     store,
     stats: new StatStore(d),
     notes: new NoteStore(d),
+    mail: new MailStore(d),
     events,
     gcalLinks: new GcalStore(d, events),
     life: new PetLife(d),

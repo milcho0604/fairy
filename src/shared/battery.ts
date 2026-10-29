@@ -15,7 +15,25 @@ export interface PowerFacts {
    * 맥 저전력 모드는 CPU 속도를 묶어 여기에 잡힌다
    */
   lowPower: boolean;
+  /** 운영체제 "동작 줄이기"가 켜져 있다 (접근성). 있으면 설정이 꺼져 있어도 아낀다 */
+  reducedMotion?: boolean;
 }
+
+/**
+ * 움직임 줄이기 고르기 (설정 편의): system(기본) 운영체제 "동작 줄이기"를 따른다, always 늘 줄인다, off 줄이지 않는다.
+ * 줄이면 화면을 가로질러 걷지 않는다(calmOn)
+ */
+export const MOTION_CHOICES = ['system', 'always', 'off'] as const;
+export type MotionChoice = (typeof MOTION_CHOICES)[number];
+export const isMotionChoice = (v: unknown): v is MotionChoice => MOTION_CHOICES.includes(v as MotionChoice);
+
+/** 고른 값과 운영체제 설정으로 지금 줄일지 */
+export const reducedMotionOf = (choice: MotionChoice, os: boolean): boolean =>
+  choice === 'always' ? true : choice === 'off' ? false : os;
+
+/** 예전 설정에는 이 값이 없다: 배터리 절약을 "항상"으로 해 둔 사람은 "항상 줄이기"로 잇는다 */
+export const motionChoiceFromOld = (saved: unknown, saver: unknown): MotionChoice =>
+  isMotionChoice(saved) ? saved : saver === 'always' ? 'always' : 'system';
 
 /** 지금 절약할지 */
 export function saverOn(mode: SaverMode, facts: PowerFacts): boolean {
@@ -23,6 +41,9 @@ export function saverOn(mode: SaverMode, facts: PowerFacts): boolean {
   if (mode === 'always') return true;
   return facts.onBattery || facts.lowPower;
 }
+
+/** 돌아다니기, 손님 걷기, 집 문 걷기처럼 화면을 가로지르는 움직임을 멈출지 (운영체제 동작 줄이기만, 배터리는 해당 없음) */
+export const calmOn = (facts: PowerFacts): boolean => facts.reducedMotion === true;
 
 /** 열 상태와 속도 제한으로 본 저전력 */
 export function lowPowerOf(speedLimit: number | undefined, thermal: string | undefined): boolean {
@@ -35,8 +56,8 @@ export const SAVER = {
   fpsCap: 15,
   /** 한가할 때 행동을 고르는 간격 배수 (걷기, 몸짓이 이만큼 드물다) */
   idleWait: 2.5,
-  /** 걷기에서 창을 옮기는 간격 (ms). 평소 33 (30Hz) */
-  walkTickMs: 66,
+  /** 걷기에서 창을 옮기는 간격 (ms). 평소 50 (20Hz). 걷는 그림이 12fps 라 이보다 잦게 옮겨도 눈에 안 띈다 */
+  walkTickMs: 83,
   /** 창 위에 앉은 동안 그 창이 그대로인지 보는 간격 (ms). 평소 1000 */
   perchPollMs: 3000,
   /** 창 위에 올라가 볼 확률 배수 (창 목록 읽기가 비싸다) */
@@ -50,6 +71,9 @@ export function capFps(fps: number, saver: boolean): number {
 }
 
 export const perchPollMs = (saver: boolean): number => (saver ? SAVER.perchPollMs : 1000);
+/** 걷기(제자리 걷는 그림, 12fps)에서 창을 옮기는 간격. 그림 틀보다 조금 잦게 */
 export const walkTickMs = (saver: boolean, boost: boolean): number =>
-  saver ? SAVER.walkTickMs : boost ? 16 : 33;
+  saver ? SAVER.walkTickMs : boost ? 16 : 50;
+/** 커서나 친구를 따라 달릴 때 창을 옮기는 간격 (빨라서 걷기보다 촘촘히). 평소 33 (30Hz), 절약이면 66 */
+export const followTickMs = (saver: boolean, boost: boolean): number => (saver ? 66 : boost ? 16 : 33);
 export const idleWaitFactor = (saver: boolean): number => (saver ? SAVER.idleWait : 1);

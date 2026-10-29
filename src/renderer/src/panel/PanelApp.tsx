@@ -16,14 +16,17 @@ import {
 import type { Todo } from '../../../shared/todo-store.ts';
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
+import { LanguageContext } from '../language-context.ts';
 import { PetFace } from '../PetFace.tsx';
 import { useLanguageUpdates } from '../use-language.ts';
 import { EventTab } from './EventTab.tsx';
 import { FindAll } from './FindAll.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
-import { CoinIcon, ExpandIcon, GearIcon, PinIcon, SearchIcon } from './icons.tsx';
+import { CoinIcon, ExpandIcon, GearIcon, MailIcon, PinIcon, SearchIcon } from './icons.tsx';
 import { escClosesSurface, type ModKeyLike, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
+import { MailPage, MailSheet } from './MailView.tsx';
 import { PlanSheetHost } from './MorningPlan.tsx';
+import { OPEN_MAIL_EVENT, useMailUnread } from './mail-state.ts';
 import { NoteTab } from './NoteTab.tsx';
 import { openNoteById, revealRow } from './open-target.ts';
 import { planTodosKey } from './plan-refresh.ts';
@@ -48,9 +51,9 @@ const MAC = navigator.userAgent.includes('Mac');
 /** 탭 풀이와 설정 단축키 칸에 보이는 수식키 */
 const MOD = MAC ? 'Cmd' : 'Ctrl';
 
-/** 이 면에서 열 수 있는 탭인가: 작은 패널은 탭 줄에 있는 것만, 큰 창은 기록 구역도 (#166) */
+/** 이 면에서 열 수 있는 탭인가: 작은 패널은 탭 줄에 있는 것만, 큰 창은 기록과 쪽지함 구역도 (#166, 쪽지함은 작은 패널에서는 머리줄 봉투가 여는 덮개) */
 const usable = (kind: SurfaceKind, v: unknown): v is PanelTab =>
-  isTab(v) || (kind === 'home' && v === 'records');
+  isTab(v) || (kind === 'home' && (v === 'records' || v === 'mail'));
 
 /** 마지막에 본 탭 (창은 열 때마다 새로 만들어서 브라우저 저장소에 둔다). 못 읽으면 오늘. */
 function savedTab(kind: SurfaceKind): PanelTab {
@@ -114,11 +117,23 @@ function focusFind() {
   }
 }
 
-/** 패널 구성요소의 껍데기. kind 가 panel 이면 펫 옆 작은 패널, home 이면 사이드바가 있는 큰 창 (src/renderer/src/home/HomeShell.tsx) */
+/** 언어가 바뀌면 아래 memo 줄까지 다시 그리게 언어를 내려 준다 */
 export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
-  useLanguageUpdates();
+  const language = useLanguageUpdates();
+  return (
+    <LanguageContext.Provider value={language}>
+      <PanelShell kind={kind} />
+    </LanguageContext.Provider>
+  );
+}
+
+/** 패널 구성요소의 껍데기. kind 가 panel 이면 펫 옆 작은 패널, home 이면 사이드바가 있는 큰 창 (src/renderer/src/home/HomeShell.tsx) */
+function PanelShell({ kind }: { kind: SurfaceKind }) {
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(() => savedTab(kind));
+  /** 작은 패널의 쪽지함 덮개 (큰 창은 사이드바 구역이라 tab 이 mail). 펫 메뉴가 mail 로 열면 덮개가 열린 채 시작한다 */
+  const [mailOpen, setMailOpen] = useState(() => kind === 'panel' && location.hash.slice(1) === 'mail');
+  const mailUnread = useMailUnread();
   const [chatOn, setChatOn] = useState(false);
   // 되돌리기 알림 (#145): 여럿이 쌓이고, 메인이 들고 있어 패널을 벗어났다 다시 열어도 남은 시간 동안 보인다
   const [toasts, setToasts] = useState<KeptToast[]>(() => liveToasts(bridge.toastsGet(), Date.now()));
@@ -162,7 +177,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
    * 메인이 큰 창이 보인 뒤에 이 패널을 닫으니 화면이 비는 순간이 없다 */
   const expand = () => {
     window.dispatchEvent(new Event('beforeunload'));
-    bridge.expand(tab);
+    bridge.expand(mailOpen ? 'mail' : tab);
   };
   const expandRef = useRef(expand);
   expandRef.current = expand;
@@ -174,6 +189,11 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
     bridge.onTab((next) => {
+      // 작은 패널은 쪽지함이 탭이 아니라 덮개다
+      if (kind === 'panel' && next === 'mail') {
+        setMailOpen(true);
+        return;
+      }
       if (!usable(kind, next)) return;
       setChatOn(false);
       setTabState(next);
@@ -197,6 +217,16 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
       }
       return true;
     };
+    // 오늘 탭의 새 쪽지 카드가 쪽지함을 열어 달라고 한다
+    const openMailHere = () => {
+      if (kind === 'panel') setMailOpen(true);
+      else {
+        setChatOn(false);
+        setTabState('mail');
+        rememberTab(kind, 'mail');
+      }
+    };
+    window.addEventListener(OPEN_MAIL_EVENT, openMailHere);
     if (kind === 'home') bridge.onChatKey((key) => void homeKey(key));
     if (kind === 'home') bridge.onChatSection(setChatOn);
     // 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열면 메인이 이 패널에 먼저 넘겨 달라고 한다
@@ -299,6 +329,29 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     bridge.toastsSet(toasts);
     lastToastAt.current = undoable(toasts).at(-1)?.at;
   }, [toasts]);
+
+  /** 같은 반복의 다른 회차 시각으로 옮기다 막혔다는 신호(번호가 오르면)를 안내 알림으로. 처음 받은 상태는 기준일 뿐 알리지 않는다 */
+  const slotSeen = useRef<number | null>(null);
+  const slotTaken = s === undefined ? undefined : (s.eventSlotTaken ?? 0);
+  useEffect(() => {
+    if (slotTaken === undefined) return;
+    const before = slotSeen.current;
+    slotSeen.current = slotTaken;
+    if (before === null || slotTaken <= before) return;
+    const now = Date.now();
+    const key = toastKey.current++;
+    setToasts((prev) =>
+      [
+        ...liveToasts(prev, now).filter((k) => k.toast.kind !== 'added'),
+        {
+          key,
+          at: now,
+          until: now + UNDO_MS,
+          toast: { kind: 'added' as const, text: t('panel.event.slotTaken') },
+        },
+      ].slice(-TOAST_KEEP_MAX),
+    );
+  }, [slotTaken]);
 
   if (!s) return kind === 'home' ? <div className="surface home" /> : <div className="card-window panel" />;
 
@@ -488,6 +541,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
         {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
         {tab === 'shop' && <ShopTab s={s} />}
         {tab === 'records' && kind === 'home' && <RecordsTab s={s} />}
+        {tab === 'mail' && kind === 'home' && <MailPage />}
         {tab === 'event' && (
           <EventTab
             s={s}
@@ -589,6 +643,16 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
               onClick={() => bridge.setKeepOpen(!s.keepOpen)}
             >
               <PinIcon />
+            </button>
+            {/* 쪽지함: 안 읽은 쪽지가 있으면 점, 이름에는 숫자 (색에만 기대지 않는다) */}
+            <button
+              type="button"
+              className={`icon-btn mail-btn${mailUnread > 0 ? ' has-unread' : ''}`}
+              aria-label={t('mail.button', { n: mailUnread })}
+              title={t('mail.buttonTitle')}
+              onClick={() => setMailOpen(true)}
+            >
+              <MailIcon dot={mailUnread > 0} />
             </button>
             {/* 같은 탭, 쓰던 글 그대로 큰 창으로 (이슈 #164) */}
             <button
@@ -720,6 +784,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
 
           {planSheet}
           {findSheet}
+          {mailOpen && <MailSheet onClose={() => setMailOpen(false)} />}
 
           {/* 크기 손잡이: 카드 안 오른쪽 아래. 다른 칸 위에 얹는다 */}
           <ResizeGrips onPastMax={showHint} />

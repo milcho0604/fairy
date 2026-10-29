@@ -12,7 +12,7 @@ import {
   powerMonitor,
   screen,
 } from 'electron';
-import { perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
+import { followTickMs, perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
 import {
   type Activity,
   clampWalkX,
@@ -48,7 +48,7 @@ import { CrashGuard } from '../shared/crash-guard.ts';
 import { type CarryToy, fromBox, toBox } from '../shared/fetch.ts';
 import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
 import { clampIntoAreas, type Point, type Rect, snapRect } from '../shared/geometry.ts';
-import type { GestureEvent } from '../shared/gesture.ts';
+import { isGesture } from '../shared/gesture.ts';
 import { approachMs, doorFrame, OUT_MS, STRETCH_MS } from '../shared/house-rest.ts';
 import { type HouseSprites, parseSprites } from '../shared/house-room.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -83,7 +83,7 @@ import {
 } from '../shared/throw.ts';
 import type { NoteLook } from '../shared/together.ts';
 import { KEEP_APP_TYPE } from './active-space.ts';
-import { saverNow } from './battery.ts';
+import { motionCalm, saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -161,6 +161,9 @@ export interface PetActions {
   visitItems?(): Electron.MenuItemConstructorOptions[];
   /** 짝꿍이 아는 것 창 (main/knows.ts). 없으면 메뉴에 안 보인다 */
   openKnows?(): void;
+  /** 쪽지함을 연다 (펫 메뉴). mailUnread 는 메뉴에 붙는 안 읽은 쪽지 수 */
+  openMailbox?(): void;
+  mailUnread?(): number;
   /** 질문 칩 (main/pet-chips.ts, 이슈 #124). 없으면 메뉴에 안 보인다 */
   askChips?(): void;
   /** "오늘 뭐부터?" 규칙 답을 말풍선으로 (main/what-first.ts). 없으면 메뉴에 안 보인다 */
@@ -590,9 +593,11 @@ export function createPetWindow({
   ];
 
   const fromThisWindow = (e: IpcMainEvent) => e.sender === win.webContents;
+  /** 화면이 알려 준 크기(px)가 쓸 수 있는 수인지 */
+  const isSize = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
-  const onHover = (e: IpcMainEvent, over: boolean) => {
-    if (!fromThisWindow(e) || ghost) return;
+  const onHover = (e: IpcMainEvent, over: unknown) => {
+    if (!fromThisWindow(e) || ghost || typeof over !== 'boolean') return;
     overPet = over;
     setShortcuts(over);
     if (dragTimer || looking || Date.now() < passWheelUntil) return;
@@ -612,8 +617,9 @@ export function createPetWindow({
     }
   }
 
-  const onGesture = (e: IpcMainEvent, event: GestureEvent) => {
-    if (!fromThisWindow(e)) return;
+  const onGesture = (e: IpcMainEvent, raw: unknown) => {
+    if (!fromThisWindow(e) || !isGesture(raw)) return;
+    const event = raw;
     log('pet', event.type);
     if (event.type === 'click') {
       actions.click(pet);
@@ -667,9 +673,9 @@ export function createPetWindow({
     }
   };
 
-  const onWheel = (e: IpcMainEvent, deltaY: number, zoom: boolean) => {
-    if (!fromThisWindow(e)) return;
-    if (zoom) {
+  const onWheel = (e: IpcMainEvent, deltaY: unknown, zoom: unknown) => {
+    if (!fromThisWindow(e) || typeof deltaY !== 'number' || !Number.isFinite(deltaY)) return;
+    if (zoom === true) {
       resize(scaleByWheel(scale, deltaY));
       return;
     }
@@ -763,6 +769,14 @@ export function createPetWindow({
             },
           ]
         : []),
+      ...(actions.openMailbox
+        ? [
+            {
+              label: t('pet.menu.mail', { n: actions.mailUnread?.() ?? 0 }),
+              click: () => actions.openMailbox?.(),
+            },
+          ]
+        : []),
       { label: t('pet.menu.play'), submenu: playMenu() },
       { type: 'separator' },
       {
@@ -787,7 +801,7 @@ export function createPetWindow({
           { type: 'separator' },
           {
             label: t('pet.menu.bubbles'),
-            submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
+            submenu: (['quiet', 'normal', 'sometimes', 'chatty'] as const).map((level) => ({
               label: LEVEL_LABEL[level],
               type: 'radio' as const,
               checked: gate.level === level,
@@ -936,7 +950,9 @@ export function createPetWindow({
     // 가끔 다른 앱 창 윗변으로 깡충 올라간다. 이미 앉아 있으면 걷지 않는다 (걸으면 떨어지니까).
     // 배터리 절약이면 덜 올라간다 (창 목록 읽기가 비싸다)
     const perchChance = PERCH_CHANCE * (saverNow() ? SAVER.perchChance : 1);
-    if (!perch && Math.random() < perchChance && tryPerch()) return;
+    // 운영체제 동작 줄이기: 창 위로 뛰어오르지도, 화면을 가로질러 걷지도 않는다 (제자리 몸짓만)
+    const calm = motionCalm();
+    if (!calm && !perch && Math.random() < perchChance && tryPerch()) return;
     const now = Date.now();
     let activity: Activity = pickActivity(pet, area, Math.random, areas, {
       ask: moveAskOf(ask),
@@ -945,7 +961,7 @@ export function createPetWindow({
       hour: new Date(now).getHours(),
       perched: !!perch,
     });
-    if (perch && activity.type === 'walk') activity = { type: 'sit', ms: 12_000 };
+    if ((perch || calm) && activity.type === 'walk') activity = { type: 'sit', ms: 12_000 };
     if (activity.type === 'walk') activity = { ...activity, idle: true };
     if (isMove(activity.type)) moveHistory = rememberMove(moveHistory, activity.type, now);
     if (activity.type === 'walk') startWalk(activity);
@@ -1060,6 +1076,12 @@ export function createPetWindow({
     stopWalk();
     const dx = Math.round(x - pet.x);
     if (Math.abs(dx) < 4 || win.isDestroyed() || !win.isVisible()) return Promise.resolve(true);
+    // 운영체제 동작 줄이기: 걷지 않고 바로 그 자리에 선다
+    if (motionCalm()) {
+      pet = snapRect({ ...pet, x: Math.round(x) });
+      win.setPosition(pet.x, pet.y);
+      return Promise.resolve(true);
+    }
     const walk = { type: 'walk' as const, dx, ms: Math.round((Math.abs(dx) / speed) * 1000) };
     return new Promise((resolve) => {
       walkDone = resolve;
@@ -1158,7 +1180,7 @@ export function createPetWindow({
               );
           }
         },
-        walkTickMs(saverNow(), boostOn()),
+        followTickMs(saverNow(), boostOn()),
       );
     });
   }
@@ -1795,6 +1817,12 @@ export function createPetWindow({
     stopDoor();
     stopWalk();
     leavePerch();
+    // 운영체제 동작 줄이기: 걷고 줄어들지 않고 바로 문 안(나올 때는 문간)에 선다
+    if (motionCalm()) {
+      pet = doorFrame(stand, end, inward ? 1 : 0);
+      applyLayout();
+      return Promise.resolve(true);
+    }
     const started = Date.now();
     // 문 쪽(나올 때는 문 반대쪽)을 보고 걷는다. 문간 바로 앞이면 들어갈 땐 왼쪽, 나올 땐 오른쪽을 본다
     const toDoor = Math.round(end.x + end.width / 2 - (stand.x + stand.width / 2)) || -1;
@@ -1999,14 +2027,15 @@ export function createPetWindow({
     bubbleAnchor = next;
     applyLayout();
   };
-  const onBubbleSize = (e: IpcMainEvent, id: string, width: number, height: number) => {
-    if (!fromThisWindow(e) || bubble?.id !== id) return;
+  const onBubbleSize = (e: IpcMainEvent, id: unknown, width: unknown, height: unknown) => {
+    if (!fromThisWindow(e) || typeof id !== 'string' || bubble?.id !== id) return;
+    if (!isSize(width) || !isSize(height)) return;
     bubble.size = { width, height };
     applyLayout();
   };
 
-  const onBubbleClosed = (e: IpcMainEvent, id: string, action: string) => {
-    if (!fromThisWindow(e) || bubble?.id !== id) return;
+  const onBubbleClosed = (e: IpcMainEvent, id: unknown, action: unknown) => {
+    if (!fromThisWindow(e) || bubble?.id !== id || typeof action !== 'string') return;
     closeBubble(action);
   };
 

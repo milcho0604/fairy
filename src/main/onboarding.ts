@@ -19,6 +19,7 @@ import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { onboardingBounds, onboardingHeight } from './onboarding-layout.ts';
 import { library } from './pet-library.ts';
+import { reviveOnCrash } from './revive.ts';
 import { settings } from './settings.ts';
 
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
@@ -73,7 +74,16 @@ export function createOnboarding(o: {
     if (!ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA)) delete allowed.launchAtLogin;
     return settings.set(allowed);
   });
-  ipcMain.handle(ONBOARD.ai, (e) => (ours(e) ? o.ai() : undefined));
+  // 알아보다 던지면(디스크 가득 등) 화면에 날것의 오류 글이 가지 않게 비워서 답한다 (화면은 비면 그냥 넘어간다)
+  ipcMain.handle(ONBOARD.ai, async (e) => {
+    if (!ours(e)) return undefined;
+    try {
+      return await o.ai();
+    } catch (err) {
+      o.log('onboard', 'ai 알아보기 실패', err instanceof Error ? err.message : String(err));
+      return undefined;
+    }
+  });
   ipcMain.on(ONBOARD.openMaker, (e) => {
     if (ours(e)) o.openMaker();
   });
@@ -93,8 +103,10 @@ export function createOnboarding(o: {
     win?.close();
   });
 
+  let reviveWin: (() => void) | undefined;
   function open() {
     if (win && !win.isDestroyed()) {
+      reviveWin?.();
       focusWindow(win);
       return;
     }
@@ -122,6 +134,7 @@ export function createOnboarding(o: {
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    reviveWin = reviveOnCrash(win.webContents, 'onboard', o.log);
     const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/onboarding.html`);
     else win.loadFile(join(import.meta.dirname, '../renderer/onboarding.html'));

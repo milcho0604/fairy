@@ -20,6 +20,7 @@ import {
   allDaySpan,
   allDayTimes,
   type CalEvent,
+  EventSlotTakenError,
   type EventStore,
   hasTimeRange,
   parseQuickEventInfo,
@@ -92,6 +93,7 @@ import { drafts, getToasts, getView, noteKeep, setToasts, setView } from './draf
 import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
+import { reviveOnCrash } from './revive.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
 import type { SurfaceWin } from './surface.ts';
 import { closesPanelFor, originOf, pickSurface } from './surface.ts';
@@ -227,6 +229,8 @@ export function createPanel(o: PanelOptions) {
    * (beforeunload). panel 하고만 비교하면 그 마지막 저장이 버려졌다.
    */
   const senders = new Set<Electron.WebContents>();
+  /** 화면이 죽은 창을 다시 열 때 되살리는 함수 (revive.ts) */
+  const revivers = new WeakMap<BrowserWindow, () => void>();
   const relocating = new WeakSet<BrowserWindow>();
   const ours = (e: IpcMainEvent | IpcMainInvokeEvent) => senders.has(e.sender);
   const homeContents = () => (home && !home.isDestroyed() ? home.webContents : undefined);
@@ -260,6 +264,9 @@ export function createPanel(o: PanelOptions) {
     };
   }
 
+  /** 화면이 보낸 번호가 쓸 수 있는 정수인지 (엉뚱한 값이면 저장소까지 가지 않고 버린다) */
+  const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v);
+
   /** 진행 중 표시 가운데 아직 열려 있는 것만 (끝내거나 지운 할 일은 안 보이고, 되돌리면 돌아온다) */
   function openDoing(open: readonly { id: number }[]): number[] {
     const ids = new Set(open.map((todo) => todo.id));
@@ -268,6 +275,7 @@ export function createPanel(o: PanelOptions) {
 
   let newNoteRequest = 0;
   let pendingNewNote = false;
+  let slotTakenSeq = 0;
 
   function state(): PanelState {
     const now = Date.now();
@@ -277,6 +285,7 @@ export function createPanel(o: PanelOptions) {
     dayTurn.seen(localDay(now));
     return {
       ...(pendingNewNote ? { newNoteRequest } : {}),
+      ...(slotTakenSeq > 0 ? { eventSlotTaken: slotTakenSeq } : {}),
       petName: o.petName(),
       today: localDay(now),
       open,
@@ -535,16 +544,20 @@ export function createPanel(o: PanelOptions) {
     }),
   );
   // ---- 메모 ----
-  ipcMain.handle(PANEL.noteGet, (e, id: number) => (ours(e) ? o.notes.get(id) : undefined));
-  ipcMain.handle(PANEL.noteAdd, (e, text: unknown) => {
-    if (!ours(e)) return undefined;
-    // 찾기 칸에 적은 글로 만들 때는 그 글이 본문 첫 줄 (제목은 첫 줄에서 저절로)
-    const body = typeof text === 'string' ? text.trim() : '';
-    const n = o.notes.add(body ? { body } : {}, Date.now());
-    freshNotes.add(n.id);
-    push();
-    return n;
-  });
+  ipcMain.handle(PANEL.noteGet, (e, id: unknown) => (ours(e) && isId(id) ? o.notes.get(id) : undefined));
+  ipcMain.handle(
+    PANEL.noteAdd,
+    // 디스크가 가득 차면 저장이 던진다: 오류 글로 답해 화면이 안내하게 한다 (saving)
+    saving((e, text: unknown) => {
+      if (!ours(e)) return undefined;
+      // 찾기 칸에 적은 글로 만들 때는 그 글이 본문 첫 줄 (제목은 첫 줄에서 저절로)
+      const body = typeof text === 'string' ? text.trim() : '';
+      const n = o.notes.add(body ? { body } : {}, Date.now());
+      freshNotes.add(n.id);
+      push();
+      return n;
+    }),
+  );
   // 찾기는 본문 전체를 본다 (목록에는 미리보기 80자만 가서 메인에서 찾는다)
   ipcMain.handle(PANEL.noteSearch, (e, query: unknown, composing: unknown) => {
     if (!ours(e) || typeof query !== 'string') return [];
@@ -608,13 +621,13 @@ export function createPanel(o: PanelOptions) {
         : { ok: true, ...(at !== undefined ? { updatedAt: at } : {}) };
     }),
   );
-  ipcMain.on(PANEL.noteRemove, (e, id: number) => {
-    if (!ours(e)) return;
+  ipcMain.on(PANEL.noteRemove, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return;
     o.notes.remove(id, Date.now());
     push();
   });
-  ipcMain.handle(PANEL.noteAi, (e, id: number, kind: NoteAiKind) => {
-    const n = ours(e) ? o.notes.get(id) : undefined;
+  ipcMain.handle(PANEL.noteAi, (e, id: unknown, kind: NoteAiKind) => {
+    const n = ours(e) && isId(id) ? o.notes.get(id) : undefined;
     if (!n?.body.trim()) return false;
     const ask = kind === 'summary' ? t('panel.noteAi.summary') : t('panel.noteAi.todos');
     const title = n.title.trim() ? `${t('panel.noteAi.title', { title: n.title.trim() })}\n` : '';
@@ -656,8 +669,8 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.notePolishTaken, (e, id: unknown) => {
     if (ours(e) && typeof id === 'number') polishJobs.taken(id);
   });
-  ipcMain.on(PANEL.noteRestore, (e, id: number) => {
-    if (!ours(e)) return;
+  ipcMain.on(PANEL.noteRestore, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return;
     o.notes.restore(id);
     push();
   });
@@ -812,36 +825,47 @@ export function createPanel(o: PanelOptions) {
       byId.set(ev.id, ev);
     return withCals([...byId.values()].sort((a, b) => a.startAt - b.startAt || a.id - b.id));
   });
-  ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
-    if (!ours(e) || typeof patch !== 'object' || patch === null) return;
+  ipcMain.on(PANEL.eventUpdate, (e, id: unknown, patch: unknown) => {
+    if (!ours(e) || !isId(id) || typeof patch !== 'object' || patch === null) return;
     const p = patch as Record<string, unknown>;
     const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
     const reminds = remindsInput(p.reminds);
-    o.events.update(
-      id,
-      {
-        ...(typeof p.title === 'string' ? { title: p.title } : {}),
-        ...(num(p.startAt) !== undefined ? { startAt: num(p.startAt) } : {}),
-        ...(p.endAt === null || num(p.endAt) !== undefined
-          ? { endAt: (p.endAt as number | null) ?? null }
-          : {}),
-        ...(num(p.remindMin) !== undefined ? { remindMin: num(p.remindMin) } : {}),
-        ...(reminds ? { reminds } : {}),
-        ...(typeof p.allDay === 'boolean' ? { allDay: p.allDay } : {}),
-      },
-      Date.now(),
-    );
+    try {
+      o.events.update(
+        id,
+        {
+          ...(typeof p.title === 'string' ? { title: p.title } : {}),
+          ...(num(p.startAt) !== undefined ? { startAt: num(p.startAt) } : {}),
+          ...(p.endAt === null || num(p.endAt) !== undefined
+            ? { endAt: (p.endAt as number | null) ?? null }
+            : {}),
+          ...(num(p.remindMin) !== undefined ? { remindMin: num(p.remindMin) } : {}),
+          ...(reminds ? { reminds } : {}),
+          ...(typeof p.allDay === 'boolean' ? { allDay: p.allDay } : {}),
+        },
+        Date.now(),
+      );
+    } catch (err) {
+      if (!(err instanceof EventSlotTakenError)) throw err;
+      // 같은 반복의 다른 회차 시각으로는 옮기지 못한다: 화면이 안내 알림을 띄우게 번호를 올려 보낸다
+      slotTakenSeq++;
+    }
     push();
     o.onEventsChanged();
   });
-  ipcMain.on(PANEL.eventRemove, (e, id: number) => {
-    if (!ours(e)) return;
+  ipcMain.on(PANEL.eventRemove, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return;
     o.events.remove(id, Date.now());
     push();
   });
-  ipcMain.on(PANEL.eventRestore, (e, id: number) => {
-    if (!ours(e)) return;
-    o.events.restore(id);
+  ipcMain.on(PANEL.eventRestore, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return;
+    try {
+      o.events.restore(id);
+    } catch (err) {
+      if (!(err instanceof EventSlotTakenError)) throw err;
+      slotTakenSeq++;
+    }
     push();
   });
   // ---- 고정 (메모, 할 일, 일정) ----
@@ -945,8 +969,8 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.missedClear, (e) => {
     if (ours(e)) o.clearMissed();
   });
-  ipcMain.handle(PANEL.complete, (e, id: number) => {
-    if (!ours(e)) return 0;
+  ipcMain.handle(PANEL.complete, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return 0;
     // 이미 끝냈거나 없는 할 일(체크를 빠르게 여러 번 누름)은 다시 기뻐하지 않는다
     const coins = o.store.completeOpen(id, Date.now());
     if (coins === null) return null;
@@ -955,25 +979,25 @@ export function createPanel(o: PanelOptions) {
     o.onCompleted(coins, id);
     return coins;
   });
-  ipcMain.handle(PANEL.undo, (e, id: number) => {
-    if (!ours(e)) return 0;
+  ipcMain.handle(PANEL.undo, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return 0;
     const back = o.store.undo(id, Date.now());
     push();
     return back;
   });
-  ipcMain.on(PANEL.update, (e, id: number, patch) => {
-    if (!ours(e)) return;
+  ipcMain.on(PANEL.update, (e, id: unknown, patch: unknown) => {
+    if (!ours(e) || !isId(id)) return;
     // 아는 칸만 (마감 시각, 알림은 8판). 지금 시각을 주어 이미 지난 알림은 넘긴다
     o.store.update(id, todoPatchInput(patch), Date.now());
     push();
   });
-  ipcMain.on(PANEL.remove, (e, id: number) => {
-    if (!ours(e)) return;
+  ipcMain.on(PANEL.remove, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return;
     o.store.remove(id, Date.now());
     push();
   });
-  ipcMain.on(PANEL.restore, (e, id: number) => {
-    if (!ours(e) || typeof id !== 'number') return;
+  ipcMain.on(PANEL.restore, (e, id: unknown) => {
+    if (!ours(e) || !isId(id)) return;
     o.store.restore(id);
     push();
   });
@@ -1011,7 +1035,14 @@ export function createPanel(o: PanelOptions) {
           : undefined;
     if (!record) return 'gone';
     if (kind === 'note') o.notes.restore(id);
-    else o.events.restore(id);
+    else {
+      try {
+        o.events.restore(id);
+      } catch (err) {
+        if (err instanceof EventSlotTakenError) return 'dup';
+        throw err;
+      }
+    }
     log(kind, '휴지통에서 되살림', id);
     push();
     return 'ok';
@@ -1290,6 +1321,7 @@ export function createPanel(o: PanelOptions) {
     win.on('closed', () => senders.delete(sender));
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    revivers.set(win, reviveOnCrash(win.webContents, kind, log));
     const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/${kind}.html${tab ? `#${tab}` : ''}`);
     else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`), { hash: tab });
@@ -1363,6 +1395,7 @@ export function createPanel(o: PanelOptions) {
   function openTab(tab: PanelTab = 'today') {
     if (o.routeHome?.({ tab, toggle: false })) return;
     if (panel && !panel.isDestroyed()) {
+      revivers.get(panel)?.();
       panel.webContents.send(PANEL.tab, tab);
       focusWindow(panel);
       return;
@@ -1496,6 +1529,7 @@ export function createPanel(o: PanelOptions) {
 
   function openQuick() {
     if (quick && !quick.isDestroyed()) {
+      revivers.get(quick)?.();
       focusWindow(quick);
       return;
     }

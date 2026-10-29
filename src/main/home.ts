@@ -24,6 +24,7 @@ import { devRendererUrl } from './dev-url.ts';
 import type { Dock } from './dock.ts';
 import { confineTestWindow, focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
+import { reviveOnCrash } from './revive.ts';
 import type { SurfaceWin } from './surface.ts';
 import { openRememberedBase } from './window-bounds.ts';
 
@@ -89,6 +90,7 @@ export function createHome(o: HomeOptions) {
   /** 숨기기 요청 차례. 전체 화면이 풀리기를 기다리는 동안 다시 열면 늦게 온 숨기기가 무시된다 */
   let hideSeq = 0;
   const keepMs = o.keepMs ?? HOME_KEEP_MS;
+  let reviveBody: (() => void) | undefined;
   const alive = () => !!win && !win.isDestroyed() && !!body && !body.webContents.isDestroyed();
   const bodyContents = (): WebContents | undefined => (alive() ? body?.webContents : undefined);
 
@@ -246,6 +248,7 @@ export function createHome(o: HomeOptions) {
       },
     });
     w.contentView.addChildView(b);
+    reviveBody = reviveOnCrash(b.webContents, 'home', o.log);
     win = w;
     body = b;
     chatPart = undefined;
@@ -320,6 +323,7 @@ export function createHome(o: HomeOptions) {
   function showExisting(tab?: PanelTab) {
     const w = win;
     if (!w || w.isDestroyed()) return;
+    reviveBody?.();
     const wasHidden = hiddenAt !== undefined;
     hiddenAt = undefined;
     hideSeq++;

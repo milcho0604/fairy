@@ -18,13 +18,15 @@ export const PET_STATE_FILES = [
   'knows.json',
   // 사용자가 고친 펫 대사 (#125). 고친 칸만 든다. 읽을 때 사전에 맞춰 정리한다 (main/lines.ts)
   'speech-lines.json',
+  // 안 쓰기로 한 펫 대사 (main/lines.ts)
+  'speech-muted.json',
 ] as const;
 
 /**
  * 복원하면 지우는 파일: 저장 파일(jjakkung.db)의 할 일 번호를 가리켜서, 복원한 저장 파일의 다른 할 일을
- * 가리키게 된다 (진행 중 표시 doing.json, 이슈 #124). 백업에는 담지 않는다
+ * 가리키게 된다 (진행 중 표시 doing.json, 이슈 #124. 오늘 계획의 꼭 할 일 day-plan.json). 백업에는 담지 않는다
  */
-export const STALE_AFTER_RESTORE = ['doing.json'] as const;
+export const STALE_AFTER_RESTORE = ['doing.json', 'day-plan.json'] as const;
 
 export const IMPORT_FILES = [
   'settings.json',

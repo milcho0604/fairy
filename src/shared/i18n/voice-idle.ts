@@ -1,11 +1,13 @@
 import { withParticle } from '../josa.ts';
+import { renderTemplate } from '../line-template.ts';
 import * as companion from './companion.ts';
 import * as idle from './idle.ts';
+import { POLITE_EN_OLD } from './polite-en-old.ts';
 import type { Translation } from './types.ts';
 
 // 존댓말 비서의 혼잣말 (2026-10-11, shared/persona-voice.ts). 혼잣말(idle.*)은 반말이라 존댓말 비서로 고르면
 // 인사와 브리핑만 존댓말이고 혼잣말은 반말이었다. 같은 뜻을 존댓말로. 츤데레, 차분한 선생님은 반말이라 원래 말을 같이 쓴다.
-// 영어는 반말, 존댓말 구분이 없어 원래 말 그대로 (키 모양만 맞춘다)
+// 영어도 존댓말 비서는 격식 있는 말로 따로 쓴다 (polite-en-old.ts. 새 문구는 voice-more.ts)
 type N = { name: string; open?: number; eventMin?: number; workedH?: number; done?: number };
 /** 기억하는 혼잣말 값 (i18n/companion.ts) */
 type M = {
@@ -93,7 +95,7 @@ export const ko = {
   'voice.polite.idle.mouse.1': () => '마우스가 정말 바쁘네요!',
   'voice.polite.idle.mouse.2': (v: N) => `커서를 따라가다 ${withParticle(v.name, '이')} 어지러워졌어요.`,
   'voice.polite.idle.mouse.3': () => '손목 괜찮으세요? 살살 돌려 주세요.',
-  'voice.polite.idle.hungry.1': (v: N) => `${v.name} 배에서 꼬르륵 소리가 나요.`,
+  'voice.polite.idle.hungry.1': (v: N) => `${withParticle(v.name, '의')} 배에서 꼬르륵 소리가 나요.`,
   'voice.polite.idle.hungry.2': () => '밥을 주시면 더 힘낼 수 있을 것 같아요.',
   'voice.polite.idle.hungry.3': (v: N) =>
     `혹시 간식 있으세요? ${withParticle(v.name, '이')} 그냥 여쭤보는 거예요.`,
@@ -153,7 +155,11 @@ export const ko = {
 };
 
 const enIdle: Record<string, unknown> = { ...idle.en, ...companion.en };
-const enOf = (key: string) => enIdle[key.replace('voice.polite.', '')];
+const enOf = (key: string) => {
+  const base = key.replace('voice.polite.', '');
+  const tpl = POLITE_EN_OLD[base];
+  return tpl === undefined ? enIdle[base] : (v?: Record<string, string | number>) => renderTemplate(tpl, v);
+};
 
 export const en = Object.fromEntries(
   Object.keys(ko).map((key) => [key, enOf(key)]),

@@ -8,6 +8,8 @@ import {
   dropFaint,
   edgeTouch,
   FAINT_ALPHA,
+  HOLLOW_GAIN,
+  HOLLOW_GAIN_DRAWING,
   halfKeptShare,
   halfPatch,
   hollowGain,
@@ -418,4 +420,29 @@ test('solidify: 다리 사이 빈 틈 둘레는 가장자리로 보고 둔다', 
   assert.equal(out[120 * w + 103], 210);
   assert.equal(out[120 * w + 140], 255);
   assert.equal(out[120 * w + 100], 0);
+});
+
+test('maskHints hollowAt: 그림용 기준은 오목한 몸의 0.1 쯤은 넘기고, 속을 지운 그림(0.4 이상)은 여전히 잡는다', () => {
+  const w = 240;
+  const h = 120;
+  // 좁게 깊이 파인 틈이 둘 있는 몸 (두 캐릭터 사이 틈, 다리 사이): 닫으면 파인 곳이 메워져 0.08 을 넘지만 속이 빈 것은 아니다
+  const cShape = new Uint8ClampedArray(w * h);
+  for (let y = 10; y < 110; y++)
+    for (let x = 20; x < 220; x++) {
+      const notch = ((x > 80 && x < 96) || (x > 140 && x < 156)) && y > 40 && y < 110;
+      if (!notch) cShape[y * w + x] = 255;
+    }
+  const gain = hollowGain(cShape, w, h, 220 * 0.04);
+  assert.ok(gain > HOLLOW_GAIN && gain < HOLLOW_GAIN_DRAWING, String(gain));
+  assert.equal(maskHints(cShape, w, h).hollow, true);
+  assert.equal(maskHints(cShape, w, h, { hollowAt: HOLLOW_GAIN_DRAWING }).hollow, false);
+  // 아래 반이 테두리 선만 남은 몸은 그림용 기준으로도 잡힌다
+  const ring = new Uint8ClampedArray(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const d = Math.hypot(x - 120, y - 60);
+      if (d < 55 && (y < 60 || d >= 51)) ring[y * w + x] = 255;
+    }
+  assert.ok(hollowGain(ring, w, h, 110 * 0.04) > HOLLOW_GAIN_DRAWING);
+  assert.equal(maskHints(ring, w, h, { hollowAt: HOLLOW_GAIN_DRAWING }).hollow, true);
 });

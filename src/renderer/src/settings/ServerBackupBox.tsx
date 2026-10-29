@@ -9,6 +9,7 @@ import type {
   ServerBridge,
   ServerStatus,
 } from '../../../shared/server-account.ts';
+import { useNear } from './NearResult.tsx';
 import { Toggle } from './ui.tsx';
 
 const day = (iso: string) =>
@@ -21,13 +22,13 @@ export function ServerBackupBox({
   b,
   view,
   setS,
-  flash,
 }: {
   b: ServerBridge;
   view: ServerBackupView;
   setS: (s: ServerStatus | undefined) => void;
-  flash: (message: string, error?: boolean) => void;
 }) {
+  // 결과는 누른 단추 아래에 남긴다 (창 맨 위 안내는 2초 뒤 사라진다)
+  const [near, flash] = useNear();
   // 칸이 보일 때 목록을 한 번 받는다 (목록 보기는 서버에서 "쓴 것"으로 치지 않는다)
   const asked = useRef(false);
   const known = view.list !== null;
@@ -40,10 +41,10 @@ export function ServerBackupBox({
       .catch(() => undefined);
   }, [b, known, setS]);
 
-  const done = (r: ServerBackupResult, ok: string) => {
+  const done = (r: ServerBackupResult, ok: () => string) => {
     if (r.status) setS(r.status);
     if (r.ok) flash(ok);
-    else flash(r.message || t(`backup.${r.error ?? 'failed'}`), true);
+    else flash(() => r.message || t(`backup.${r.error ?? 'failed'}`), true);
   };
   const busy = view.busy !== null;
 
@@ -81,13 +82,14 @@ export function ServerBackupBox({
           onClick={() =>
             void b
               .backupUpload()
-              .then((r) => done(r, t('backup.uploaded')))
-              .catch(() => flash(t('backup.failed'), true))
+              .then((r) => done(r, () => t('backup.uploaded')))
+              .catch(() => flash(() => t('backup.failed'), true))
           }
         >
           {view.busy === 'up' ? t('backup.uploading') : t('backup.upload')}
         </button>
       </div>
+      {near}
       {view.list === null ? (
         <small>{t('backup.loading')}</small>
       ) : view.list.length === 0 ? (
@@ -107,8 +109,8 @@ export function ServerBackupBox({
                   onClick={() =>
                     void b
                       .backupDownload(x.id)
-                      .then((r) => done(r, t('backup.downloaded')))
-                      .catch(() => flash(t('backup.failed'), true))
+                      .then((r) => done(r, () => t('backup.downloaded')))
+                      .catch(() => flash(() => t('backup.failed'), true))
                   }
                 >
                   {view.busy === 'down' ? t('backup.downloading') : t('backup.download')}
@@ -120,8 +122,8 @@ export function ServerBackupBox({
                   onClick={() =>
                     void b
                       .backupDelete(x.id)
-                      .then((r) => done(r, t('backup.deleted')))
-                      .catch(() => flash(t('backup.failed'), true))
+                      .then((r) => done(r, () => t('backup.deleted')))
+                      .catch(() => flash(() => t('backup.failed'), true))
                   }
                 >
                   {t('backup.delete')}

@@ -285,6 +285,74 @@ export const MIGRATIONS: readonly string[] = [
     value text not null
   );
   `,
+  // 21판: 같은 반복의 같은 시각 회차는 하나만 (지운 것은 빼고). 앱과 MCP 가 동시에 이어 만들며 생긴 중복을 먼저 정리한다.
+  // 내용(제목, 끝, 알림, 고정)이 같은 줄만 지우고, 다른 줄(사용자가 고친 것)은 뒤쪽 시각을 1분씩 밀어 둘 다 살린다
+  `
+  create temp table event_key as
+    select e.id, e.repeat_series as s, e.start_at as t,
+      json_array(e.title, e.end_at, e.remind_min, e.all_day, e.pinned_at,
+        (select group_concat(before_min) from (select before_min from reminder r
+          where r.kind = 'event' and r.ref_id = e.id order by before_min))) as k,
+      e.user_edited as u
+    from event e where e.repeat_series is not null and e.deleted_at is null;
+  create temp table event_dup as
+    select id from (
+      select id, row_number() over (partition by s, t, k order by u desc, id) as rn from event_key
+    ) where rn > 1;
+  delete from reminder where kind = 'event' and ref_id in (select id from event_dup);
+  delete from event where id in (select id from event_dup);
+  drop table event_dup;
+  update event set start_at = start_at + 60000 * (
+    select rn - 1 from (
+      select id, row_number() over (partition by repeat_series, start_at order by user_edited desc, id) as rn
+      from event where repeat_series is not null and deleted_at is null
+    ) x where x.id = event.id
+  ) where id in (
+    select id from (
+      select id, row_number() over (partition by repeat_series, start_at order by user_edited desc, id) as rn
+      from event where repeat_series is not null and deleted_at is null
+    ) where rn > 1
+  );
+  create temp table event_dup as
+    select id from (
+      select id, row_number() over (partition by repeat_series, start_at order by user_edited desc, id) as rn
+      from event where repeat_series is not null and deleted_at is null
+    ) where rn > 1;
+  delete from reminder where kind = 'event' and ref_id in (select id from event_dup);
+  delete from event where id in (select id from event_dup);
+  drop table event_dup;
+  drop table event_key;
+  create unique index event_repeat_slot on event(repeat_series, start_at)
+    where repeat_series is not null and deleted_at is null;
+  `,
+  // 22판: 쪽지함 (feat/mailbox). 펫 쪽지, 서버 쪽지, 공지를 한 표에. 읽음, 보관, 지움, 고정은 이 기기 안에서만 정한다
+  `
+  create table mail (
+    id text primary key,        -- 펫 쪽지는 날짜(저녁 쪽지는 날짜~e), 서버 쪽지는 inbox:번호, 공지는 notice:번호
+    source text not null,       -- local, server, notice
+    kind text not null,         -- daily, letter, week, evening, grant, notice, subscription, gift, friend, gift_back, announce
+    day text not null,          -- 받은 날 (현지)
+    at integer not null,        -- 받은 시각 (정렬)
+    look text not null default 'note',
+    milestone integer,
+    coins integer,
+    payload text not null,      -- 줄 글과 값 (펫 쪽지), 서버 쪽지 원본, 공지 글 (JSON)
+    read_at integer,
+    archived_at integer,
+    deleted_at integer,
+    pinned_at integer
+  );
+  create index mail_at on mail(at);
+  create table mail_meta (
+    key text primary key,
+    value text not null
+  );
+  `,
+  // 23판: 특별한 편지 코인을 준 시각을 따로 둔다 (안 읽음으로 되돌렸다 다시 읽어도 또 주지 않게). 이미 읽은 편지는 받은 것으로 센다
+  `
+  alter table mail add column coins_paid integer;
+  update mail set coins_paid = read_at where source = 'local' and coins is not null and read_at is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

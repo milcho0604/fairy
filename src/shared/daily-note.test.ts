@@ -2,19 +2,27 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   canDeliver,
+  canDeliverEvening,
+  composeEvening,
   composeNote,
+  composeWeek,
   EMPTY_NOTES,
   fileNote,
   heldNote,
+  lastWeekDays,
   letterCovers,
   markRead,
   milestoneCoins,
   milestoneDue,
   NOTE_BOX_MAX,
+  NOTE_VARIANTS,
   type NoteFacts,
+  noteId,
   parseNotes,
+  recentVariants,
   seasonOf,
   unreadCount,
+  weekLetterDue,
 } from './daily-note.ts';
 import { dicts, setLang, t } from './i18n/index.ts';
 
@@ -30,7 +38,7 @@ const base: NoteFacts = {
 const fixed = (v: number) => () => v;
 const text = (n: ReturnType<typeof composeNote>) => n.lines.map((l) => looseT(l.key, l.vars));
 
-test('쪽지는 2~4줄이고 사전에 있는 줄만 쓴다 (성격마다, 한국어와 영어)', () => {
+test('쪽지는 2~5줄(추신이 붙으면 5줄)이고 사전에 있는 줄만 쓴다 (성격마다, 한국어와 영어)', () => {
   for (const lang of ['ko', 'en'] as const) {
     setLang(lang);
     for (const persona of ['friend', 'polite', 'tsundere', 'calm'] as const)
@@ -45,7 +53,7 @@ test('쪽지는 2~4줄이고 사전에 있는 줄만 쓴다 (성격마다, 한�
           },
           fixed(r),
         );
-        assert.ok(note.lines.length >= 2 && note.lines.length <= 4, `${note.lines.length}줄`);
+        assert.ok(note.lines.length >= 2 && note.lines.length <= 5, `${note.lines.length}줄`);
         for (const l of note.lines) assert.ok(l.key in dicts.ko, l.key);
         for (const line of text(note)) {
           assert.ok(line.trim().length > 0);
@@ -118,7 +126,7 @@ test('일정 제목은 한 줄로 다듬고 길면 자른다 (줄바꿈, 자료 
   assert.ok(!/\n|<<<|JJ_DATA/.test(title));
 });
 
-test('특별한 편지: 7, 30, 100, 365일과 그 뒤 해마다, 사흘 늦게까지', () => {
+test('특별한 편지: 7, 30, 50, 100, 200, 365, 500일과 그 뒤 해마다, 사흘 늦게까지', () => {
   assert.equal(milestoneDue(6, []), undefined);
   assert.equal(milestoneDue(7, []), 7);
   assert.equal(milestoneDue(10, []), 7);
@@ -129,8 +137,12 @@ test('특별한 편지: 7, 30, 100, 365일과 그 뒤 해마다, 사흘 늦게�
   assert.equal(milestoneDue(365, [7, 30, 100]), 365);
   assert.equal(milestoneDue(730, [7, 30, 100, 365]), 730);
   assert.equal(milestoneDue(1096, [365, 730]), 1095);
-  assert.equal(milestoneDue(50, [7, 30]), undefined, '50일은 편지가 없다 (기념 말풍선만)');
-  assert.deepEqual([7, 30, 100, 365, 730].map(milestoneCoins), [5, 10, 20, 30, 30]);
+  assert.equal(milestoneDue(50, [7, 30]), 50);
+  assert.equal(milestoneDue(100, [7, 30, 50]), 100);
+  assert.equal(milestoneDue(200, [7, 30, 50, 100]), 200);
+  assert.equal(milestoneDue(500, [7, 30, 50, 100, 200, 365]), 500);
+  assert.equal(milestoneDue(300, [7, 30, 50, 100, 200]), undefined, '300일은 편지가 없다 (기념 말풍선만)');
+  assert.deepEqual([7, 30, 50, 100, 200, 365, 500, 730].map(milestoneCoins), [5, 10, 10, 20, 20, 30, 30, 30]);
 });
 
 test('특별한 편지는 봉투 모양, 날 수와 코인, 성격 말투', () => {
@@ -237,10 +249,252 @@ test('특별한 편지는 날 수를 제목에만 말하고, 코인은 한 번�
   setLang('ko');
 });
 
-test('7, 30, 100일과 해마다 기념 말풍선은 특별한 편지가 대신한다 (50, 200, 300일은 말풍선)', () => {
+test('7, 30, 50, 100, 200일과 해마다 기념 말풍선은 특별한 편지가 대신한다 (300일은 말풍선)', () => {
   assert.ok(letterCovers({ mark: 7, key: 'companion.anniv.day' }));
   assert.ok(letterCovers({ mark: 100, key: 'companion.anniv.late' }));
   assert.ok(letterCovers({ mark: 366, key: 'companion.anniv.year' }));
-  assert.ok(!letterCovers({ mark: 50, key: 'companion.anniv.day' }));
-  assert.ok(!letterCovers({ mark: 200, key: 'companion.anniv.day' }));
+  assert.ok(letterCovers({ mark: 50, key: 'companion.anniv.day' }));
+  assert.ok(letterCovers({ mark: 200, key: 'companion.anniv.day' }));
+  assert.ok(!letterCovers({ mark: 300, key: 'companion.anniv.day' }));
+});
+
+test('날마다 다른 말: 사전의 말 수가 NOTE_VARIANTS 와 같고 말마다 다르다 (성격마다, 한국어와 영어)', () => {
+  const kinds = [
+    ['note.open', NOTE_VARIANTS.open],
+    ['note.close', NOTE_VARIANTS.close],
+    ['note.ps', NOTE_VARIANTS.ps],
+    ['note.week.open', NOTE_VARIANTS.weekOpen],
+    ['note.week.close', NOTE_VARIANTS.weekClose],
+    ['note.evening.open', NOTE_VARIANTS.evOpen],
+    ['note.evening.close', NOTE_VARIANTS.evClose],
+  ] as const;
+  for (const lang of ['ko', 'en'] as const) {
+    setLang(lang);
+    for (const p of ['friend', 'polite', 'tsundere', 'calm'])
+      for (const [key, n] of kinds) {
+        const all = Array.from({ length: n }, (_, i) => looseT(key, { p, v: i + 1, name: '콩이' }));
+        assert.equal(new Set(all).size, n, `${lang} ${p} ${key}: ${all.join(' / ')}`);
+        // n+1 번째 번호는 첫째로 돌아온다 (목록 밖이면 첫째)
+        assert.equal(looseT(key, { p, v: n + 1, name: '콩이' }), all[0]);
+      }
+  }
+  setLang('ko');
+});
+
+test('한 달 쪽지: 서로 다른 줄이 30개 넘고 쪽지 28통 넘게 서로 다르고, 같은 여는 말과 맺음이 이틀 연속 나오지 않는다', () => {
+  let seed = 4242;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+  let st = EMPTY_NOTES;
+  const lines = new Set<string>();
+  const wholes = new Set<string>();
+  let prevOpen = -1;
+  let prevClose = -1;
+  for (let d = 1; d <= 30; d++) {
+    const day = `2026-11-${String(d).padStart(2, '0')}`;
+    const note = composeNote(
+      {
+        ...base,
+        day,
+        yesterdayDone: Math.floor(rand() * 5),
+        ...(rand() < 0.6 ? { firstEvent: { time: '10:00', title: '회의' } } : {}),
+        ...(rand() < 0.4 ? { habit: { title: '물 마시기', streak: 3 } } : {}),
+        ...(rand() < 0.5 ? { yesterdayFocusMin: 50 } : {}),
+        ...(rand() < 0.5 ? { streak: 5 } : {}),
+        facts: rand() < 0.5 ? [{ kind: 'food', value: '고구마', at: 1 }] : [],
+      },
+      rand,
+      recentVariants(st),
+    );
+    st = fileNote(st, note);
+    const open = Number(note.lines[0]?.vars?.v);
+    const close = Number(note.lines.find((l) => l.key === 'note.close')?.vars?.v);
+    assert.notEqual(open, prevOpen, `${d}일 여는 말`);
+    assert.notEqual(close, prevClose, `${d}일 맺음`);
+    prevOpen = open;
+    prevClose = close;
+    for (const x of text(note)) lines.add(x);
+    wholes.add(text(note).join('|'));
+  }
+  assert.ok(lines.size >= 30, `서로 다른 줄 ${lines.size}`);
+  assert.ok(wholes.size >= 28, `서로 다른 쪽지 ${wholes.size}/30`);
+});
+
+test('최근 쪽지에서 쓴 말 번호를 읽는다 (최근 14통, 새 저장 칸 없이)', () => {
+  let st = EMPTY_NOTES;
+  for (let d = 1; d <= 20; d++)
+    st = fileNote(st, composeNote({ ...base, day: `2026-11-${String(d).padStart(2, '0')}` }, fixed(0)));
+  const r = recentVariants(st);
+  assert.equal(r.open.length, 14);
+  assert.equal(r.close.length, 14);
+  assert.deepEqual(recentVariants(EMPTY_NOTES).open, []);
+});
+
+test('새 줄: 어제 집중 25분부터, 연속 3일부터 쪽지 줄로 고를 수 있다. 추신은 가끔 맺음 뒤에', () => {
+  const keys = (extra: Partial<NoteFacts>) =>
+    new Set(
+      [0, 0.2, 0.4, 0.6, 0.8, 0.99].flatMap((r) =>
+        composeNote({ ...base, ...extra }, fixed(r)).lines.map((l) => l.key),
+      ),
+    );
+  assert.ok(!keys({ yesterdayFocusMin: 10 }).has('note.focus'));
+  assert.ok(keys({ yesterdayFocusMin: 50 }).has('note.focus'));
+  assert.ok(!keys({ streak: 2 }).has('note.streak'));
+  assert.ok(keys({ streak: 4 }).has('note.streak'));
+  // 추신: rand 가 0.2 보다 작으면 (맺음 뒤 마지막 줄)
+  const withPs = composeNote(base, fixed(0.05));
+  assert.equal(withPs.lines.at(-1)?.key, 'note.ps');
+  assert.equal(withPs.lines.at(-2)?.key, 'note.close');
+  assert.notEqual(composeNote(base, fixed(0.5)).lines.at(-1)?.key, 'note.ps');
+});
+
+test('주간 편지: 월요일부터 수요일까지, 그 주에 한 통, 코인 없음, 봉투 모양', () => {
+  // 2026-10-26 월, 10-27 화, 10-28 수, 10-29 목
+  assert.equal(weekLetterDue(EMPTY_NOTES, '2026-10-26'), true);
+  assert.equal(weekLetterDue(EMPTY_NOTES, '2026-10-28'), true, '월요일에 못 만났으면 수요일까지 늦게');
+  assert.equal(weekLetterDue(EMPTY_NOTES, '2026-10-29'), false);
+  assert.equal(weekLetterDue(EMPTY_NOTES, '2026-10-31'), false);
+  assert.equal(weekLetterDue(EMPTY_NOTES, '2026-11-01'), false, '일요일');
+  const week = composeWeek(
+    { day: '2026-10-26', persona: 'friend', petName: '콩이', lastWeekDone: 12, lastWeekFocusMin: 140 },
+    fixed(0),
+  );
+  assert.equal(week.kind, 'week');
+  assert.equal(week.look, 'letter');
+  assert.equal(week.coins, undefined);
+  assert.equal(week.milestone, undefined);
+  assert.deepEqual(
+    week.lines.map((l) => l.key),
+    ['note.week.open', 'note.week.done', 'note.week.focus', 'note.week.close'],
+  );
+  assert.ok(text(week).some((x) => x.includes('12')));
+  // 지난주 기록이 없으면 쉬어 간 주, 집중이 짧으면 집중 줄 없음
+  const rest = composeWeek(
+    { day: '2026-10-26', persona: 'calm', petName: '콩이', lastWeekDone: 0, lastWeekFocusMin: 10 },
+    fixed(0),
+  );
+  assert.deepEqual(
+    rest.lines.map((l) => l.key),
+    ['note.week.open', 'note.week.doneNone', 'note.week.close'],
+  );
+  // 편지를 넣으면 그 주에는 다시 안 줌, 다음 주 월요일에는 다시
+  const st = fileNote(EMPTY_NOTES, week);
+  assert.equal(weekLetterDue(st, '2026-10-27'), false);
+  assert.equal(weekLetterDue(st, '2026-11-02'), true);
+  // 코인 칸이 없어서 마일스톤 표시는 편지 목록에 안 남는다 (marks 그대로)
+  assert.deepEqual(st.marks, []);
+  assert.deepEqual(lastWeekDays('2026-10-28'), [
+    '2026-10-19',
+    '2026-10-20',
+    '2026-10-21',
+    '2026-10-22',
+    '2026-10-23',
+    '2026-10-24',
+    '2026-10-25',
+  ]);
+  assert.deepEqual(lastWeekDays('2026-11-01').at(0), '2026-10-19', '일요일은 그 주(월요일 시작)의 지난주');
+});
+
+test('저녁 쪽지: 켠 사람만, 밤 9시부터 11시 반 전, 하루 한 통, 매일 쪽지와 같은 날 따로', () => {
+  const at = { day: '2026-10-28', minute: 21 * 60, present: true, calm: true, on: true };
+  assert.equal(canDeliverEvening(EMPTY_NOTES, at), true);
+  assert.equal(canDeliverEvening(EMPTY_NOTES, { ...at, on: false }), false);
+  assert.equal(canDeliverEvening(EMPTY_NOTES, { ...at, minute: 20 * 60 + 59 }), false);
+  assert.equal(canDeliverEvening(EMPTY_NOTES, { ...at, minute: 23 * 60 + 30 }), false);
+  assert.equal(canDeliverEvening(EMPTY_NOTES, { ...at, present: false }), false);
+  assert.equal(canDeliverEvening(EMPTY_NOTES, { ...at, calm: false }), false);
+  const daily = composeNote({ ...base, day: '2026-10-28' }, fixed(0));
+  const evening = composeEvening(
+    { day: '2026-10-28', persona: 'polite', petName: '콩이', doneToday: 4, focusMin: 60 },
+    fixed(0),
+  );
+  assert.equal(evening.kind, 'evening');
+  assert.equal(evening.look, 'note');
+  assert.deepEqual(
+    evening.lines.map((l) => l.key),
+    ['note.evening.open', 'note.evening.done', 'note.evening.focus', 'note.evening.close'],
+  );
+  assert.equal(noteId(evening), '2026-10-28~e');
+  assert.equal(noteId(daily), '2026-10-28');
+  let st = fileNote(EMPTY_NOTES, daily);
+  st = fileNote(st, evening);
+  assert.equal(st.box.length, 2, '같은 날 두 통');
+  assert.equal(st.box[0]?.kind, 'evening', '같은 날은 저녁 쪽지가 앞');
+  assert.equal(canDeliverEvening(st, at), false, '저녁 쪽지는 하루 한 통');
+  // 저녁 쪽지가 있어도 오늘 매일 쪽지는 한 통 (canDeliver 는 매일 쪽지만 본다)
+  assert.equal(
+    canDeliver(fileNote(EMPTY_NOTES, evening), {
+      day: '2026-10-28',
+      minute: 10 * 60,
+      present: true,
+      calm: true,
+    }),
+    true,
+  );
+  // 읽기와 들기는 열쇠로
+  assert.equal(heldNote(st, '2026-10-28')?.kind, 'evening');
+  st = markRead(st, '2026-10-28~e');
+  assert.equal(st.box.find((n) => n.kind === 'evening')?.read, true);
+  assert.equal(st.box.find((n) => n.kind !== 'evening')?.read, false);
+  assert.equal(heldNote(st, '2026-10-28')?.kind, undefined);
+  // 저장 파일을 읽어도 종류가 남는다
+  const back = parseNotes(JSON.parse(JSON.stringify(st)));
+  assert.deepEqual(back.box.map(noteId), ['2026-10-28~e', '2026-10-28']);
+  assert.equal(back.box[0]?.kind, 'evening');
+  // 모르는 종류는 매일 쪽지로
+  assert.equal(parseNotes({ box: [{ ...daily, kind: 'weird' }] }).box[0]?.kind, undefined);
+});
+
+test('주간 편지와 저녁 쪽지 줄이 사전에 있고 성격마다 다르다 (한국어, 영어)', () => {
+  for (const lang of ['ko', 'en'] as const) {
+    setLang(lang);
+    for (const persona of ['friend', 'polite', 'tsundere', 'calm'] as const) {
+      const w = composeWeek(
+        { day: '2026-10-26', persona, petName: '콩이', lastWeekDone: 3, lastWeekFocusMin: 90 },
+        fixed(0.3),
+      );
+      const e = composeEvening(
+        { day: '2026-10-26', persona, petName: '콩이', doneToday: 3, focusMin: 90 },
+        fixed(0.3),
+      );
+      for (const line of [...text(w), ...text(e)])
+        assert.ok(line.trim() && !/undefined|\[object|NaN|\{/.test(line), line);
+      for (const l of [...w.lines, ...e.lines]) assert.ok(l.key in dicts.ko, l.key);
+    }
+    const by = (persona: 'friend' | 'polite' | 'tsundere' | 'calm') =>
+      text(
+        composeWeek(
+          { day: '2026-10-26', persona, petName: '콩이', lastWeekDone: 3, lastWeekFocusMin: 90 },
+          fixed(0),
+        ),
+      ).join(' ');
+    assert.equal(new Set(['friend', 'polite', 'tsundere', 'calm'].map((p) => by(p as never))).size, 4);
+  }
+  setLang('ko');
+});
+
+test('저녁 쪽지는 저녁에 맞는 말만 쓴다: 아침 인사가 없고 매일 쪽지의 여는 말, 맺음을 쓰지 않는다', () => {
+  for (const lang of ['ko', 'en'] as const) {
+    setLang(lang);
+    for (const persona of ['friend', 'polite', 'tsundere', 'calm'] as const)
+      for (const r of [0, 0.3, 0.6, 0.99]) {
+        const e = composeEvening(
+          { day: '2026-10-28', persona, petName: '콩이', doneToday: 2, focusMin: 40 },
+          fixed(r),
+        );
+        assert.ok(
+          !e.lines.some((l) => l.key === 'note.open' || l.key === 'note.close' || l.key === 'note.ps'),
+        );
+        for (const line of text(e))
+          assert.ok(!/아침|morning|Morning/.test(line), `${lang} ${persona}: ${line}`);
+      }
+    for (const persona of ['friend', 'polite', 'tsundere', 'calm'])
+      for (let v = 1; v <= NOTE_VARIANTS.evOpen; v++) {
+        const line = looseT('note.evening.open', { p: persona, v });
+        assert.ok(!/아침|morning|Morning/.test(line), line);
+      }
+  }
+  setLang('ko');
 });

@@ -6,12 +6,15 @@ import { Pool, type PoolClient, type QueryConfig } from 'pg';
 export class Db implements OnApplicationShutdown {
   readonly pool: Pool;
 
-  constructor(databaseUrl: string) {
+  constructor(databaseUrl: string, max = 20) {
     this.pool = new Pool({
       connectionString: databaseUrl,
-      max: 10,
+      max,
       connectionTimeoutMillis: 2000,
       idleTimeoutMillis: 30_000,
+      // 느린 질의 하나와 열어 놓고 잊은 트랜잭션이 연결과 잠금을 쥐고 있지 않게 서버가 끊는다
+      statement_timeout: 15_000,
+      idle_in_transaction_session_timeout: 30_000,
     });
     // 놀던 연결이 끊겨도 서버가 죽지 않게 한다. 다음 요청이 새 연결을 받는다.
     this.pool.on('error', () => {});

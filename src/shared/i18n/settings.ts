@@ -117,7 +117,7 @@ export const ko = {
   'settings.sysMonitorResting': '배터리로 사용 중이라 페어리가 멈춰 있어. 컴퓨터 상태 표시는 계속 보여.',
 
   // 친구의 페어리 초대하기
-  'settings.friends': '친구의 페어리 초대하기',
+  'settings.friends': '페어리 공유',
   'settings.friendsChanged': '친구 페어리를 바꿨어',
   'settings.friends.hint':
     '초대한 친구 페어리는 같이 돌아다니고 놀아. 할 일과 대화는 기본 페어리가 맡아. {max}마리까지.',
@@ -163,7 +163,16 @@ export const ko = {
     '전체 화면이나 숨김이라 페어리 말풍선을 못 볼 때 일정 알림을 컴퓨터 알림으로도 한 번 보내. 누르면 회의를 열거나 페어리를 불러.',
   'settings.chatterHint.quiet': '답이 왔다는 알림만 해.',
   'settings.chatterHint.normal': '바쁠 때 같은 상태 알림까지, 한 시간에 {n}개까지.',
+  'settings.chatterHint.sometimes': '보통에 더해 혼잣말을 가끔 해(30분에 한 번쯤), 한 시간에 {n}개까지.',
   'settings.chatterHint.chatty': '혼잣말을 자주 하고(4~6분마다), 한 시간에 {n}개까지.',
+  'settings.quiet': '말 안 하는 시간',
+  'settings.quietHint':
+    '이 시간에는 혼잣말, 쉬자는 말, 친구 페어리와의 수다를 하지 않아. 일정 알림, 답 알림, 쪽지, 칭찬과 인사는 그대로야.',
+  'settings.quietOn': '시간을 정해 쉬기',
+  'settings.quietFrom': '시작',
+  'settings.quietTo': '끝',
+  'settings.quietWeekend': '주말에는 하루 종일 쉬기',
+  'settings.quietWeekendHint': '토요일과 일요일에는 혼잣말과 쉬자는 말을 하지 않아.',
 
   // AI
   'settings.ai': 'AI',
@@ -232,6 +241,7 @@ export const ko = {
   'settings.storage.llm': (v: { name: string }) => `무료 AI 모델 ${v.name}`,
   'settings.storage.bg': '사진 배경 지우기 모델',
   'settings.storage.depth': '2.5D 깊이 모델',
+  'settings.storage.anime': '그림용 배경 지우기 모델',
   'settings.storage.ort': '사진 AI 엔진 (배경 지우기, 2.5D)',
   'settings.storage.localDraw': '내 컴퓨터에서 그리기 (mflux 도구와 모델)',
   'settings.storage.localDrawSd': '내 컴퓨터에서 그리기 (sd.cpp 도구와 모델)',
@@ -606,7 +616,7 @@ export const en: Translation<typeof ko> = {
   'settings.sysMonitorResting':
     'Your fairy stands still while the computer runs on battery. Computer status remains visible.',
 
-  'settings.friends': "Invite a friend's fairy",
+  'settings.friends': 'Share a fairy',
   'settings.friendsChanged': 'Friend fairies updated',
   'settings.friends.hint':
     'Invited fairies wander and play along. Your main fairy handles to-dos and chat. Up to {max}.',
@@ -648,7 +658,17 @@ export const en: Translation<typeof ko> = {
     "If you can't see my bubble (full screen, hidden), I'll also send event reminders as a system notification, once. Click it to join the meeting or call me back.",
   'settings.chatterHint.quiet': 'Only tells you when an answer arrives.',
   'settings.chatterHint.normal': 'Also status notes like when you look busy, up to {n} an hour.',
+  'settings.chatterHint.sometimes':
+    'Normal, plus a little chatter to itself now and then (about every 30 min), up to {n} an hour.',
   'settings.chatterHint.chatty': 'Chats to itself often (every 4 to 6 min), up to {n} an hour.',
+  'settings.quiet': 'Quiet hours',
+  'settings.quietHint':
+    'No chatter, break reminders, or fairy-to-fairy chats during this time. Event alerts, answer alerts, notes, cheers, and greetings still come through.',
+  'settings.quietOn': 'Rest at set times',
+  'settings.quietFrom': 'From',
+  'settings.quietTo': 'To',
+  'settings.quietWeekend': 'Stay quiet all day on weekends',
+  'settings.quietWeekendHint': 'No chatter or break reminders on Saturday and Sunday.',
 
   'settings.ai': 'AI',
   'settings.persona': 'Personality and tone',
@@ -717,6 +737,7 @@ export const en: Translation<typeof ko> = {
   'settings.storage.llm': (v) => `Free AI model ${v.name}`,
   'settings.storage.bg': 'Photo background removal model',
   'settings.storage.depth': '2.5D depth model',
+  'settings.storage.anime': 'Drawing background removal model',
   'settings.storage.ort': 'Photo AI engine (background removal, 2.5D)',
   'settings.storage.localDraw': 'Draw on this computer (mflux tools and model)',
   'settings.storage.localDrawSd': 'Draw on this computer (sd.cpp tools and model)',

@@ -16,16 +16,16 @@ const key = (
   ...mods,
 });
 
-test('구역 순서: 오늘, 할 일, 메모, 일정, 채팅, 상점, 기록, 친구', () => {
+test('구역 순서: 오늘, 할 일, 메모, 일정, 채팅, 상점, 기록, 쪽지함, 친구', () => {
   assert.deepEqual(
     HOME_SECTIONS.map((s) => s.id),
-    ['today', 'todo', 'note', 'event', 'chat', 'shop', 'records', 'friends'],
+    ['today', 'todo', 'note', 'event', 'chat', 'shop', 'records', 'mail', 'friends'],
   );
 });
 
 test('친구는 기능이 켜졌을 때만 보인다', () => {
-  assert.equal(visibleSections(false).length, 7);
-  assert.equal(visibleSections(true).length, 8);
+  assert.equal(visibleSections(false).length, 8);
+  assert.equal(visibleSections(true).length, 9);
   assert.equal(
     visibleSections(false).some((s) => s.id === 'friends'),
     false,
@@ -78,4 +78,12 @@ test('Cmd+, 설정, Cmd+W 닫기, Cmd+F 찾기', () => {
   assert.equal(homeKeyAction(key('KeyF', 'f', { metaKey: true, shiftKey: true }), true), undefined);
   assert.equal(homeKeyAction(key('KeyF', 'f'), true), undefined);
   assert.equal(homeKeyAction(key('KeyQ', 'q', { metaKey: true }), true), undefined);
+});
+
+test('쪽지함은 번호 단축키가 없어서 기존 번호(친구 8번 포함)가 그대로다', () => {
+  assert.equal(sectionShortcut('mail', false, 'Cmd'), undefined);
+  assert.equal(sectionShortcut('mail', true, 'Cmd'), undefined);
+  assert.equal(sectionForKey(key('Digit8', '8', { metaKey: true }), true, true)?.id, 'friends');
+  assert.equal(sectionForKey(key('Digit9', '9', { metaKey: true }), true, true), undefined);
+  assert.equal(HOME_SECTIONS.find((s) => s.id === 'mail')?.kind, 'tab');
 });

@@ -3,23 +3,28 @@ import type { Translation } from './types.ts';
 // 페어리 서버 계정 (설정 > 데이터, main/server.ts). 기획서 5, 6, 7, 21절, 이슈 #99
 export const ko = {
   'server.title': '서버 계정과 코인',
-  'server.ask.title': '서버 기능을 쓰기 전에 나이를 알려 줘.',
+  'server.ask.title': '서버 계정을 쓰기 전에 나이를 알려 줘.',
   'server.ask.why':
     '만 14세 미만이면 서버로 아무것도 보내지 않고 지금처럼 이 컴퓨터 안에서만 써. 생년월일은 묻지 않고, 서버에는 14세 이상인지 18세 이상인지만 보내.',
+  // 나이를 묻기 전에 보이는 한 줄 (이 칸이 하는 일)
+  'server.benefit':
+    '서버 계정이 해 주는 것: 코인과 산 물건을 서버에도 두고, 로그인하면 다른 컴퓨터에서 이어 쓰고, 친구와 선물을 주고받고, 백업을 서버에 올려 둬.',
+  'server.searchKeys': '서버 계정 로그인 구글 카카오 친구 코인 백업 닉네임 account sign in login friends',
   'server.age.under14': '만 14세 미만',
   'server.age.teen': '만 14세 이상 18세 미만',
   'server.age.adult': '만 18세 이상',
   'server.age.label': '나이',
   'server.age.change': '나이 바꾸기',
   'server.age.keep': '그대로 두기',
-  'server.appMode': '앱 안 모드야. 코인과 산 물건은 이 컴퓨터에만 있고 서버로 아무것도 보내지 않아.',
+  'server.appMode':
+    '서버 계정을 쓰지 않는 중이야. 코인과 산 물건은 이 컴퓨터에만 있고 서버로 아무것도 보내지 않아.',
   'server.leftover': '서버에 예전 계정이 남아 있어. 지우려면 아래 "서버 계정 지우기"를 눌러.',
-  'server.off': '서버 모드가 꺼져 있어. 다시 켜면 지금 코인과 산 물건을 서버로 한 번 옮겨.',
-  'server.turnOn': '서버 모드 켜기',
+  'server.off': '서버 계정이 꺼져 있어. 다시 켜면 지금 코인과 산 물건을 서버로 한 번 옮겨.',
+  'server.turnOn': '서버 계정 켜기',
   // 칸 묶음 이름 (설정 > 데이터 > 서버 계정과 코인)
   'server.group.me': '내 정보',
   'server.group.login': '로그인',
-  'server.group.sync': '코인 맞추기',
+  'server.group.sync': '코인 동기화',
   'server.group.danger': '되돌릴 수 없는 일',
   // 서버로 가는 것: 한 줄과 펼치는 자세히 (처리방침의 "서버 기능을 켰을 때"와 같은 뜻)
   'server.what': '서버에는 나이 구분, 닉네임, 코인 기록 같은 것만 가. 이름, 이메일, 할 일은 보내지 않아.',
@@ -34,20 +39,20 @@ export const ko = {
   'server.lastSync': '{time}에 맞춤',
   'server.pending': '보낼 기록 {n}개',
   'server.syncing': '맞추는 중',
-  'server.syncNow': '지금 맞추기',
+  'server.syncNow': '코인 동기화',
   'server.problem.offline': '서버에 닿지 않아. 코인은 이 컴퓨터에서 계속 쓰고, 다시 닿으면 맞출게.',
   'server.problem.update': '업데이트하면 다시 쓸 수 있어. 그동안 코인 기록은 이 컴퓨터에 쌓아 둘게.',
   'server.updateNow': '업데이트',
   'server.problem.server': '서버가 지금 받지 않아. 조금 뒤에 다시 맞출게.',
-  'server.problem.gone': '서버 계정이 없어졌어. 다른 기기에서 지웠을 수 있어. 서버 모드를 다시 켤 수 있어.',
+  'server.problem.gone': '서버 계정이 없어졌어. 다른 기기에서 지웠을 수 있어. 서버 계정을 다시 켤 수 있어.',
   'server.problem.loginOff': '서버가 아직 로그인을 열지 않았어.',
   'server.problem.denied': '로그인을 허락하지 않았어.',
   'server.problem.timeout': '로그인을 기다리다 시간이 지났어.',
   'server.problem.failed': '로그인하지 못했어. 다시 해 줘.',
   'server.problem.noSecure':
-    '이 컴퓨터의 열쇠고리(키체인)를 쓸 수 없어서 서버 모드를 켜지 않았어. 토큰을 암호화 없이 두지 않아. 코인은 이 컴퓨터에서 그대로 써.',
+    '이 컴퓨터의 열쇠고리(키체인)를 쓸 수 없어서 서버 계정을 켜지 않았어. 토큰을 암호화 없이 두지 않아. 코인은 이 컴퓨터에서 그대로 써.',
   'server.problem.keyLost':
-    '저장해 둔 서버 열쇠를 풀 수 없어서 서버 모드를 멈췄어. 열쇠고리가 바뀌었을 수 있어. 코인은 이 컴퓨터에서 그대로 써.',
+    '저장해 둔 서버 열쇠를 풀 수 없어서 서버 계정을 멈췄어. 열쇠고리가 바뀌었을 수 있어. 코인은 이 컴퓨터에서 그대로 써.',
   'server.noLoginHint': '로그인하지 않으면 다시 설치하거나 기기를 바꿀 때 코인과 산 물건을 되찾을 수 없어.',
   'server.login': '구글로 로그인',
   'server.login.kakao': '카카오로 로그인',
@@ -97,7 +102,7 @@ export const ko = {
   'backup.item': '{date}에 올림, {size}',
   'backup.download': '받아서 되살리기',
   'backup.downloading': '받는 중이야.',
-  'backup.downloaded': '받았어. 데이터 칸의 확인에서 되살릴지 골라 줘.',
+  'backup.downloaded': '받았어. 데이터와 계정 탭의 확인 칸에서 되살릴지 골라 줘.',
   'backup.delete': '지우기',
   'backup.deleted': '서버 백업을 지웠어.',
   'backup.soon': '{date}에 지워져. 1년 동안 서버를 쓰지 않았어. 페어리를 켜서 서버와 맞추면 남아.',
@@ -110,7 +115,7 @@ export const ko = {
   'backup.login': '로그인이 끝났어. 다시 로그인해 줘.',
   'backup.busy': '앞의 일이 끝나면 다시 눌러 줘.',
   'backup.open': '받은 백업을 열지 못했어.',
-  // AI 대화권 (기획서 8절, 이슈 #100. 화면 이름은 "채팅 이용권", #101). 만 18세 이상, 로그인한 서버 모드에서만 보인다
+  // AI 대화권 (기획서 8절, 이슈 #100. 화면 이름은 "채팅 이용권", #101). 만 18세 이상, 로그인한 서버 계정에서만 보인다
   'ticket.label': '채팅 이용권',
   'ticket.detail': 'Claude, 운영자가 중계',
   'ticket.count': (v: { n: number }) => `채팅 이용권 ${v.n}장 남음`,
@@ -120,8 +125,11 @@ export const ko = {
   /** 설정 채팅 이용권 묶음의 고르는 법 (설명 줄) */
   'ticket.passHow': '채팅 창에서 "채팅 이용권"을 고르면 질문 하나에 한 장씩 써.',
   'ticket.aiNow': 'AI와 대화 중이야. 답은 사람이 아니라 AI(Anthropic의 Claude)가 써.',
-  'ticket.notice':
-    '채팅 이용권으로 물으면 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일(제목, 마감)과 오늘 남은 일정(제목, 시각)도 같이 가. 페어리 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
+  'ticket.notice.sent':
+    '가는 것: 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일(제목, 마감)과 오늘 남은 일정(제목, 시각)도 같이 가.',
+  'ticket.notice.kept':
+    '안 가는 것과 보관: 페어리 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨.',
+  'ticket.notice.skip': '싫으면: 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
   'ticket.agree': '알겠어, 채팅 이용권 쓰기',
   'ticket.needAgree': '먼저 위 안내를 읽고 "알겠어"를 눌러 줘.',
   'ticket.empty': '채팅 이용권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
@@ -134,7 +142,7 @@ export const ko = {
   'ticket.update': '앱을 업데이트하면 채팅 이용권을 다시 쓸 수 있어. 이번에는 이용권을 쓰지 않았어.',
   'backup.update': '앱을 업데이트하면 서버 백업을 다시 쓸 수 있어.',
   'ticket.login':
-    '채팅 이용권은 만 18세 이상이고 구글로 로그인했을 때만 쓸 수 있어. 설정 > 데이터에서 확인해 줘.',
+    '채팅 이용권은 만 18세 이상이고 구글로 로그인했을 때만 쓸 수 있어. 설정 > 데이터와 계정에서 확인해 줘.',
   'ticket.tooLong': '질문이 너무 길어. 조금 줄여서 다시 물어봐 줘.',
   'ticket.notAllowed': '채팅 이용권은 아직 운영자가 허락한 계정만 쓸 수 있어. 내 컴퓨터의 AI로 대화해 줘.',
   'ticket.blocked': '이 계정은 채팅 이용권을 쓸 수 없게 되어 있어. 내 컴퓨터의 AI로 대화해 줘.',
@@ -155,20 +163,26 @@ export const ko = {
 
 export const en: Translation<typeof ko> = {
   'server.title': 'Server account and coins',
-  'server.ask.title': 'Before using server features, tell us your age.',
+  'server.ask.title': 'Before using a server account, tell us your age.',
   'server.ask.why':
     "If you're under 14, nothing is sent to the server and fairy works only on this computer, just like now. We don't ask for your birthday. The server only learns whether you're 14+ or 18+.",
+  'server.benefit':
+    'What a server account does: keeps your coins and items on the server too, lets you pick up on another computer after signing in, adds friends and gifts, and stores backups on the server.',
+  'server.searchKeys':
+    'server account sign in login google kakao friends coins backup nickname 서버 계정 로그인',
   'server.age.under14': 'Under 14',
   'server.age.teen': '14 to 17',
   'server.age.adult': '18 or older',
   'server.age.label': 'Age',
   'server.age.change': 'Change age',
   'server.age.keep': 'Keep',
-  'server.appMode': 'App-only mode. Coins and items stay on this computer and nothing is sent to the server.',
+  'server.appMode':
+    'Not using a server account. Coins and items stay on this computer and nothing is sent to the server.',
   'server.leftover':
     'An old server account is still there. To delete it, press "Delete server account" below.',
-  'server.off': 'Server mode is off. Turning it on moves your current coins and items to the server once.',
-  'server.turnOn': 'Turn on server mode',
+  'server.off':
+    'The server account is off. Turning it on moves your current coins and items to the server once.',
+  'server.turnOn': 'Turn on server account',
   'server.group.me': 'About me',
   'server.group.login': 'Sign-in',
   'server.group.sync': 'Coin sync',
@@ -186,21 +200,21 @@ export const en: Translation<typeof ko> = {
   'server.lastSync': 'synced {time}',
   'server.pending': '{n} records to send',
   'server.syncing': 'syncing',
-  'server.syncNow': 'Sync now',
+  'server.syncNow': 'Sync coins',
   'server.problem.offline': "Can't reach the server. Keep using coins here; they'll sync when it's back.",
   'server.problem.update': 'Update the app to use this again. Coin records wait on this computer until then.',
   'server.updateNow': 'Update',
   'server.problem.server': "The server isn't accepting right now. We'll try again soon.",
   'server.problem.gone':
-    'The server account is gone. It may have been deleted on another device. You can turn server mode on again.',
+    'The server account is gone. It may have been deleted on another device. You can turn the server account on again.',
   'server.problem.loginOff': "The server hasn't opened sign-in yet.",
   'server.problem.denied': 'Sign-in was not allowed.',
   'server.problem.timeout': 'Sign-in timed out.',
   'server.problem.failed': "Couldn't sign in. Please try again.",
   'server.problem.noSecure':
-    "This computer's keychain isn't available, so server mode stays off. Tokens are never stored unencrypted. Your coins keep working here.",
+    "This computer's keychain isn't available, so the server account stays off. Tokens are never stored unencrypted. Your coins keep working here.",
   'server.problem.keyLost':
-    "The saved server key can't be unlocked, so server mode is paused. The keychain may have changed. Your coins keep working here.",
+    "The saved server key can't be unlocked, so the server account is paused. The keychain may have changed. Your coins keep working here.",
   'server.noLoginHint':
     "Without signing in, you can't get your coins and items back after reinstalling or switching computers.",
   'server.login': 'Sign in with Google',
@@ -254,7 +268,7 @@ export const en: Translation<typeof ko> = {
   'backup.item': 'Uploaded {date}, {size}',
   'backup.download': 'Download and restore',
   'backup.downloading': 'Downloading.',
-  'backup.downloaded': 'Downloaded. Choose whether to restore in the confirm box in Data.',
+  'backup.downloaded': 'Downloaded. Choose whether to restore in the confirm box in Data and account.',
   'backup.delete': 'Delete',
   'backup.deleted': 'Deleted the server backup.',
   'backup.soon':
@@ -278,8 +292,11 @@ export const en: Translation<typeof ko> = {
   'ticket.passHow': 'Pick "Chat pass" in the chat window; each question uses one.',
   'ticket.aiNow':
     "You're talking with an AI. Answers are written by an AI (Anthropic's Claude), not a person.",
-  'ticket.notice':
-    "When you ask with a chat pass, your question (with the current time), a few recent messages from this chat, and your fairy's name and voice description are sent encrypted to Anthropic (USA). If \"Share my to-dos\" is on, today's to-dos (titles, due dates) and the rest of today's events (titles, times) go too. Your fairy's rules and what it remembers are not sent. Under its policy Anthropic may keep them for up to 30 days (with exceptions such as policy-violation reviews). The fairy server stores no chat text, only usage numbers. If you prefer not to, skip chat passes and chat with the AI on your computer.",
+  'ticket.notice.sent':
+    "What is sent: your question (with the current time), a few recent messages from this chat, and your fairy's name and voice description go encrypted to Anthropic (USA). If \"Share my to-dos\" is on, today's to-dos (titles, due dates) and the rest of today's events (titles, times) go too.",
+  'ticket.notice.kept':
+    "What is not sent, and what is kept: your fairy's rules and what it remembers are not sent. Under its policy Anthropic may keep what it gets for up to 30 days (with exceptions such as policy-violation reviews). The fairy server stores no chat text, only usage numbers.",
+  'ticket.notice.skip': 'If you prefer not to: skip chat passes and chat with the AI on your computer.',
   'ticket.agree': 'Got it, use chat passes',
   'ticket.needAgree': 'Please read the note above and press "Got it" first.',
   'ticket.empty': "You've used all your chat passes. Continue with the AI on your computer?",
@@ -293,7 +310,8 @@ export const en: Translation<typeof ko> = {
   'ticket.offline': "Can't reach the server. No chat pass was used. Check your connection and ask again.",
   'ticket.update': 'Update the app to use chat passes again. No chat pass was used this time.',
   'backup.update': 'Update the app to use server backups again.',
-  'ticket.login': 'Chat passes are only for 18+ users signed in with Google. Check Settings > Data.',
+  'ticket.login':
+    'Chat passes are only for 18+ users signed in with Google. Check Settings > Data and account.',
   'ticket.tooLong': 'That question is too long. Please shorten it and ask again.',
   'ticket.notAllowed':
     'Chat passes are only open to accounts the operator allowed for now. Please chat with the AI on your computer.',

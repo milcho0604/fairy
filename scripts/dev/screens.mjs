@@ -403,7 +403,7 @@ async function settingsShots() {
   });
   const a = [await shot('pet', '페어리'), await shot('assist', '비서'), await shot('ai', 'AI')];
   await render(cards(a, 1500, 973), 1500, 973, 'settings-1.png');
-  const b = [await shot('ease', '편의'), await shot('data', '데이터'), await shot('about', '정보')];
+  const b = [await shot('ease', '편의'), await shot('data', '데이터와 계정'), await shot('about', '정보')];
   await render(cards(b, 1500, 973), 1500, 973, 'settings-2.png');
   await closeWin('settings');
 }

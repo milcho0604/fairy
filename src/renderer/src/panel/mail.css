@@ -1,0 +1,490 @@
+/* 쪽지함 (feat/mailbox, MailView.tsx, MailCard.tsx). 색은 tokens.css 를 따르고, 펼친 쪽지만 펫 말풍선의 쪽지처럼 줄 쳐진 종이 */
+
+.mail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.mail-page {
+  height: 100%;
+  min-height: 420px;
+}
+
+/* 작은 패널 덮개: 패널 본문 전체를 덮는다 */
+.mail-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  background: var(--bg);
+}
+
+.mail-sheet .mail {
+  width: 100%;
+}
+
+.mail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+
+.mail-head h2 {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.mail-unread {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+/* 머리줄 아이콘 단추(.panel header .icon-btn)와 같은 모양: 배경 없이 흐린 글자색, 올리면 연한 바탕. 눌리는 칸은 44px */
+.mail-close {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mail-close:hover,
+.mail-close:focus-visible {
+  background: var(--code);
+  color: var(--ink);
+}
+
+.mail-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mail-readall {
+  flex: none;
+  min-height: 44px;
+  padding: 0 4px;
+}
+
+.mail-readall:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mail-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+
+.mail-search {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  appearance: none;
+  user-select: text;
+}
+
+/* 할 일 추가 칸(.add input)과 같은 초점 모양 */
+.mail-search:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.mail-chips {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0 0 2px;
+  scrollbar-width: thin;
+}
+
+.mail-chips button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mail-chips button.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+.mail-chips button:focus-visible,
+.mail-row:focus-visible,
+.mail-actions button:focus-visible,
+.mail-card-open:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.mail-count {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.mail-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.mail-list-pane,
+.mail-detail-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+
+.mail-list-pane[hidden],
+.mail-detail-pane[hidden] {
+  display: none;
+}
+
+/* 큰 창: 목록과 내용이 나란히 */
+.mail[data-zone="wide"] .mail-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+}
+
+.mail[data-zone="wide"] .mail-list-pane {
+  border-inline-end: 1px solid var(--line);
+}
+
+.mail-group h3 {
+  margin: 10px 0 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.mail-group ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mail-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mail-row.unread {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.mail-row.current {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border-color: var(--accent);
+}
+
+.mail-icon {
+  flex: none;
+}
+
+.mail-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.mail-row-title,
+.mail-row-prev {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-row.unread .mail-row-title {
+  font-weight: 700;
+}
+
+.mail-row-prev {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mail-row-meta {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.mail-when {
+  color: var(--muted);
+}
+
+.mail-new {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.mail-pin {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.mail-empty {
+  margin: 24px 4px;
+  text-align: center;
+}
+
+.mail-more {
+  display: block;
+  margin: 12px auto 4px;
+  min-height: 44px;
+}
+
+.mail-back {
+  min-height: 44px;
+  padding: 0 2px;
+}
+
+.mail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 0 8px;
+  color: #7a6a52;
+  font-size: 11.5px;
+}
+
+.mail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mail-actions button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mail-actions button[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.mail-actions button.danger {
+  color: var(--error);
+}
+
+.mail-msg {
+  margin: 8px 0 0;
+  color: var(--error);
+  font-size: 12.5px;
+}
+
+.mail-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.mail-toast {
+  position: absolute;
+  inset-inline: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  font-size: 12.5px;
+}
+
+.mail-toast .link {
+  min-height: 44px;
+  flex: none;
+}
+
+/* 오늘 탭의 새 쪽지 카드 */
+.mail-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line));
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.mail-card svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--ink);
+}
+
+.mail-card.quiet {
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.mail-card-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mail-card-open {
+  flex: none;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 머리줄 봉투의 안 읽음 점 (색에만 기대지 않게 단추 이름에도 숫자가 있다) */
+.mail-dot {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 1;
+}
+
+/* 펼친 쪽지: 줄 쳐진 종이 (어두운 모드에서도 종이는 밝게, 조금 덜 눈부시게) */
+.mail-paper {
+  --paper-line: rgba(196, 168, 120, 0.32);
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #d9c08f;
+  border-radius: 6px;
+  background-color: #fffcf2;
+  color: #3a3128;
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.mail-paper.letter {
+  --paper-line: rgba(229, 154, 176, 0.3);
+  border-color: #e9a9bc;
+  background-color: #fff3f6;
+}
+
+.mail-lines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(1.6em - 1px),
+    var(--paper-line) calc(1.6em - 1px),
+    var(--paper-line) 1.6em
+  );
+}
+
+.mail-paper h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.mail-paper p {
+  margin: 0;
+}
+
+.mail-paper a {
+  color: #8a5a1a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mail-paper {
+    background-color: #f4ecd8;
+  }
+
+  .mail-paper.letter {
+    background-color: #f6e3e9;
+  }
+}

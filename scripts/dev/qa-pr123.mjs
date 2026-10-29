@@ -489,8 +489,8 @@ const soft = (p) => p.catch(() => false);
 
 const T = {
   ko: {
-    adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', change: '나이 바꾸기', syncNow: '지금 맞추기', login: '구글로 로그인', logout: '로그아웃',
-    start: '서버 모드 시작', nickChange: '닉네임 바꾸기', nickSave: '저장', copy: '복사', copied: '기기 코드를 복사했어.', nickSaved: '닉네임을 바꿨어.',
+    adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', change: '나이 바꾸기', syncNow: '코인 동기화', login: '구글로 로그인', logout: '로그아웃',
+    start: '서버 계정 시작', nickChange: '닉네임 바꾸기', nickSave: '저장', copy: '복사', copied: '기기 코드를 복사했어.', nickSaved: '닉네임을 바꿨어.',
     errLength: '2자에서 12자 사이로 써 줘.', errAt: '@ 는 쓸 수 없어.', errUrl: '주소는 닉네임으로 쓸 수 없어.', errChars: '줄바꿈이나 보이지 않는 글자는 쓸 수 없어.',
     claim: '선물 받기', claimed: '받았어', couponUse: '쿠폰 쓰기', loginReq: '로그인하면 받을 수 있어', claimOk: '선물 코인 30개를 받았어!',
     cpShape: '코드 모양이 맞지 않아', cpNone: '없거나 꺼진 쿠폰이야.', cpUsed: '이미 쓴 쿠폰이야.', cpSold: '다 쓰인 쿠폰이야.', cpEnded: '기한이 지난 쿠폰이야.', cpOk: '쿠폰을 썼어!',
@@ -504,8 +504,8 @@ const T = {
     lMonthly: '매달 장수', lCount: '회수 장수', lMsg: '쪽지 글 (200자)', lCoins: '코인', lMin: '최소 버전 (낮으면 잠금)', lRec: '권장 버전', lId: 'id', lTko: '제목 ko', lTen: '제목 en', lBko: '본문 ko', lBen: '본문 en', lKind: '종류',
   },
   en: {
-    adult: '18 or older', teen: '14 to 17', change: 'Change age', syncNow: 'Sync now', login: 'Sign in with Google', logout: 'Sign out',
-    start: 'Start server mode', nickChange: 'Change nickname', nickSave: 'Save', copy: 'Copy', copied: 'Device code copied.', nickSaved: 'Nickname changed.',
+    adult: '18 or older', teen: '14 to 17', change: 'Change age', syncNow: 'Sync coins', login: 'Sign in with Google', logout: 'Sign out',
+    start: 'Start server account', nickChange: 'Change nickname', nickSave: 'Save', copy: 'Copy', copied: 'Device code copied.', nickSaved: 'Nickname changed.',
     errLength: 'Use 2 to 12 characters.', errAt: "@ isn't allowed.", errUrl: "Web addresses can't be nicknames.", errChars: "Line breaks and invisible characters aren't allowed.",
     claim: 'Get gift', claimed: 'Received', couponUse: 'Use coupon', loginReq: 'Sign in to get gifts', claimOk: 'You got 30 gift coins!',
     cpShape: "That code doesn't look right", cpNone: 'No such coupon, or it was turned off.', cpUsed: 'You already used this coupon.', cpSold: 'This coupon has run out.', cpEnded: 'This coupon has expired.', cpOk: 'Coupon used!',
@@ -597,7 +597,7 @@ async function firstRun(h, p, F, nick, shotName) {
   check(F, '나이 답 뒤 닉네임 칸, 서버 요청 아직 0건', seen.length === n0 && seen.slice(n0).every((x) => !x.includes('/v1/device')), seen.slice(n0).join(','));
   if (shotName) await p.shots(shotName, '.server-nickname-step');
   await typeInto(p, '.server-nickname-step input', nick);
-  check(F, '닉네임 넣고 "서버 모드 시작" 누르기', await press(p, '.server-box', T.start));
+  check(F, '닉네임 넣고 "서버 계정 시작" 누르기', await press(p, '.server-box', T.start));
   await until('기기 계정', async () => {
     const s = await h.status();
     return s.device && s.code && !s.syncing;

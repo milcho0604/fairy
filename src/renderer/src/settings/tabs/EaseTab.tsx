@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SAVER_MODES } from '../../../../shared/battery.ts';
+import { MOTION_CHOICES, SAVER_MODES } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import {
   acceleratorLabel,
@@ -163,6 +163,23 @@ export function EaseTab({ snap, update, flash }: TabProps) {
             <code>{t('settings.urlSchemeExample')}</code>
           </small>
         )}
+      </Section>
+
+      <Section title={t('settings.motion')}>
+        <fieldset className="segmented" aria-label={t('settings.motionAria')}>
+          {MOTION_CHOICES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={s.reduceMotion === m}
+              className={s.reduceMotion === m ? 'on' : ''}
+              onClick={() => s.reduceMotion !== m && update({ reduceMotion: m })}
+            >
+              {t(`settings.motion.${m}`)}
+            </button>
+          ))}
+        </fieldset>
+        <small className="below">{t('settings.motionHint')}</small>
       </Section>
 
       <Section title={t('settings.power')}>

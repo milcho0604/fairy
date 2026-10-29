@@ -1,7 +1,7 @@
 // 짧은 놀이 (미니 게임) 실행: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기, 두더지 잡기, 웃겨 줘, 하이파이브.
 // 규칙과 계산은 shared/minigames.ts. 여기는 작은 투명 창(방울, 점, 간식, 구멍)과 타이머만 다룬다.
 // 한 번에 하나만 하고, 끝나면(다 함, 그만 놀기, 숨음, 화면 잠금, 모니터 바뀜, 끌기) 창과 타이머를 다 치운다.
-import { BrowserWindow, powerMonitor, screen, systemPreferences } from 'electron';
+import { BrowserWindow, powerMonitor, screen } from 'electron';
 import {
   HIGH_FIVE,
   highFiveResult,
@@ -12,7 +12,7 @@ import {
   rememberJoke,
 } from '../shared/fun.ts';
 import type { Rect } from '../shared/geometry.ts';
-import { type I18nKey, t } from '../shared/i18n/index.ts';
+import { type I18nKey, isMutedLine, t } from '../shared/i18n/index.ts';
 import {
   affectionAllowed,
   BUBBLES,
@@ -57,9 +57,10 @@ import {
   treatCaught,
   treatX,
 } from '../shared/minigames.ts';
-import { voiced } from '../shared/persona-voice.ts';
+import { voiced, voicedLive } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { KEEP_APP_TYPE } from './active-space.ts';
+import { motionCalm } from './battery.ts';
 import { onDisplaysChanged } from './display-watch.ts';
 import { decoyBox, MOLE_CSS, moleBody } from './mole-art.ts';
 import type { PetWindow } from './pet-window.ts';
@@ -71,11 +72,7 @@ const FRAME_MS = 16;
 
 /** 운영체제 "동작 줄이기". 켜져 있으면 펫이 솟고 들어가는 움직임 없이 바로 나타나고 사라진다 */
 function reducedMotion(): boolean {
-  try {
-    return systemPreferences.getAnimationSettings().prefersReducedMotion;
-  } catch {
-    return false;
-  }
+  return motionCalm();
 }
 
 export interface MiniGameOptions {
@@ -186,9 +183,11 @@ export function createMiniGames(o: MiniGameOptions) {
       }
     | undefined;
 
-  const say = (key: I18nKey, vars?: Record<string, string | number>, ttlMs = 3500) =>
-    // 고른 성격 말투로 (존댓말 비서면 존댓말, 이슈 #65)
-    o.pet().say({ kind: 'answer', text: voiced(key, vars), ttlMs });
+  const say = (key: I18nKey, vars?: Record<string, string | number>, ttlMs = 3500) => {
+    // 고른 성격 말투로 (존댓말 비서면 존댓말, 이슈 #65). 안 쓰기로 한 말은 하지 않는다
+    const text = voicedLive(key, vars);
+    return text === undefined ? Promise.resolve(undefined) : o.pet().say({ kind: 'answer', text, ttlMs });
+  };
 
   function blockOf(game: MiniGame): PlayBlock | undefined {
     const pet = o.pet();
@@ -233,12 +232,14 @@ export function createMiniGames(o: MiniGameOptions) {
     const close = new AbortController();
     const stop = () => close.abort();
     signal.addEventListener('abort', stop, { once: true });
-    void o.pet().say({
-      kind: 'answer',
-      text: voiced(key, vars),
-      ttlMs: ms + 1000,
-      signal: close.signal,
-    });
+    const text = voicedLive(key, vars);
+    if (text !== undefined)
+      void o.pet().say({
+        kind: 'answer',
+        text,
+        ttlMs: ms + 1000,
+        signal: close.signal,
+      });
     await wait(ms, signal);
     close.abort();
     signal.removeEventListener('abort', stop);
@@ -814,7 +815,13 @@ export function createMiniGames(o: MiniGameOptions) {
   async function joke(run: Run): Promise<boolean> {
     const pet = o.pet();
     const signal = run.abort.signal;
-    const n = pickJoke(jokeRecent, Math.random);
+    const n = pickJoke(
+      jokeRecent,
+      Math.random,
+      (k) => !isMutedLine(`fun.joke.${k}.q`) && !isMutedLine(`fun.joke.${k}.a`),
+    );
+    // 웃겨 줘 말을 모두 안 쓰기로 했으면 하지 않는다
+    if (n === undefined) return false;
     jokeRecent = rememberJoke(jokeRecent, n);
     await sayFor(`fun.joke.${n}.q` as I18nKey, undefined, JOKE_PAUSE_MS, signal);
     if (signal.aborted) return false;
@@ -828,9 +835,11 @@ export function createMiniGames(o: MiniGameOptions) {
   async function highfive(run: Run): Promise<boolean> {
     const pet = o.pet();
     const signal = run.abort.signal;
+    const ask = voicedLive('fun.five.ask');
+    if (ask === undefined) return false;
     const answer = await pet.say({
       kind: 'answer',
-      text: voiced('fun.five.ask'),
+      text: ask,
       buttons: [{ id: 'five', label: t('fun.five.button') }],
       ttlMs: HIGH_FIVE.waitMs,
       signal,

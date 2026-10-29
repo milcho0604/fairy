@@ -148,7 +148,7 @@ export function parseMemory(raw: unknown): PetMemory {
   return {
     cheers: { day, ids: day ? strings(c.ids, 16) : [] },
     anniv,
-    recent: strings(r.recent, 24),
+    recent: strings(r.recent, 160),
   };
 }
 

@@ -8,7 +8,8 @@ const looseT = t as unknown as (key: string, vars?: Record<string, string | numb
 // 함수 값에 넣어 볼 값: 글처럼도 숫자처럼도 쓰인다 (String 객체 '2')
 const sample = new Proxy({}, { get: () => new String('2') }) as never;
 const render = (v: unknown) => (typeof v === 'function' ? (v as (vars: never) => string)(sample) : v);
-const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+// {이름} 과 {이름:은} 모두 같은 자리로 센다
+const placeholders = (s: string) => [...s.matchAll(/\{(\w+)(?::[^{}]*)?\}/g)].map((m) => m[1]).sort();
 
 test('영어 사전은 한국어 사전의 키를 모두 갖고 빈 값이 없다', () => {
   const ko = dicts.ko as Record<string, unknown>;
@@ -157,4 +158,23 @@ test('영어 하나일 때 단수: 오늘 일정 수, 메모 찾기, 습관 횟�
   // 한국어는 그대로
   assert.equal(t('plan.sheet.events', { n: 1 }), '오늘 일정 1개');
   assert.equal(t('habit.total', { n: 2 }), '지금까지 2번');
+});
+
+test('서버 계정 이름 통일: 서버 칸 문구에 "모드", "서버 기능", "맞추기" 가 없고 단추는 코인 동기화', () => {
+  const ko = dicts.ko as Record<string, unknown>;
+  const en = dicts.en as Record<string, unknown>;
+  const serverKeys = Object.keys(ko).filter((k) => /^(server|backup|ticket|events|coupon|friends)\./.test(k));
+  assert.ok(serverKeys.length > 100);
+  for (const k of [...serverKeys, 'help.pack.serverOff']) {
+    const text = String(render(ko[k]));
+    assert.ok(!/모드|서버 기능|코인 맞추기|지금 맞추기/.test(text), `${k}: ${text}`);
+    const textEn = String(render(en[k]));
+    assert.ok(!/\bmode\b|server feature|Sync now/i.test(textEn), `${k}: ${textEn}`);
+  }
+  assert.equal(ko['server.syncNow'], '코인 동기화');
+  assert.equal(ko['server.group.sync'], '코인 동기화');
+  assert.equal(en['server.syncNow'], 'Sync coins');
+  assert.equal(ko['settings.friends'], '페어리 공유');
+  assert.equal(ko['settings.tab.data'], '데이터와 계정');
+  assert.equal(en['settings.tab.data'], 'Data and account');
 });

@@ -406,7 +406,7 @@ async function signUp(h, p, F, nick, sub) {
   check(F, '"만 18세 이상" 누르기', await press(p, '.server-box', L.adult));
   await until('닉네임 칸', () => p.ev(`!!document.querySelector('.server-nickname-step input')`), 10_000);
   await typeInto(p, '.server-nickname-step input', nick);
-  check(F, '닉네임 넣고 서버 모드 시작', await press(p, '.server-box', L.start));
+  check(F, '닉네임 넣고 서버 계정 시작', await press(p, '.server-box', L.start));
   await until('기기 계정', async () => {
     const s = await h.status();
     return s.device && s.code && !s.syncing;

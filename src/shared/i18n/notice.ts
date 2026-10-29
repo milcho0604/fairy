@@ -17,7 +17,7 @@ export const ko = {
   'notice.force.versions': (v: { current: string; min: string; latest: string }) =>
     `지금 ${v.current}, 필요한 버전 ${v.min} 이상, 새 버전 ${v.latest}`,
   'notice.force.escape': (v: { mac: boolean }) =>
-    `백업은 설정 > 데이터 > 내보내기, 끄기는 ${v.mac ? '메뉴 막대' : '알림 영역'} 아이콘 메뉴의 끝내기에서 할 수 있어.`,
+    `백업은 설정 > 데이터와 계정 > 내보내기, 끄기는 ${v.mac ? '메뉴 막대' : '알림 영역'} 아이콘 메뉴의 끝내기에서 할 수 있어.`,
 };
 
 export const en: Translation<typeof ko> = {
@@ -37,5 +37,5 @@ export const en: Translation<typeof ko> = {
   'notice.force.versions': (v: { current: string; min: string; latest: string }) =>
     `Now ${v.current}, needs ${v.min} or later, new version ${v.latest}`,
   'notice.force.escape': (v: { mac: boolean }) =>
-    `You can back up in Settings > Data > Export, and quit from the ${v.mac ? 'menu bar' : 'notification area'} icon menu.`,
+    `You can back up in Settings > Data and account > Export, and quit from the ${v.mac ? 'menu bar' : 'notification area'} icon menu.`,
 };

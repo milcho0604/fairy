@@ -76,6 +76,7 @@ import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
+import { reviveOnCrash } from './revive.ts';
 import { readJson, writeJson } from './store.ts';
 import { openRemembered, resetRememberedPlacement } from './window-bounds.ts';
 
@@ -871,6 +872,7 @@ export function createChat(o: ChatOptions) {
     push();
   });
 
+  let reviveWin: (() => void) | undefined;
   function open(near?: Rectangle) {
     if (o.locked?.()) {
       o.onLocked?.();
@@ -881,7 +883,7 @@ export function createChat(o: ChatOptions) {
     // 앱을 앞으로 가져오는 것은 창을 띄울 때 한다 (focus.ts. 먼저 하면 맥이 다른 데스크톱으로 넘어간다)
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면 빈 창만 남는다. 다시 부를 때 새로 읽는다 (대화 내용은 메인에 있다)
-      if (win.webContents.isCrashed()) win.webContents.reload();
+      reviveWin?.();
       focusWindow(win);
       return;
     }
@@ -910,6 +912,7 @@ export function createChat(o: ChatOptions) {
     // 채팅 창 안의 링크는 앱 안에서 열지 않는다 (답 속 주소는 위 CHAT.openLink 로 기본 브라우저에서).
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    reviveWin = reviveOnCrash(win.webContents, 'chat', log);
 
     const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/chat.html`);
@@ -952,6 +955,7 @@ export function createChat(o: ChatOptions) {
     const wc = view.webContents;
     wc.setWindowOpenHandler(() => ({ action: 'deny' }));
     wc.on('will-navigate', (ev) => ev.preventDefault());
+    const reviveEmbed = reviveOnCrash(wc, 'chat', log);
     const devUrl = devRendererUrl();
     if (devUrl) void wc.loadURL(`${devUrl}/chat.html#embed`);
     else void wc.loadFile(join(import.meta.dirname, '../renderer/chat.html'), { hash: 'embed' });
@@ -973,7 +977,7 @@ export function createChat(o: ChatOptions) {
       face,
       reveal() {
         if (win && !win.isDestroyed()) win.close();
-        if (!wc.isDestroyed() && wc.isCrashed()) wc.reload();
+        reviveEmbed();
       },
       remove() {
         if (embedded === face) embedded = undefined;

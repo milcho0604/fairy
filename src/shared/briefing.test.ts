@@ -4,6 +4,7 @@ import {
   briefingText,
   deadlineText,
   dueSlot,
+  isInstallDay,
   leftForTomorrow,
   type NextUpTodo,
   nextUp,
@@ -13,8 +14,11 @@ import {
 } from './briefing.ts';
 import { breakFor, focusCoins, focusedMinutes, IDLE, remainLabel, startFocus, tickFocus } from './focus.ts';
 import { setLang } from './i18n/index.ts';
+import { variants } from './variants.ts';
 
 const MIN = 60_000;
+// 인사는 여러 변형 가운데 고른다. 시험은 늘 첫째 변형(기본 말)으로
+variants.setRandom(() => 0);
 
 test('브리핑: 일정 하나, 여러 개, 마감, 아무것도 없을 때', () => {
   assert.equal(
@@ -245,4 +249,12 @@ test('못 한 N개 내일로: 오늘 마감과 지난 마감만, 습관과 마�
     ),
     [{ id: 1, due: '2026-10-09' }],
   );
+});
+
+test('설치 첫날: 첫 기록이 없거나 오늘이고 끝낸 할 일이 0개일 때만 회고를 건너뛴다', () => {
+  assert.equal(isInstallDay(null, '2026-10-28', 0), true);
+  assert.equal(isInstallDay('2026-10-28', '2026-10-28', 0), true);
+  assert.equal(isInstallDay('2026-10-28', '2026-10-28', 1), false, '첫날이라도 끝낸 것이 있으면 회고');
+  assert.equal(isInstallDay(null, '2026-10-28', 2), false);
+  assert.equal(isInstallDay('2026-10-27', '2026-10-28', 0), false);
 });
