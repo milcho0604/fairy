@@ -17,9 +17,6 @@ test('서버 운영자 화면의 칸과 아래 칸 이름과 어긋나지 않는
     serverPlaces.add(m[1] as string);
     for (const s of (m[2] as string).matchAll(/\['([a-z]+)',/g)) serverPlaces.add(`${m[1]}/${s[1]}`);
   }
-  // settings/backup 은 아래 칸이 아니라 settings/ai(예산, 정책, 백업) 로 열리는 옛 주소다. 서버 할 일 카드가 이 주소를 준다
-  assert.match(page, /if \(c === 'settings' && s === 'backup'\) s = 'ai'/);
-  serverPlaces.add('settings/backup');
   assert.deepEqual([...serverPlaces].sort(), [...ADMIN_WEB_PLACES].sort());
 });
 
