@@ -121,6 +121,8 @@ describe('신고 목록', () => {
 
 describe('본문 열기와 열람 기록', () => {
   test('열면 질문과 답이 보이고(이스케이프됨) 운영 기록에 한 줄이 남는다. 기록에는 글이 없다', async () => {
+    // 앞 시험의 쓰기가 남긴 결과 글(redirect 뒤 첫 화면이 받아 가는 것)을 먼저 비운다
+    await admin.page();
     const p = await admin.page(`?report=${id0()}`);
     assert.equal(p.status, 200);
     assert.match(p.text, new RegExp(SECRET_Q));
@@ -166,7 +168,8 @@ describe('처리 상태 바꾸기', () => {
   test('미처리에서 확인, 조치로: 처리자와 시각이 남고 운영 기록이 한 줄씩 쌓인다', async () => {
     const r = await move(id1(), 'pending', 'seen');
     assert.equal(r.status, 303);
-    assert.equal(r.headers.get('location'), '/admin#reports');
+    // 처리한 신고를 열어 둔 채 돌아온다
+    assert.equal(r.headers.get('location'), `/admin?report=${id1()}#reports`);
     let row = await statusOf(id1());
     assert.equal(row?.status, 'seen');
     assert.match(row?.handled_by, /^admin:/);
@@ -249,7 +252,8 @@ describe('처리 상태 바꾸기', () => {
     assert.equal((await statusOf(id))?.status, 'pending');
   });
 
-  test('열람 중 화면에서 쓰기를 하면 열람 주소로 돌아가지 않는다 (열람이 또 남지 않게)', async () => {
+  test('열람 중 화면에서 쓰기를 하면 같은 신고로 돌아오고, 그 화면은 열람을 또 남기지 않는다', async () => {
+    await admin.page();
     const n = (await logs('report.view')).length;
     const r = await api('POST', '/admin/reports/status', {
       body: new URLSearchParams({ csrf: admin.csrf, id: id2(), from: 'pending', to: 'seen' }).toString(),
@@ -262,9 +266,19 @@ describe('처리 상태 바꾸기', () => {
       },
     });
     assert.equal(r.status, 303);
-    assert.equal(r.headers.get('location'), '/admin?rs=pending#reports');
+    assert.equal(r.headers.get('location'), `/admin?report=${id2()}#reports`);
     assert.equal((await logs('report.view')).length, n);
+    // 돌아온 첫 화면: 대화가 보이면 열람 기록이 남고(빠지는 경우 없음), 결과 글은 한 번만 보인다
+    const back = await admin.page(`?report=${id2()}`);
+    assert.match(back.text, /질문 없는 신고의 답/);
+    assert.equal((await logs('report.view')).length, n + 1);
+    assert.equal(reportsCell(back.text).split('id="form-ok"').length, 2);
+    assert.match(reportsCell(back.text), /신고 #\d+ 를 확인으로 표시했어요/);
+    // 바로 이어서 다른 탭에서 여는 것도 기록에 남는다
+    await admin.page(`?report=${id2()}`);
+    assert.equal((await logs('report.view')).length, n + 2);
     await move(id2(), 'seen', 'pending');
+    await admin.page();
   });
 });
 
@@ -504,5 +518,132 @@ describe('합쳐진 계정과 나이 (사냥)', () => {
     assert.match(reportsCell(p.text), /나이내린고양이/);
     await h.pool.query('UPDATE account SET age = $2 WHERE id = $1', [a.id, '18+']);
     assert.match((await admin.page(`?report=${id}`)).text, /Q-나이내림/);
+  });
+});
+
+describe('신고 화면 사용성 (막기 결과 글, 열어 둔 채 처리, 다음 열기)', () => {
+  let a: { id: string; code: string };
+  let r1 = '';
+  let r2 = '';
+  let r3 = '';
+  before(async () => {
+    await h.pool.query("UPDATE ai_report SET status = 'done'");
+    a = await newDevice('18+', '사용성고양이');
+    r1 = await oldInsert(a.id, 'U1-질문', 'U1-답');
+    r2 = await oldInsert(a.id, 'U2-질문', 'U2-답');
+    r3 = await oldInsert(a.id, 'U3-질문', 'U3-답');
+    await admin.page();
+  });
+
+  test('신고 칸에서 막으면 성공 글이 숨은 이용자 칸이 아니라 신고 칸에 한 번 보인다', async () => {
+    const ok = await admin.post('/admin/ai/block', {
+      account: a.code,
+      blocked: '1',
+      ret: 'reports',
+      confirm: a.code,
+    });
+    assert.equal(ok.status, 303);
+    const p = await admin.page();
+    const users = p.text.slice(p.text.indexOf('id="cell-users"'), p.text.indexOf('id="cell-reports"'));
+    assert.doesNotMatch(users, /id="form-ok"/);
+    assert.match(reportsCell(p.text), /id="form-ok"[^>]*>계정 #\d+ 의 채팅 이용권 사용을 막았어요/);
+    assert.equal(p.text.split('id="form-ok"').length, 2);
+    await admin.post('/admin/ai/block', { account: a.code, blocked: '0', ret: 'reports' });
+    await admin.page();
+  });
+
+  test('열린 신고에 상태 뜻 설명, 다음 미처리 열기, 막고 조치로 표시 단추가 있다', async () => {
+    const cell = reportsCell((await admin.page(`?report=${r1}`)).text);
+    assert.match(cell, /<strong>미처리<\/strong>는 아직 안 본 신고/);
+    assert.match(cell, /<strong>확인<\/strong>은 읽었지만 아직 처리 중/);
+    assert.match(cell, /<strong>조치<\/strong>는 막기 같은 처리를 마친 신고/);
+    assert.match(cell, /href="\/admin\?report=\d+#reports">다음 미처리 열기/);
+    assert.match(cell, /막고 조치로 표시/);
+    assert.match(cell, /name="mark_report" value="/);
+    assert.match(cell, /조치하고 다음 미처리 열기/);
+  });
+
+  test('막고 조치로 표시: 한 번에 막고 그 신고가 조치가 되며 기록이 둘 남는다. 남의 신고 번호는 거절', async () => {
+    const other = await newDevice('18+', '남의신고');
+    const otherReport = await oldInsert(other.id, 'x', 'y');
+    const bad = await admin.post('/admin/ai/block', {
+      account: a.code,
+      blocked: '1',
+      ret: 'reports',
+      mark_report: otherReport,
+      confirm: a.code,
+    });
+    assert.equal(bad.status, 303);
+    assert.equal((await h.pool.query('SELECT 1 FROM ai_block WHERE account_id = $1', [a.id])).rowCount, 0);
+    assert.equal((await statusOf(otherReport))?.status, 'pending');
+    await admin.page();
+    const doneBefore = (await logs('report.done')).length;
+    const r = await admin.post('/admin/ai/block', {
+      account: a.code,
+      blocked: '1',
+      ret: 'reports',
+      mark_report: r1,
+      confirm: a.code,
+    });
+    assert.equal(r.headers.get('location'), `/admin?report=${r1}#reports`);
+    assert.equal((await h.pool.query('SELECT 1 FROM ai_block WHERE account_id = $1', [a.id])).rowCount, 1);
+    assert.equal((await statusOf(r1))?.status, 'done');
+    assert.equal((await logs('report.done')).length, doneBefore + 1);
+    assert.ok((await logs('ai.block')).length >= 1);
+    const viewsBefore = (await logs('report.view')).length;
+    const p = await admin.page(`?report=${r1}`);
+    assert.equal((await logs('report.view')).length, viewsBefore + 1);
+    assert.match(reportsCell(p.text), /신고 #\d+ 도 조치로 표시했어요/);
+    await admin.post('/admin/ai/block', { account: a.code, blocked: '0', ret: 'reports' });
+    await admin.page();
+  });
+
+  test('이미 조치인 신고에 막고 조치로 표시: 바뀐 것이 없다고 사실대로 말한다', async () => {
+    assert.equal((await statusOf(r1))?.status, 'done');
+    const doneBefore = (await logs('report.done')).length;
+    const r = await admin.post('/admin/ai/block', {
+      account: a.code,
+      blocked: '1',
+      ret: 'reports',
+      mark_report: r1,
+      confirm: a.code,
+    });
+    assert.equal(r.status, 303);
+    assert.equal((await logs('report.done')).length, doneBefore);
+    const p = await admin.page(`?report=${r1}`);
+    const cell = reportsCell(p.text);
+    assert.match(cell, /신고 #\d+ 은 이미 조치 상태예요/);
+    assert.doesNotMatch(cell, /도 조치로 표시했어요/);
+    await admin.post('/admin/ai/block', { account: a.code, blocked: '0', ret: 'reports' });
+    await admin.page();
+  });
+
+  test('조치하고 다음 미처리 열기: 다음 미처리 신고로 가고 그 신고는 열람이 남는다. 없으면 그 자리', async () => {
+    const r = await admin.post('/admin/reports/status', { id: r2, from: 'pending', to: 'done', next: '1' });
+    assert.equal(r.status, 303);
+    const loc = r.headers.get('location') ?? '';
+    const m = /^\/admin\?report=(\d+)#reports$/.exec(loc);
+    assert.ok(m, loc);
+    const nextId = m?.[1] as string;
+    assert.notEqual(nextId, r2);
+    assert.equal((await statusOf(nextId))?.status, 'pending');
+    assert.equal((await statusOf(r2))?.status, 'done');
+    const n = (await logs('report.view')).length;
+    const p = await admin.page(`?report=${nextId}`);
+    assert.equal((await logs('report.view')).length, n + 1);
+    assert.match(reportsCell(p.text), /신고 #\d+ 를 조치로 표시했어요/);
+    // 미처리가 더 없을 때
+    await h.pool.query("UPDATE ai_report SET status = 'done' WHERE id <> $1", [r3]);
+    await h.pool.query("UPDATE ai_report SET status = 'pending' WHERE id = $1", [r3]);
+    const last = await admin.post('/admin/reports/status', {
+      id: r3,
+      from: 'pending',
+      to: 'done',
+      next: '1',
+    });
+    assert.equal(last.headers.get('location'), `/admin?report=${r3}#reports`);
+    const q = reportsCell((await admin.page(`?report=${r3}`)).text);
+    assert.match(q, /다음 미처리 신고는 없어요/);
+    assert.match(q, /다른 미처리 신고는 없어요/);
   });
 });

@@ -54,6 +54,7 @@ import {
   type ReportOpen,
   type ReportRow,
   type ReportState,
+  switchChangeText,
   todoOf,
   type UserHistory,
 } from './admin-page';
@@ -258,7 +259,7 @@ interface AccountRow {
   merged_into: string | null;
 }
 
-const USER_PAGE_SIZE = 50;
+const USER_PAGE_SIZE = 20;
 const LOG_PAGE_SIZE = 50;
 const GRANT_MAX_RECIPIENTS = 20;
 
@@ -1908,7 +1909,8 @@ export class AdminService {
 
   /**
    * 신고 하나의 질문과 답을 연다. 여는 것과 운영 기록 한 줄(report.view, 대상 이용자와 신고 번호, 글은 복사하지 않음)이
-   * 한 트랜잭션이라 기록이 안 남으면 본문도 안 보인다. 없는 신고면 null (기록 없음)
+   * 한 트랜잭션이라 기록이 안 남으면 본문도 안 보인다. 없는 신고면 null (기록 없음).
+   * 본문을 화면에 보낼 때마다 한 줄씩 남는다 (처리 직후 다시 그릴 때도 같다)
    */
   async reportOpen(actor: string, id: string): Promise<ReportOpen | null> {
     if (!/^\d{1,18}$/.test(id)) return null;
@@ -2010,6 +2012,7 @@ export class AdminService {
           `account:${row.account_id}`,
           { report: Number(id), from, to },
         ],
+        data: { report: id },
       };
     });
   }
@@ -2020,13 +2023,13 @@ export class AdminService {
   async aiMode(actor: string, f: FormFields): Promise<AdminDone> {
     needConfirm(f, '접근 설정 바꾸기');
     const mode = (f.mode ?? '') as AiMode;
-    if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
+    if (!AI_MODES.includes(mode)) throw new Refused('접근 설정은 off, allowlist, everyone 중 하나예요');
     return this.write(actor, async (c) => {
       await lockSwitch(c, AI_FEATURE);
       const r = await this.aiAdmin.setSettings(c, { mode });
       staleSwitch(f, r.before.mode);
       return {
-        text: `채팅 이용권 접근 모드: ${r.before.mode} → ${mode}`,
+        text: switchChangeText(AI_FEATURE, r.before.mode, mode),
         log: ['ai.mode', null, { before: r.before.mode, after: mode, ...revertMark(f) }],
         data: { mode: `${r.before.mode} → ${mode}` },
       };
@@ -2046,7 +2049,7 @@ export class AdminService {
     needConfirm(f, '접근 설정 바꾸기');
     const key = this.featureKey(f);
     const mode = (f.mode ?? '') as AiMode;
-    if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
+    if (!AI_MODES.includes(mode)) throw new Refused('접근 설정은 off, allowlist, everyone 중 하나예요');
     return this.write(actor, async (c) => {
       // 보는 사이 다른 곳에서 바뀌었는지는 같은 트랜잭션 안의 DB 줄로 본다 (담아 둔 값은 5초 늦을 수 있다).
       // 줄이 아직 없어도(서버 설정 기본값) 같은 기능의 동시 요청이 한 줄로 서도록 기능 키로 잠근다
@@ -2057,7 +2060,7 @@ export class AdminService {
       staleSwitch(f, before);
       await this.features.setFeatureMode(key, mode, c);
       return {
-        text: `${key} 모드: ${before} → ${mode}`,
+        text: switchChangeText(key, before, mode),
         log: ['feature.mode', null, { key, before, after: mode, ...revertMark(f) }],
       };
     });
@@ -2339,9 +2342,39 @@ export class AdminService {
       } catch (err) {
         throw refusedFrom(err);
       }
+      // 신고 화면의 "막고 조치로 표시": 같은 트랜잭션에서 그 신고를 조치로 바꾼다 (이 이용자의 신고여야 한다)
+      const mark = on ? (f.mark_report ?? '').trim() : '';
+      let marked = '';
+      let already = false;
+      if (mark !== '') {
+        if (!/^\d{1,18}$/.test(mark)) throw new Refused('신고 번호가 이상해요');
+        const cur = await c.query<{ status: ReportState }>(
+          `SELECT r.status FROM ai_report r
+            WHERE r.id = $1 AND COALESCE((SELECT a.merged_into FROM account a WHERE a.id = r.account_id), r.account_id) = $2::bigint
+              FOR UPDATE OF r`,
+          [mark, id],
+        );
+        const from = cur.rows[0]?.status;
+        if (!from) throw new Refused('이 이용자의 신고가 아니에요. 신고를 다시 열어 주세요', 'gone');
+        already = from === 'done';
+        if (!already) {
+          await c.query(
+            `UPDATE ai_report SET status = 'done', handled_by = $2::text, handled_name = $3, handled_at = now() WHERE id = $1`,
+            [mark, actor.slice(0, 120), await actorName(c, actor)],
+          );
+          await adminLog(c, actor, 'report.done', `account:${id}`, {
+            report: Number(mark),
+            from,
+            to: 'done',
+            withBlock: true,
+          });
+        }
+        marked = mark;
+      }
       return {
-        text: `계정 #${id} 의 채팅 이용권 사용을 ${on ? '막았어요' : '풀었어요'}`,
+        text: `계정 #${id} 의 채팅 이용권 사용을 ${on ? '막았어요' : '풀었어요'}${marked ? (already ? `. 신고 #${marked} 은 이미 조치 상태예요` : `. 신고 #${marked} 도 조치로 표시했어요`) : ''}`,
         log: [on ? 'ai.block' : 'ai.unblock', `account:${id}`, {}],
+        ...(marked ? { data: { report: marked } } : {}),
       };
     });
   }
@@ -2946,7 +2979,12 @@ export class AdminController {
       ...view.reports,
       filter,
       rows: await this.admin.reportList(filter),
-      ...(reportId !== undefined ? { open: await this.admin.reportOpen(actorOf(s), reportId) } : {}),
+      ...(reportId !== undefined
+        ? {
+            open: await this.admin.reportOpen(actorOf(s), reportId),
+            next: (await this.admin.reportList('pending')).find((x) => x.id !== reportId)?.id ?? null,
+          }
+        : {}),
     };
     if (s.preview && Date.now() - s.preview.at > PREVIEW_MS) s.preview = undefined;
     const preview = s.preview
@@ -2954,11 +2992,12 @@ export class AdminController {
       : undefined;
     if (s.preview && !preview) s.preview = undefined;
     const formPlace =
-      flash?.form && isAdminAction(flash.form)
+      flash?.place ??
+      (flash?.form && isAdminAction(flash.form)
         ? flash.fields?.ret === 'reports'
           ? 'reports'
           : ACTION_PLACES[flash.form]
-        : undefined;
+        : undefined);
     html(res, 200, mainPage({ ...view, csrf: s.csrf, flash, flashPlace: formPlace, preview, grantRef }));
   }
 
@@ -3146,15 +3185,26 @@ export class AdminController {
                 '미리보기와 다른 값이에요. 고치기로 돌아가 대상 확인부터 다시 해 주세요',
                 'changed',
               );
-            // 받는 사람 수는 사람이 숫자로 다시 적어야 하고, 받는 계정은 미리보기 때 찾은 것과 같아야 한다
-            if (!/^\d{1,3}$/.test((f.people ?? '').trim()))
+            // 2명 이상이면 받는 사람 수를 사람이 숫자로 다시 적어야 한다 (1명은 대상 확인 화면의 이름과 체크 칸이 그 일을 한다).
+            // 받는 계정은 어느 쪽이든 미리보기 때 찾은 것과 같아야 한다
+            if ((kept.ids ?? []).length !== 1 && !/^\d{1,3}$/.test((f.people ?? '').trim()))
               throw new Refused('받는 사람 수를 숫자로 적어 주세요', 'count');
             f.expect_ids = (kept.ids ?? []).join(',');
           }
         }
         const done = await this.admin.run(name, actorOf(s), f);
         const copy = name === 'coupons' ? done.data?.coupon : undefined;
-        return copy !== undefined ? { text: done.text, copy: String(copy) } : done.text;
+        if (copy !== undefined) return { text: done.text, copy: String(copy) };
+        // 신고 화면의 쓰기: 처리한 신고를 열어 둔다. "조치하고 다음 열기" 는 다음 미처리 신고를 연다
+        const acted = name === 'reports/status' || name === 'ai/block' ? done.data?.report : undefined;
+        if (acted === undefined) return done.text;
+        const report = String(acted);
+        if (f.next === '1') {
+          const next = (await this.admin.reportList('pending')).find((x) => x.id !== report)?.id;
+          if (next !== undefined) return { text: done.text, report, next };
+          return { text: `${done.text}. 다음 미처리 신고는 없어요`, report };
+        }
+        return { text: done.text, report };
       },
       (f) =>
         ACTION_PLACES[name].startsWith('users/list') && f.account && f.ret !== 'reports'
@@ -3187,7 +3237,10 @@ export class AdminController {
   private async guarded(
     req: AdminReq,
     res: AdminRes,
-    fn: (s: AdminSession, f: FormFields) => Promise<string | { text: string; copy: string } | undefined>,
+    fn: (
+      s: AdminSession,
+      f: FormFields,
+    ) => Promise<string | { text: string; copy?: string; report?: string; next?: string } | undefined>,
     back: (f: FormFields) => string = () => '/admin',
     form?: string,
     place: (f: FormFields) => AdminPlace = () => 'home',
@@ -3201,19 +3254,24 @@ export class AdminController {
       await adminLog(this.db.pool, actorOf(s), 'csrf.fail', null).catch(() => undefined);
       return html(res, 403, loginPage({ error: '요청을 확인하지 못했어요 (CSRF). 화면을 다시 열어 주세요' }));
     }
-    const to = this.returnTo(req, back(f));
+    let to = this.returnTo(req, back(f));
     try {
       const text = await fn(s, f);
-      // 성공 글도 누른 폼 자리에 보이게 폼 이름과 대상을 같이 담는다
-      if (text !== undefined)
+      // 성공 글도 누른 폼 자리에 보이게 폼 이름과 대상, 칸을 같이 담는다 (신고 칸에서 누른 일은 신고 칸에 보인다)
+      if (text !== undefined) {
+        const { next, ...shown } = typeof text === 'string' ? { text } : text;
+        // 신고 상태를 바꾼 직후에는 그 신고를 열어 둔 채로(또는 다음 미처리 신고로) 돌아간다
+        const open = next ?? shown.report;
+        if (open !== undefined) to = `/admin?report=${encodeURIComponent(open)}`;
         s.flash = {
-          ...(typeof text === 'string' ? { text } : text),
+          ...shown,
           error: false,
-          ...(form ? { form, scope: scopeOf(f) } : {}),
+          ...(form ? { form, scope: scopeOf(f), place: place(f) } : {}),
         };
+      }
     } catch (err) {
       // 실패하면 쓴 값을 세션에 한 번만 담아 두었다가 같은 폼을 채워 다시 그린다 (비밀값 칸과 확인 칸은 빼고)
-      const keep = form ? { form, scope: scopeOf(f), fields: draftOf(f) } : {};
+      const keep = form ? { form, scope: scopeOf(f), place: place(f), fields: draftOf(f) } : {};
       if (err instanceof Refused) s.flash = { text: err.message, error: true, ...keep };
       else {
         console.warn('[admin] 쓰기 실패:', (err as Error).message);

@@ -61,12 +61,15 @@ async function previewForm(
   const hiddenFields: Record<string, string> = {};
   for (const x of (m[1] ?? '').matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
     if (x[1] !== 'csrf') hiddenFields[x[1] as string] = (x[2] as string).replaceAll('&#10;', '\n');
-  const people = /name="people"[^>]*pattern="(\d+)"/.exec(m[1] ?? '')?.[1];
-  assert.ok(people, '인원 수 칸이 있어야 한다');
+  // 2명 이상일 때만 인원 수 칸이 있다 (1명은 대상 확인 화면의 이름과 체크 칸이 대신한다)
+  const people = /name="people"[^>]*pattern="(\d+)"/.exec(m[1] ?? '')?.[1] ?? '';
   return { hidden: hiddenFields, people };
 }
-const confirm = (hiddenFields: Record<string, string>, extra: Record<string, string> = {}) =>
-  admin.post('/admin/grants/batch', { ...hiddenFields, confirm: 'yes', ...extra });
+const confirm = (hiddenFields: Record<string, string>, extra: Record<string, string> = {}) => {
+  const body: Record<string, string> = { ...hiddenFields, confirm: 'yes', ...extra };
+  if (body.people === '') delete body.people;
+  return admin.post('/admin/grants/batch', body);
+};
 const resultText = async () => {
   const p = await admin.page();
   return (
@@ -98,7 +101,7 @@ describe('이용자 상세 한 화면', () => {
       'action="/admin/ai/subscribe"',
       'action="/admin/ai/revoke"',
       'action="/admin/ai/allow"',
-      '<h3>받은 쪽지와 받았는지</h3>',
+      '<h3 id="user-notes">받은 쪽지와 받았는지</h3>',
       '<h3>코인 내역</h3>',
       '<h3>이 사람의 운영 기록</h3>',
     ])
@@ -172,24 +175,44 @@ describe('합친 계정은 묶음으로', () => {
 });
 
 describe('지급 확정은 서버가 다시 본다', () => {
-  test('인원 수를 안 적거나 틀리게 적으면 한 통도 안 가고, 맞게 적으면 한 번만 간다', async () => {
+  test('1명이면 인원 수 칸 없이 체크 하나로 보내고, 대상 이름이 체크 칸 글에 있다. 틀린 인원 수를 보내면 거절', async () => {
     const d = await newDevice('18+', '인원고양이');
     const p = await previewForm(fields(d.code));
-    assert.equal(p.people, '1');
-    assert.equal((await confirm(p.hidden)).status, 303);
-    assert.match(await resultText(), /받는 사람 수를 숫자로/);
-    assert.equal(await noteCount(d.id), 0);
-    const q = await previewForm(fields(d.code));
-    await confirm(q.hidden, { people: '2' });
-    assert.match(await resultText(), /받는 사람 수가 달라요|받는 사람 수를 숫자로/);
+    assert.equal(p.people, '');
+    const view = cellOf((await admin.page()).text, 'users');
+    assert.doesNotMatch(view, /name="people"/);
+    assert.match(view, /위 표의 인원고양이 F-[A-Z0-9-]+에게 코인 7, 채팅 이용권 0장 지급할게요/);
+    // 서버도 같다: 틀린 인원 수를 같이 보내면 거절
+    await confirm(p.hidden, { people: '2' });
+    assert.match(await resultText(), /받는 사람 수가 달라요/);
     assert.equal(await noteCount(d.id), 0);
     const ok = await previewForm(fields(d.code));
-    await confirm(ok.hidden, { people: ok.people });
+    assert.equal((await confirm(ok.hidden)).status, 303);
     assert.match(await resultText(), /1명에게 지급 쪽지를 보냈어요/);
     // 같은 확정을 또 보내도 (뒤로 가기, 두 탭) 한 번뿐
-    await confirm(ok.hidden, { people: ok.people });
+    await confirm(ok.hidden);
     assert.match(await resultText(), /이미 확정했거나 닫힌 미리보기/);
     assert.equal(await noteCount(d.id), 1);
+  });
+
+  test('2명 이상이면 인원 수를 안 적거나 틀리게 적으면 한 통도 안 가고, 맞게 적으면 한 번씩만 간다', async () => {
+    const d1 = await newDevice('18+', '둘이상A');
+    const d2 = await newDevice('18+', '둘이상B');
+    const both = `${d1.code}\n${d2.code}`;
+    const p = await previewForm(fields(both));
+    assert.equal(p.people, '2');
+    assert.equal((await confirm(p.hidden)).status, 303);
+    assert.match(await resultText(), /받는 사람 수를 숫자로/);
+    const q = await previewForm(fields(both));
+    await confirm(q.hidden, { people: '3' });
+    assert.match(await resultText(), /받는 사람 수가 달라요/);
+    assert.equal(await noteCount(d1.id), 0);
+    assert.equal(await noteCount(d2.id), 0);
+    const ok = await previewForm(fields(both));
+    await confirm(ok.hidden, { people: ok.people });
+    assert.match(await resultText(), /2명에게 지급 쪽지를 보냈어요/);
+    assert.equal(await noteCount(d1.id), 1);
+    assert.equal(await noteCount(d2.id), 1);
   });
 
   test('미리보기 뒤 숨은 칸의 대상, 양, 사유, 만료를 바꿔 보내면 거절한다', async () => {
@@ -278,8 +301,9 @@ describe('일괄 지급 대상 확인', () => {
     const c = await newDevice('18+', '묶음옛');
     await h.pool.query('UPDATE account SET merged_into = $2, closed_at = now() WHERE id = $1', [c.id, b.id]);
     const p = await previewForm(fields(`${b.code}\n${c.code}`));
-    assert.equal(p.people, '1');
-    await confirm(p.hidden, { people: p.people });
+    // 두 줄이어도 한 사람이면 인원 수 칸 없이 체크 하나
+    assert.equal(p.people, '');
+    await confirm(p.hidden);
     assert.match(await resultText(), /1명에게 지급 쪽지를 보냈어요/);
     assert.equal(await noteCount(b.id), 1);
     assert.equal(await noteCount(c.id), 0);
@@ -438,5 +462,69 @@ describe('버그 사냥 고침 (#153)', () => {
       const r = await v1(path, body as Record<string, unknown>);
       assert.equal(r.status, 400, `${path}: ${r.status} ${r.text}`);
     }
+  });
+});
+
+describe('이용자 상세 길이와 목록 (사용성 2차)', () => {
+  test('맨 위에 지급, 회수, 철회 바로가기 세 단추가 있고 가리키는 자리가 있다', async () => {
+    const d = await newDevice('18+', '바로가기고양이');
+    const users = cellOf((await admin.page(`?user=${d.id}`)).text, 'users');
+    const nav = /<nav class="row jump"[^>]*>(.*?)<\/nav>/s.exec(users)?.[1] ?? '';
+    assert.equal((nav.match(/<a /g) ?? []).length, 3);
+    for (const [id, label] of [
+      ['user-grant', '지급'],
+      ['user-revoke', '회수'],
+      ['user-notes', '철회'],
+    ] as const) {
+      assert.match(nav, new RegExp(`href="#${id}" data-jump="${id}">${label}</a>`));
+      assert.match(users, new RegExp(`id="${id}"`));
+    }
+    // 바로가기는 상세 안의 첫 칸 (통계보다 위)
+    assert.ok(users.indexOf('class="row jump"') < users.indexOf('<dl class="stats">'));
+  });
+
+  test('위험한 회수 칸 둘은 접어 두고, 지급 칸 바로 아래가 아니라 내역 뒤에 있다', async () => {
+    const d = await newDevice('18+', '접힌회수');
+    await addCoins(d.id, 40);
+    const users = cellOf((await admin.page(`?user=${d.id}`)).text, 'users');
+    const fold = /<details class="danger-fold" id="user-revoke">(.*?)<\/details>/s.exec(users);
+    assert.ok(fold, '접는 칸이 있어야 한다 (기본은 닫힘)');
+    assert.match(fold[1] ?? '', /action="\/admin\/ai\/revoke"/);
+    assert.match(fold[1] ?? '', /action="\/admin\/coins\/revoke\/preview"/);
+    // 접는 칸 밖에는 회수 폼이 없다
+    const outside = users.replace(fold[0], '');
+    assert.doesNotMatch(outside, /action="\/admin\/ai\/revoke"/);
+    assert.doesNotMatch(outside, /action="\/admin\/coins\/revoke\/preview"/);
+    // 순서: 지급 단추, 막기와 허용, 쪽지, 내역, 그 뒤에 접힌 회수
+    const at = (s: string) => users.indexOf(s);
+    assert.ok(at('에게 지급, 대상 확인하기') < at('<h3>막기와 허용</h3>'));
+    assert.ok(at('<h3>코인 내역</h3>') < at('id="user-revoke"'));
+    assert.ok(at('id="user-revoke"') < at('<h3>이 사람의 운영 기록</h3>'));
+    // 지급 단추와 회수 단추 사이에는 다른 칸이 끼어 있다
+    const between = users.slice(at('에게 지급, 대상 확인하기'), at('id="user-revoke"'));
+    assert.ok((between.match(/<h3/g) ?? []).length >= 3);
+  });
+
+  test('회수 미리보기가 진행 중이거나 회수 결과가 있으면 접는 칸이 열려 있다', async () => {
+    const d = await newDevice('18+', '열린회수');
+    await addCoins(d.id, 40);
+    await admin.post('/admin/coins/revoke/preview', { account: d.code, coins: '5', reason: '시험 회수' });
+    const open = cellOf((await admin.page(`?user=${d.id}`)).text, 'users');
+    assert.match(open, /<details class="danger-fold" id="user-revoke" open>/);
+    assert.match(open, /id="revoke-preview"/);
+    await admin.post('/admin/flow/cancel', { action: 'coins/revoke', discard: '1' });
+  });
+
+  test('이용자 목록: 검색이 맨 위, 정렬은 접혀 있고, 한 쪽은 20명', async () => {
+    for (let i = 0; i < 22; i++) await newDevice('18+', `목록${String(i).padStart(2, '0')}`);
+    const users = cellOf((await admin.page()).text, 'users');
+    assert.match(users, /<details class="sort-fold"><summary>정렬 바꾸기<\/summary>/);
+    assert.ok(users.indexOf('name="q"') < users.indexOf('<details class="sort-fold"'));
+    assert.match(users, /한 쪽에 20명씩 보여요/);
+    const rows = (users.match(/<td class="pick">/g) ?? []).length;
+    assert.equal(rows, 20);
+    // 정렬을 바꾼 검색이면 펼쳐서 보인다
+    const sorted = cellOf((await admin.page('?sort=coins&direction=asc')).text, 'users');
+    assert.match(sorted, /<details class="sort-fold" open>/);
   });
 });

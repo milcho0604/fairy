@@ -778,3 +778,21 @@ describe('버그 사냥 뒤 보강 (#154)', () => {
     assert.deepEqual(forces, ['force-mac-security', 'force-0.5.0']);
   });
 });
+
+describe('게시물 표의 홈페이지 반영 표시', () => {
+  test('방금 저장한 공지에는 홈페이지 반영 대기가 붙고, 15분이 지나면 사라진다', async () => {
+    await fresh();
+    const made = await admin.act('/admin/notices', { ...noticeBody, id: 'pending-tag' });
+    assert.ok(made.ok, made.text);
+    const posts = (html: string) =>
+      html.slice(html.indexOf('id="sub-announce-posts"'), html.indexOf('id="sub-announce-new"'));
+    const first = posts((await admin.page()).text);
+    assert.match(first, /<span class="tag soon">홈페이지 반영 대기<\/span>/);
+    assert.match(first, /홈페이지 파일에는 10~15분 뒤에 닿아요/);
+    await h.pool.query(
+      `UPDATE site_doc SET updated_at = now() - interval '20 minutes' WHERE name = 'notices'`,
+    );
+    const later = posts((await admin.page()).text);
+    assert.doesNotMatch(later, /홈페이지 반영 대기<\/span>/);
+  });
+});
