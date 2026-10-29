@@ -128,8 +128,12 @@ On Linux run it on its own Xvfb display; `BG_MODEL=<isnet-general-use.onnx>` ski
 later add analytics or embeds, add their hosts there or the browser will block them. Vercel serves `404.html`
 automatically.
 
-Every push to the default branch redeploys. To avoid deploying on app-only commits, set **Settings → Git →
-Ignored Build Step** to `git diff --quiet HEAD^ HEAD -- site/`.
+Vercel deploys only the `site-prod` branch (`git.deploymentEnabled` in `vercel.json`); pushes to `main` and pull
+requests make no deployment, which keeps the Hobby plan under its 100 deployments a day. In **Settings →
+Environments → Production**, the branch tracked for production must be `site-prod`. The Actions workflow
+`site-release.yml` moves `site-prod`: to the tag commit when a release tag `v*` is pushed, to any ref on `main` when
+run by hand, and it lays the latest `events.json` and `notices.json` from `main` on top every time (see
+`docs/release.md`, "홈페이지 배포").
 
 ## Alternative: GitHub Pages
 
