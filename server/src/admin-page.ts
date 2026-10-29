@@ -2245,10 +2245,10 @@ function logSection(v: AdminView): string {
   };
   const rows = v.log
     .map(
-      (l) => `<tr><td>${when(l.at)}</td>
-<td>${l.actorName ? `${esc(l.actorName)}<br><small><code>${esc(l.actor)}</code></small>` : `<code>${esc(l.actor)}</code>`}</td>
-<td>${esc(actionKo(l.action))}${(l.detail as { revert?: unknown } | null)?.revert === true ? ' (되돌림)' : ''}<br><small><code>${esc(l.action)}</code></small></td>
-<td>${l.targetName ? `${esc(l.targetName)}<br><small><code>${esc(l.target ?? '')}</code></small>` : esc(l.target ?? '')}</td>
+      (l) => `<tr><td data-l="때">${when(l.at)}</td>
+<td data-l="누가">${l.actorName ? `${esc(l.actorName)}<br><small><code>${esc(l.actor)}</code></small>` : `<code>${esc(l.actor)}</code>`}</td>
+<td data-l="무엇">${esc(actionKo(l.action))}${(l.detail as { revert?: unknown } | null)?.revert === true ? ' (되돌림)' : ''}<br><small><code>${esc(l.action)}</code></small></td>
+<td data-l="대상">${l.targetName ? `${esc(l.targetName)}<br><small><code>${esc(l.target ?? '')}</code></small>` : esc(l.target ?? '')}</td>
 <td data-l="자세히">${logDetailCell(l.action, l.detail)}</td></tr>`,
     )
     .join('');
@@ -2262,7 +2262,7 @@ function logSection(v: AdminView): string {
 </form>
 <p class="hint">한 쪽에 50건씩 보여요. 옛 기록은 이름 없이 세션 표시만 있어요.</p>
 ${p.userMissing ? '<p class="flash error">그 이용자를 찾지 못했어요</p>' : ''}
-<div class="table-scroll"><table class="log"><thead><tr><th>때</th><th>누가</th><th>무엇</th><th>대상</th><th>자세히</th></tr></thead><tbody>
+<div class="table-scroll"><table class="log cards"><thead><tr><th>때</th><th>누가</th><th>무엇</th><th>대상</th><th>자세히</th></tr></thead><tbody>
 ${rows || `<tr><td colspan="5">${filtered ? '조건에 맞는 기록이 없어요' : '아직 없어요'}</td></tr>`}
 </tbody></table></div>
 <nav class="pager" aria-label="쪽 넘기기">${p.page > 1 ? `<a href="${esc(q(p.page - 1))}">이전</a>` : '<span>이전</span>'}<strong>${p.page} / ${p.pages}</strong>${p.page < p.pages ? `<a href="${esc(q(p.page + 1))}">다음</a>` : '<span>다음</span>'}</nav>
@@ -2438,7 +2438,7 @@ code { font-size: 12px; word-break: break-all; }
 .trend-svg .bar.zero { fill: var(--line); }
 .warn-text { color: var(--warn); }
 details > summary { cursor: pointer; margin: 8px 0; color: var(--muted); }
-.tag { font-size: 11px; border-radius: 4px; padding: 1px 6px; border: 1px solid var(--line); }
+.tag { white-space: nowrap; font-size: 11px; border-radius: 4px; padding: 1px 6px; border: 1px solid var(--line); }
 .tag.live { border-color: var(--ok); color: var(--ok); }
 .tag.ended { color: var(--muted); }
 .tag.bad { border-color: var(--bad); color: var(--bad); }

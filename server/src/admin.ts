@@ -2333,6 +2333,7 @@ export class AdminService {
       // 신고 화면의 "막고 조치로 표시": 같은 트랜잭션에서 그 신고를 조치로 바꾼다 (이 이용자의 신고여야 한다)
       const mark = on ? (f.mark_report ?? '').trim() : '';
       let marked = '';
+      let already = false;
       if (mark !== '') {
         if (!/^\d{1,18}$/.test(mark)) throw new Refused('신고 번호가 이상해요');
         const cur = await c.query<{ status: ReportState }>(
@@ -2343,7 +2344,8 @@ export class AdminService {
         );
         const from = cur.rows[0]?.status;
         if (!from) throw new Refused('이 이용자의 신고가 아니에요. 신고를 다시 열어 주세요', 'gone');
-        if (from !== 'done') {
+        already = from === 'done';
+        if (!already) {
           await c.query(
             `UPDATE ai_report SET status = 'done', handled_by = $2::text, handled_name = $3, handled_at = now() WHERE id = $1`,
             [mark, actor.slice(0, 120), await actorName(c, actor)],
@@ -2358,7 +2360,7 @@ export class AdminService {
         marked = mark;
       }
       return {
-        text: `계정 #${id} 의 채팅 이용권 사용을 ${on ? '막았어요' : '풀었어요'}${marked ? `. 신고 #${marked} 도 조치로 표시했어요` : ''}`,
+        text: `계정 #${id} 의 채팅 이용권 사용을 ${on ? '막았어요' : '풀었어요'}${marked ? (already ? `. 신고 #${marked} 은 이미 조치 상태예요` : `. 신고 #${marked} 도 조치로 표시했어요`) : ''}`,
         log: [on ? 'ai.block' : 'ai.unblock', `account:${id}`, {}],
         ...(marked ? { data: { report: marked } } : {}),
       };

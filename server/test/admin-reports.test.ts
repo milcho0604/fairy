@@ -598,6 +598,26 @@ describe('신고 화면 사용성 (막기 결과 글, 열어 둔 채 처리, 다
     await admin.page();
   });
 
+  test('이미 조치인 신고에 막고 조치로 표시: 바뀐 것이 없다고 사실대로 말한다', async () => {
+    assert.equal((await statusOf(r1))?.status, 'done');
+    const doneBefore = (await logs('report.done')).length;
+    const r = await admin.post('/admin/ai/block', {
+      account: a.code,
+      blocked: '1',
+      ret: 'reports',
+      mark_report: r1,
+      confirm: a.code,
+    });
+    assert.equal(r.status, 303);
+    assert.equal((await logs('report.done')).length, doneBefore);
+    const p = await admin.page(`?report=${r1}`);
+    const cell = reportsCell(p.text);
+    assert.match(cell, /신고 #\d+ 은 이미 조치 상태예요/);
+    assert.doesNotMatch(cell, /도 조치로 표시했어요/);
+    await admin.post('/admin/ai/block', { account: a.code, blocked: '0', ret: 'reports' });
+    await admin.page();
+  });
+
   test('조치하고 다음 미처리 열기: 다음 미처리 신고로 가고 그 신고는 열람이 남는다. 없으면 그 자리', async () => {
     const r = await admin.post('/admin/reports/status', { id: r2, from: 'pending', to: 'done', next: '1' });
     assert.equal(r.status, 303);
