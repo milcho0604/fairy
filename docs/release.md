@@ -132,11 +132,21 @@
 - 릴리스 없이 최소 버전을 올리려면 아래 공지 파일의 `minVersion` 을 쓴다. 앱은 두 값 중 높은 쪽을 쓴다(최신 릴리스 이하인 값만).
 - 잠긴 동안 안내는 닫을 수 없는 공지 창(업데이트 단추 하나)으로 뜬다. 설정의 백업 내보내기와 메뉴 막대 아이콘의 끝내기는 그대로 된다.
 
+## 홈페이지 배포
+
+Vercel 은 `site-prod` 브랜치만 배포한다(`site/vercel.json` 의 `git.deploymentEnabled`). main 머지와 PR 은 Vercel 배포를 만들지 않는다. 무료 요금제 하루 배포 100번 한도를 PR 미리보기와 main 머지가 다 써서 막힌 일이 있었다(2026-10-29). Vercel 프로젝트 설정 Environments → Production 의 브랜치가 `site-prod` 여야 한다.
+
+`site-prod` 는 Actions `site-release.yml` 만 옮긴다. 직접 커밋하지 않는다.
+
+- 릴리스 태그 `v*` 를 올리면 그 태그 커밋으로 옮긴다. 홈페이지 글은 나간 앱과 맞춘다.
+- 앱 릴리스 전에 홈페이지를 내야 하면(개인정보처리방침 고침 같은 것) Actions → site-release → Run workflow 에서 `ref` 를 `main` 으로 두고 돌린다. main 에 들어간 커밋만 고를 수 있다.
+- 어느 경우든 main 의 `site/events.json`, `site/notices.json` 을 얹는다. 운영 공지와 이벤트는 홈페이지 글과 따로 늘 main 과 같다(`ref` 를 `feeds` 로 돌리면 이것만 한다).
+
 ## 공지 올리기 (site/notices.json)
 
-서버 4단계(#101)부터는 운영자 화면(`https://fairy-api.moilga.com/admin` 이나 앱 설정의 운영자 칸)에서 공지와 최소/권장 버전을 고친다. 서버가 `GET /v1/notices.json` 으로 내보내고 Actions `site-feeds.yml` 이 10분마다 받아 검사한 뒤 `site/notices.json` 을 main 에 올린다(막히면 `bot/site-feeds` PR, 머지하면 배포). 운영자 화면에서 한 번 저장하면 그 뒤로는 레포 파일을 손으로 고치지 않는다(다음 실행이 서버 내용으로 덮는다). 아래는 손으로 고칠 때와 파일 형식이다.
+서버 4단계(#101)부터는 운영자 화면(`https://fairy-api.moilga.com/admin` 이나 앱 설정의 운영자 칸)에서 공지와 최소/권장 버전을 고친다. 서버가 `GET /v1/notices.json` 으로 내보내고 Actions `site-feeds.yml` 이 10분마다 받아 검사한 뒤 `site/notices.json` 을 main 에 올린다(막히면 `bot/site-feeds` PR, 머지하면 배포). 올린 뒤 `site-release.yml` 이 두 파일을 `site-prod` 에 얹어 홈페이지에 나간다. 운영자 화면에서 한 번 저장하면 그 뒤로는 레포 파일을 손으로 고치지 않는다(다음 실행이 서버 내용으로 덮는다). 아래는 손으로 고칠 때와 파일 형식이다.
 
-앱 자체 공지 창과 릴리스 없는 최소 버전 (`docs/server-plan.md` 23절). 레포의 `site/notices.json` 을 고쳐 main 에 머지하면 홈페이지 배포로 나가고, 앱은 켤 때(5초 뒤)와 4시간마다 `https://fairy.moilga.com/notices.json` 을 받는다. 지금 파일은 빈 목록이라 아무것도 띄우지 않는다.
+앱 자체 공지 창과 릴리스 없는 최소 버전 (`docs/server-plan.md` 23절). 레포의 `site/notices.json` 을 고쳐 main 에 머지하면 `site-release.yml` 이 `site-prod` 에 얹어 홈페이지로 나가고, 앱은 켤 때(5초 뒤)와 4시간마다 `https://fairy.moilga.com/notices.json` 을 받는다. 지금 파일은 빈 목록이라 아무것도 띄우지 않는다.
 
 ```json
 {

@@ -1,12 +1,13 @@
 # 운영자 화면(/admin)에서 고친 이벤트 목록과 공지를 홈페이지 정적 파일로 올린다 (이슈 #101, 기획서 9, 23절).
 # 10분마다 서버의 GET /v1/events.json, /v1/notices.json 을 받아 앱의 읽기 코드로 검사하고(scripts/site-feeds.mjs),
-# site/events.json, site/notices.json 이 바뀌었으면 main 에 커밋한다. 홈페이지(Vercel)가 main 을 배포해 앱에 닿는다.
+# site/events.json, site/notices.json 이 바뀌었으면 main 에 커밋한다. 홈페이지(Vercel)는 site-prod 만 배포하므로
+# 이어서 site-release 를 feeds 로 불러 두 파일만 site-prod 에 얹는다 (홈페이지 글은 그대로). 그래야 앱에 닿는다.
 # - 검사에 하나라도 걸리면 아무것도 커밋하지 않고 실패로 끝난다 (Actions 알림 메일)
 # - 서버가 꺼져 있으면 아무것도 바꾸지 않고 성공으로 끝난다 (홈페이지는 지난 파일 그대로)
 # - 공개 레포 Actions 라 무료. 기본 GITHUB_TOKEN 만 쓴다 (새 토큰 없음). 변수 FAIRY_API_LIVE=true 일 때만 돈다
 # - main 은 브랜치 보호(PR, 필수 검사)라 GITHUB_TOKEN 의 직접 push 가 막힐 수 있다. 막히면 bot/site-feeds 브랜치로
 #   올려 PR 을 열어 둔다 (레포 설정 Actions > "Allow GitHub Actions to create and approve pull requests" 가 켜져 있어야 한다).
-#   운영자가 그 PR 을 머지하면 배포된다. 자세한 것은 docs/release.md "공지 올리기"
+#   운영자가 그 PR 을 머지하면 site-release 가 두 파일을 site-prod 에 얹어 배포된다. 자세한 것은 docs/release.md "공지 올리기"
 # 액션은 커밋 SHA 로 고정한다 (check.yml 과 같은 판).
 name: site-feeds
 
@@ -15,6 +16,7 @@ on:
     - cron: '*/10 * * * *'
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -51,6 +53,8 @@ jobs:
           git rebase -q origin/main
           if git push -q origin HEAD:main; then
             echo "::notice title=site-feeds::main 에 올림 (${CHANGED})"
+            # GITHUB_TOKEN 의 push 는 다른 워크플로를 띄우지 않는다. workflow_dispatch 는 예외라 직접 부른다
+            gh workflow run site-release.yml --ref main -f ref=feeds
             exit 0
           fi
           echo "::warning title=site-feeds::main 에 바로 올리지 못해(브랜치 보호) PR 로 올려요"

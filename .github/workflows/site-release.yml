@@ -1,0 +1,71 @@
+# 홈페이지(fairy.moilga.com) 배포. Vercel 은 site-prod 브랜치만 배포한다 (site/vercel.json 의 git.deploymentEnabled).
+# main 머지와 PR 은 Vercel 배포를 만들지 않는다. 무료 요금제 하루 배포 100번 한도를 PR 미리보기와 main 머지가 다 써서
+# 홈페이지 배포가 막힌 일이 있었다 (2026-10-29, 하루 137번).
+# site-prod 를 옮기는 때:
+# - 릴리스 태그(v*)를 올릴 때: 그 태그 커밋으로. 홈페이지 글은 나간 앱과 맞춘다
+# - 손으로 (Actions > site-release > Run workflow): 고른 ref(기본 main)로. 개인정보처리방침처럼 앱 릴리스 전에 내야 할 때
+# - 운영 공지와 이벤트(site/events.json, notices.json)가 main 에 들어올 때(사람이 머지한 bot/site-feeds PR),
+#   또는 site-feeds 가 이것을 feeds 로 부를 때: site-prod 글은 그대로 두고 두 파일만 얹는다
+# 어느 경우든 끝에 main 의 공지와 이벤트 파일을 얹는다 (앱이 읽는 운영 파일은 늘 main 과 같다).
+# site-prod 는 main 의 커밋을 가리키는 표시일 뿐이라 강제로 옮긴다. 여기에 직접 커밋하지 않는다.
+# 액션은 커밋 SHA 로 고정한다 (check.yml 과 같은 판).
+name: site-release
+
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+    paths: ['site/events.json', 'site/notices.json']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'site-prod 로 낼 브랜치, 태그 또는 커밋 (feeds 면 글은 그대로 두고 공지와 이벤트만)'
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: site-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: site-prod 옮기기
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          set -eu
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch -q --tags origin
+          prod=$(git rev-parse -q --verify 'origin/site-prod^{commit}' || true)
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$REF" != feeds ]; then
+            base=$(git rev-parse -q --verify "origin/$REF^{commit}" || git rev-parse -q --verify "$REF^{commit}") \
+              || { echo "::error title=site-release::$REF 를 찾지 못했어요"; exit 1; }
+            git merge-base --is-ancestor "$base" origin/main \
+              || { echo "::error title=site-release::$REF 는 main 에 들어간 커밋이 아니에요"; exit 1; }
+          elif [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            base=$GITHUB_SHA
+          else
+            base=${prod:-$(git rev-parse origin/main)}
+          fi
+          git switch -q --detach "$base"
+          git checkout origin/main -- site/events.json site/notices.json
+          if ! git diff --cached --quiet; then
+            git commit -q -m "site: 운영 공지와 이벤트를 main 에 맞춤" -m "main $(git rev-parse --short origin/main) 의 site/events.json, site/notices.json"
+          fi
+          if [ "$(git rev-parse HEAD)" = "$prod" ]; then
+            echo "::notice title=site-release::바뀐 것이 없어요"
+            exit 0
+          fi
+          git push -q --force origin HEAD:refs/heads/site-prod
+          echo "::notice title=site-release::site-prod 를 $(git rev-parse --short HEAD) 로 옮겼어요 (기준 $(git rev-parse --short "$base"))"
