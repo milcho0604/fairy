@@ -1052,8 +1052,9 @@ const body = async () => {
         check(`${mark}: 이번 주와 일기는 펼쳐져 있다`, await wh.ev(`!!document.querySelector('.today-pet details.week[open]') && !!document.querySelector('.today-pet details.diary[open]')`));
         check(`${mark}: 못 한 N개 내일로 단추는 왼쪽 열`, !!(await pos('.today-plan .defer-tomorrow')));
       } else {
-        check(`${mark}: 집중 카드는 마감 아래 (아래로만 옮겼다)`, !!focus && focus.y > due.y, JSON.stringify(focus));
-        check(`${mark}: 한 열이라 두 열의 왼쪽이 같다`, Math.abs((await pos('.today-pet .focus-card')).x - ev.x) < 2);
+        // 좁은 칸과 보통 칸은 집중 카드가 다음 할 일 바로 아래, 마감 위 (#238 0b7c5f9: 놓친 알림 밑으로 밀리지 않게)
+        check(`${mark}: 집중 카드는 다음 할 일 아래, 마감 위`, !!focus && focus.y > next.y && focus.y < due.y, JSON.stringify({ focus: focus?.y, next: next?.y, due: due?.y }));
+        check(`${mark}: 한 열이라 집중 카드는 일정 열 안에 있고 왼쪽이 같다`, !!focus && !(await pos('.today-pet .focus-card')) && Math.abs(focus.x - ev.x) < 2, JSON.stringify(focus));
       }
       for (const [name, sel] of [['집중', '.focus-card'], ['다음 할 일', '.next-up'], ['습관', '.habits'], ['끝낸 수', '.done-count'], ['업적', 'details.achieve:not(.week):not(.diary)'], ['일기', 'details.diary'], ['이번 주', 'details.week']])
         check(`${mark}: 익숙한 카드가 남아 있다: ${name}`, !!(await pos(sel)));
@@ -1165,7 +1166,7 @@ const body = async () => {
       const ev = await ppos(eventsHead);
       const due = await ppos(dueHead);
       const focus = await ppos('.focus-card');
-      check(`${mark}: 오늘 일정, 마감, 집중 순서로 쌓인다`, !!ev && !!due && !!focus && ev.y < due.y && due.y < focus.y, JSON.stringify({ ev: ev?.y, due: due?.y, focus: focus?.y }));
+      check(`${mark}: 오늘 일정, 집중, 마감 순서로 쌓인다 (집중 카드는 다음 할 일 아래, #238)`, !!ev && !!due && !!focus && ev.y < focus.y && focus.y < due.y, JSON.stringify({ ev: ev?.y, due: due?.y, focus: focus?.y }));
       check(`${mark}: 오늘은 한 열 (열 제목 없음)`, (await pp.ev(`getComputedStyle(document.querySelector('.today-cols')).display`)) === 'block' && !(await pp.ev(`!!document.querySelector('.today-col-title')?.offsetParent`)));
       check(`${mark}: 못 한 N개 내일로 단추가 있다`, !!(await ppos('.defer-tomorrow')));
       let over = await overflow(pp, '.surface');
