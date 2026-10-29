@@ -60,12 +60,12 @@ jobs:
           fi
           git switch -q --detach "$base"
           git checkout origin/main -- site/events.json site/notices.json
-          if ! git diff --cached --quiet; then
-            git commit -q -m "site: 운영 공지와 이벤트를 main 에 맞춤" -m "main $(git rev-parse --short origin/main) 의 site/events.json, site/notices.json"
-          fi
-          if [ "$(git rev-parse HEAD)" = "$prod" ]; then
+          # 내보낼 것이 지금 site-prod 와 같으면 그대로 둔다
+          if [ -n "$prod" ] && git diff --cached --quiet "$prod" -- site; then
             echo "::notice title=site-release::바뀐 것이 없어요"
             exit 0
           fi
+          # 늘 새 커밋을 얹는다. Vercel 은 이미 본 커밋(main 에서 배포를 건너뛴 것)을 가리키는 push 에는 배포를 만들지 않는다
+          git commit -q --allow-empty -m "site: $(git rev-parse --short "$base") 내보내기" -m "기준 $(git rev-parse --short "$base"), 공지와 이벤트는 main $(git rev-parse --short origin/main)"
           git push -q --force origin HEAD:refs/heads/site-prod
           echo "::notice title=site-release::site-prod 를 $(git rev-parse --short HEAD) 로 옮겼어요 (기준 $(git rev-parse --short "$base"))"
