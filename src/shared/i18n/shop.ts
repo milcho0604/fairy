@@ -71,7 +71,7 @@ export const ko = {
   'shop.styleChanged': (v: { name: string }) => `${withParticle(v.name, '으로')} 바꿨어`,
   'shop.needMore': (v: { n: number }) => `코인 ${v.n}개 더 필요`,
   'shop.sure': '한 번 더',
-  'shop.sureNote': '코인 {n}개가 나가고 되돌릴 수 없어. 한 번 더 누르면 사.',
+  'shop.sureNote': '코인 {n}개가 나가고 되돌릴 수 없어. 한 번 더 누르면 살게.',
   'shop.fullFor': '지금은 {n}만 차',
   'shop.fullNow': '배불러서 지금은 못 줘',
   'shop.giveLabel': (v: { name: string; n: number }) => `${v.name} 주기, 코인 ${v.n}개`,

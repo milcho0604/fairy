@@ -83,8 +83,8 @@ input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 12px 10px 8px 14px;
+  gap: 2px;
+  padding: 12px 8px 8px 14px;
 }
 
 .panel header strong {
@@ -123,7 +123,7 @@ input {
 .fullness {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 2px 14px 6px;
   font-size: 12.5px;
   color: var(--muted);
@@ -148,7 +148,7 @@ input {
 }
 
 .fullness .value {
-  min-width: 22px;
+  min-width: 20px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -256,6 +256,8 @@ input {
   text-align: center;
   color: var(--muted);
   font-size: 12.5px;
+  /* 한 글자만 둘째 줄로 떨어지지 않게 */
+  text-wrap: pretty;
 }
 
 p.empty {
@@ -1655,6 +1657,8 @@ li.pin-end {
 /* 상점 */
 .shop {
   padding: 6px 14px 12px;
+  /* 스크롤바가 생겨도 단추 끝에 닿지 않게 자리를 늘 비워 둔다 */
+  scrollbar-gutter: stable;
 }
 
 .shop section + section {
@@ -1711,6 +1715,7 @@ li.pin-end {
 .shop .row-line small {
   font-size: 11.5px;
   color: var(--muted);
+  text-wrap: pretty;
 }
 
 .price {
@@ -1777,6 +1782,11 @@ li.pin-end {
   margin-top: 0;
 }
 
+/* 집 모양 안내는 늘 목록 아래 빈 자리에 뜬다(위로 뜨면 위 줄의 이유 글을 가린다). 그 자리를 미리 비워 둔다 */
+.shop .house-styles {
+  margin-bottom: 64px;
+}
+
 .shop[data-ask-up] small.need.ask {
   top: auto;
   bottom: 100%;
@@ -1785,8 +1795,8 @@ li.pin-end {
 }
 
 .shop[data-ask-up] .house-styles small.need.ask {
-  top: auto;
-  bottom: calc(100% + 4px);
+  top: calc(100% + 4px);
+  bottom: auto;
 }
 
 .shop .ghost.buy {
@@ -1934,8 +1944,8 @@ ul.house-styles li > :last-child {
   /* 띠가 있든 없든 높이가 같다. 목록은 늘 이 아래에서 시작한다 */
   flex: none;
   box-sizing: border-box;
-  height: 30px;
-  padding: 2px 14px 0;
+  height: 33px;
+  padding: 5px 14px 0;
   /* 패널 바탕색으로 가로 전체를 채워 띠 아래 여백까지 목록 글자가 비치지 않게 */
   background: var(--panel);
   pointer-events: none;
@@ -2125,8 +2135,8 @@ li:is(.todo, .event) .tools .extra .due.none {
   flex: none;
   display: inline-grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 8px;

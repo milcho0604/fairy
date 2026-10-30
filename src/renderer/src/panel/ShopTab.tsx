@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent, useRef, useState } from 'react';
+import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from 'react';
 import { HOUSE_LEVELS, HOUSE_STYLES, type HouseStyle, houseSvg } from '../../../shared/house-art.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
@@ -351,13 +351,21 @@ function FeedNote(o: { fullness: number; gain: number; short: number }) {
 
 /** 사기 줄 아래 안내: 한 번 더 누르라는 말(되돌릴 수 없음), 아니면 모자란 코인 */
 function BuyNote(o: { asking: boolean; short: number; cost: number }) {
-  if (o.asking)
-    return (
-      <small className="need ask" role="status">
-        {t('shop.sureNote', { n: o.cost })}
-      </small>
-    );
+  if (o.asking) return <AskNote cost={o.cost} />;
   return o.short > 0 ? <small className="need">{t('shop.needMore', { n: o.short })}</small> : null;
+}
+
+/** "한 번 더" 안내: 뜨면 보이는 자리로 스크롤한다 (아래 칸에서 잘리지 않게) */
+function AskNote(o: { cost: number }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, []);
+  return (
+    <small className="need ask" role="status" ref={ref}>
+      {t('shop.sureNote', { n: o.cost })}
+    </small>
+  );
 }
 
 /** 집 줄: 지금 집, 다음 집 이야기, 짓기 또는 늘리기 단추 */

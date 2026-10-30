@@ -214,14 +214,18 @@
   row-gap: 2px;
 }
 
+.fullness .ghost.small {
+  padding-inline: 6px;
+}
+
 .fullness .track {
-  flex: 1 1 48px;
-  min-width: 48px;
+  flex: 1 1 32px;
+  min-width: 32px;
 }
 
 .fullness .life-vals {
   display: inline-flex;
-  gap: 8px;
+  gap: 6px;
   font-size: 12px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -277,12 +281,21 @@
   cursor: pointer;
 }
 
+/* 끝이 없으면 자리를 먹지 않는다(긴 제목이 눌리지 않게). 올리거나 키보드로 닿으면 펴진다 */
 .event .end-time.none {
+  max-width: 0;
+  margin-inline-end: -8px;
+  padding-inline: 0;
+  overflow: hidden;
   opacity: 0;
 }
 
 .event:hover .end-time.none,
 .event .end-time.none:focus-within {
+  max-width: 120px;
+  margin-inline-end: 0;
+  padding-inline: 6px;
+  overflow: visible;
   opacity: 0.8;
 }
 

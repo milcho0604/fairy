@@ -126,8 +126,10 @@
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 0 0 2px;
+  /* 끝에서 글자가 반 토막으로 잘려 보이지 않게 오른쪽 끝을 흐리게, 마지막 칩은 흐린 자리 안쪽에서 끝난다 */
+  padding: 0 24px 2px 0;
   scrollbar-width: thin;
+  mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
 }
 
 .mail-chips button {
