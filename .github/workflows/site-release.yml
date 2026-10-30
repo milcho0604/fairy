@@ -22,6 +22,10 @@ on:
         description: 'site-prod 로 낼 브랜치, 태그 또는 커밋 (feeds 면 글은 그대로 두고 공지와 이벤트만)'
         required: true
         default: main
+      again:
+        description: '바뀐 것이 없어도 다시 내보낸다 (홈페이지 배포를 다시 하고 싶을 때)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -42,6 +46,7 @@ jobs:
       - name: site-prod 옮기기
         env:
           REF: ${{ inputs.ref }}
+          AGAIN: ${{ inputs.again }}
         run: |
           set -eu
           git config user.name 'github-actions[bot]'
@@ -61,7 +66,7 @@ jobs:
           git switch -q --detach "$base"
           git checkout origin/main -- site/events.json site/notices.json
           # 내보낼 것이 지금 site-prod 와 같으면 그대로 둔다
-          if [ -n "$prod" ] && git diff --cached --quiet "$prod" -- site; then
+          if [ "${AGAIN:-false}" != true ] && [ -n "$prod" ] && git diff --cached --quiet "$prod" -- site; then
             echo "::notice title=site-release::바뀐 것이 없어요"
             exit 0
           fi
