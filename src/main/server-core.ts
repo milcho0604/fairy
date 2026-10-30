@@ -8,6 +8,7 @@
 // - 서버가 꺼져 있어도 앱은 사본 잔액(앱 장부)으로 돈다. 대기열은 파일에 남아 살아나면 보낸다.
 import { createHash, randomBytes } from 'node:crypto';
 import { checkNickname, DEVICE_CODE } from '../shared/account-profile.ts';
+import { type TicketBlock, ticketBlock } from '../shared/ai/ticket-gate.ts';
 import {
   type AccountSummary,
   type AdminLogFilter,
@@ -310,6 +311,16 @@ export function createServerCore(d: ServerCoreDeps) {
   const aiEligible = () => allowed() && st.age === 'adult' && !!d.session.get();
   /** 채팅 이용권을 쓸 수 있는가: 위에 더해 운영자가 열어 두었다 (#101, 모르면 아직 아님) */
   const aiAvailable = () => aiEligible() && st.aiAccess === 'ok';
+  /** 채팅 이용권을 못 쓰는 까닭 (AI 고르기에 보인다). 쓸 수 있으면 undefined (shared/ai/ticket-gate.ts) */
+  const aiBlock = (): TicketBlock | undefined =>
+    ticketBlock({
+      enabled: enabled(),
+      age: st.age,
+      serverReady: allowed(),
+      signedIn: !!d.session.get(),
+      access: st.aiAccess,
+      tickets: st.tickets,
+    });
   /** 운영자 계정인가 (#101): 세션이 있고 서버가 운영자라고 했다 */
   const isAdmin = () => allowed() && !!d.session.get() && st.admin;
 
@@ -1249,6 +1260,7 @@ export function createServerCore(d: ServerCoreDeps) {
     login: startLogin,
     cancelLogin,
     aiAvailable,
+    aiBlock,
     /** 남은 대화권 사본 (쓸 수 없으면 null) */
     tickets: () => (aiAvailable() ? st.tickets : null),
     aiAgreed: () => st.aiAgreed,

@@ -982,6 +982,31 @@ header .picker.ticket {
   }
 }
 
+/* 채팅 이용권 줄: 늘 맨 위. 못 쓰면 흐리게 두고 이름 아래에 까닭과 길을 한 줄씩 */
+.picker-menu button.ticket-row {
+  flex-wrap: wrap;
+}
+
+.picker-menu button.ticket-row.blocked {
+  opacity: 0.62;
+  cursor: default;
+}
+
+.picker-menu button.ticket-row.blocked:hover {
+  background: transparent;
+}
+
+.picker-menu .ticket-why {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 16px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .picker-menu hr {
   margin: 4px 6px;
   border: 0;

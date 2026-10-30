@@ -1,6 +1,7 @@
 // 채팅 상태. 메인이 들고 있고 채팅 창은 그림만 그린다. 창을 닫았다 열어도 대화가 남는다.
 
 import type { Exchange } from './ai/text.ts';
+import type { TicketBlock } from './ai/ticket-gate.ts';
 import type { AiError, AiEvent, AiProvider } from './ai/types.ts';
 import type { AiUsage } from './ai/usage.ts';
 import { cutText } from './cut-text.ts';
@@ -45,6 +46,8 @@ export interface ChatState {
   modelDownload?: { pct: number; failed?: boolean; message?: string };
   /** AI 대화권 (#100, 쓸 수 있을 때만): 남은 수(아직 모르면 null)와 국외 이전 안내를 읽었는지. 파일에 남기지 않는다 */
   ticket?: { tickets: number | null; agreed: boolean };
+  /** AI 고르기의 채팅 이용권 줄 (늘 보인다): 못 쓰는 까닭(없으면 쓸 수 있다)과 남은 장수. 파일에 남기지 않는다 */
+  ticketGate?: { block?: TicketBlock; tickets: number | null };
 }
 
 /** 대화가 이만큼 길어지면 새 대화를 권한다. 이어갈수록 입력 토큰이 쌓인다(L8: codex 2번째에 54K). */
