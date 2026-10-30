@@ -171,6 +171,8 @@ export function openRemembered(key: WindowKey, o: RememberedWindow): BrowserWind
     ...where,
     minWidth: o.min.width,
     minHeight: o.min.height,
+    // 맥에서 앱이 뒤에 있다가 누른 첫 클릭도 단추에 닿게 (펫 앱은 Dock 이 없어 다른 앱에서 돌아오는 일이 잦다)
+    acceptFirstMouse: true,
     ...o.options,
   });
   trackWindow(win, o.min);
@@ -188,6 +190,8 @@ export function openRememberedBase(
     ...where,
     minWidth: o.min.width,
     minHeight: o.min.height,
+    // 맥에서 앱이 뒤에 있다가 누른 첫 클릭도 단추에 닿게 (펫 앱은 Dock 이 없어 다른 앱에서 돌아오는 일이 잦다)
+    acceptFirstMouse: true,
     ...o.options,
   });
   trackWindow(win, o.min);
