@@ -74,3 +74,8 @@ export function explicitPick(
 ): string | undefined {
   return file?.pickedAfterTicket === true && typeof file.provider === 'string' ? file.provider : undefined;
 }
+
+/** 서버 계정이 붙기 전에는 아직 모름으로 본다. 붙은 뒤의 undefined(쓸 수 있음)는 그대로 둔다 */
+export function blockOf(core: { aiBlock(): TicketBlock | undefined } | undefined): TicketBlock | undefined {
+  return core ? core.aiBlock() : 'checking';
+}

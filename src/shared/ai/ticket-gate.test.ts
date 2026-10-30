@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  blockOf,
   canSendTicket,
   chooseDefault,
   explicitPick,
@@ -82,4 +83,10 @@ test('저장값: 이용권 도입 뒤 직접 고른 것만 명시 선택', () =>
   assert.equal(pick({ provider: 'claude', pickedAfterTicket: true }), 'saved');
   assert.equal(explicitPick({ provider: 'gemini', pickedAfterTicket: true }), 'gemini');
   assert.equal(explicitPick({ pickedAfterTicket: true }), undefined);
+});
+
+test('서버 계정이 붙은 뒤 쓸 수 있으면 막지 않는다', () => {
+  assert.equal(blockOf({ aiBlock: () => undefined }), undefined);
+  assert.equal(blockOf({ aiBlock: () => 'empty' }), 'empty');
+  assert.equal(blockOf(undefined), 'checking');
 });

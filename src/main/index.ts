@@ -6,6 +6,7 @@ import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
+import { blockOf } from '../shared/ai/ticket-gate.ts';
 import { cutText } from '../shared/cut-text.ts';
 import { plusDays } from '../shared/day.ts';
 import { aiEventFilter } from '../shared/event-store.ts';
@@ -294,7 +295,7 @@ ready
       ticket: {
         available: () => !!serverCore?.aiAvailable(),
         tickets: () => serverCore?.tickets() ?? null,
-        block: () => serverCore?.aiBlock() ?? 'checking',
+        block: () => blockOf(serverCore),
         agreed: () => !!serverCore?.aiAgreed(),
         agree: () => serverCore?.agreeAi(),
         ask: (body, onText, signal) =>
