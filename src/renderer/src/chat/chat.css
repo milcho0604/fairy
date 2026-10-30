@@ -167,14 +167,22 @@ header .picker {
   cursor: default;
 }
 
+/* 머리줄의 눌릴 수 없는 단추(빈 대화의 새 대화)는 흐려도 글자는 4.5:1 을 지킨다. 투명도 대신 흐린 글자색 */
+header .ghost:disabled {
+  opacity: 1;
+  color: var(--muted);
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+}
+
 .usage {
   display: grid;
   grid-template-columns: auto 64px auto 1fr;
-  align-items: center;
+  align-items: start;
   gap: 3px 8px;
   margin: 0;
   padding: 6px 12px;
   font-size: 11.5px;
+  line-height: 16px;
   color: var(--muted);
   border-bottom: 1px solid var(--line);
   background: var(--panel);
@@ -190,6 +198,8 @@ header .picker {
 
 .meter .track {
   width: 100%;
+  /* 한 줄 높이(16px) 가운데에 막대를 둔다. 리셋 글자가 두 줄로 꺾여도 막대 위치는 줄마다 같다 */
+  margin-top: 5.5px;
   height: 5px;
   border-radius: 3px;
   background: var(--code);
@@ -561,6 +571,49 @@ header .picker {
 .bubble pre code {
   padding: 0;
   background: none;
+}
+
+/* 가로로 밀리는 코드 블록과 표는 밀릴 수 있는 쪽 끝에만 옅은 그림자를 보인다 (밀리지 않으면 안 보임, 덮개를 local 로 깔아 끝에 닿으면 가려진다) */
+.bubble pre {
+  background:
+    linear-gradient(to right, var(--code) 30%, transparent) left / 24px 100% local no-repeat,
+    linear-gradient(to left, var(--code) 30%, transparent) right / 24px 100% local no-repeat,
+    linear-gradient(to right, rgba(128, 128, 128, 0.35), transparent) left / 10px 100% scroll no-repeat,
+    linear-gradient(to left, rgba(128, 128, 128, 0.35), transparent) right / 10px 100% scroll no-repeat,
+    var(--code);
+}
+
+.md-table-wrap {
+  background:
+    linear-gradient(to right, var(--pet) 30%, transparent) left / 24px 100% local no-repeat,
+    linear-gradient(to left, var(--pet) 30%, transparent) right / 24px 100% local no-repeat,
+    linear-gradient(to right, rgba(128, 128, 128, 0.35), transparent) left / 10px 100% scroll no-repeat,
+    linear-gradient(to left, rgba(128, 128, 128, 0.35), transparent) right / 10px 100% scroll no-repeat;
+}
+
+.md-table-wrap {
+  margin: 6px 0;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.md-table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.md-table th,
+.md-table td {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-table th {
+  background: var(--code);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .bubble.error {

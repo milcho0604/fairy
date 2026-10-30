@@ -65,6 +65,24 @@
   text-decoration: line-through;
 }
 
+/* 됨은 V, 안 됨은 X 를 앞에 붙여 색을 못 알아봐도 읽힌다 (읽어 주는 도구에는 숨은 글이 따로 있다) */
+.ai-chips li.cap::before {
+  margin-right: 4px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.ai-chips li.cap.on::before {
+  content: "\2713";
+  color: var(--ok);
+}
+
+.ai-chips li.cap.off::before {
+  content: "\2715";
+  color: var(--error);
+}
+
 /* 됨, 안 됨 글자는 화면에서는 숨기고 읽어 주는 도구에만 */
 .sr-or-text {
   position: absolute;

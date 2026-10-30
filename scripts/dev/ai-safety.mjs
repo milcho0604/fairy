@@ -343,7 +343,7 @@ const rowsNow = async () =>
   JSON.parse(await st.ev(`JSON.stringify(Object.fromEntries([...document.querySelectorAll('.ai-cap')].map((l) => [l.dataset.ai, l.dataset.state])))`));
 let rows = await rowsNow();
 check('AI 탭: 감지 표시가 시작 안내와 같다', JSON.stringify(rows) === JSON.stringify({ claude: 'found', codex: 'found', cursor: 'login', gemini: 'found-unchecked', local: 'missing' }), JSON.stringify(rows));
-const chips = JSON.parse(await st.ev(`JSON.stringify(Object.fromEntries([...document.querySelectorAll('.ai-cap')].map((l) => [l.dataset.ai, [...l.querySelectorAll('.ai-chips li')].map((c) => c.className || 'on')])))`));
+const chips = JSON.parse(await st.ev(`JSON.stringify(Object.fromEntries([...document.querySelectorAll('.ai-cap')].map((l) => [l.dataset.ai, [...l.querySelectorAll('.ai-chips li')].map((c) => c.className.replace('cap ', '') || 'on')])))`));
 check('AI 탭: 화면 보기는 Claude, Codex 만 됨, 페어리 도구도 같다', chips.claude[2] === 'on' && chips.codex[2] === 'on' && chips.cursor[2] === 'off' && chips.gemini[3] === 'off' && chips.local[2] === 'off', JSON.stringify(chips));
 await st.ev(`document.querySelector('.ai-caps').scrollIntoView({ block: 'start' })`);
 await st.shot('settings-ai-caps');
