@@ -297,7 +297,7 @@ try {
     const viewsBefore = Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'report.view'`));
     await submitAndWait('.report-open form[action="/admin/reports/status"]:nth-of-type(1)');
     check('"확인했어요" 를 누르면 확인 상태와 처리자가 DB 에 남는다', sql(`SELECT status || '|' || handled_name FROM ai_report WHERE id = ${id1}`) === 'seen|웹 운영자');
-    check('쓰기 뒤에는 열람 주소로 돌아가지 않는다 (열람 기록이 늘지 않음)', !(await ev(`location.search.includes('report=')`)) && Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'report.view'`)) === viewsBefore);
+    check('쓰기 뒤에는 처리한 신고가 열려 있고 열람 기록이 한 번만 늘어난다', (await ev(`location.search.includes('report=${id1}')`)) === true && Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'report.view'`)) === viewsBefore + 1);
     check('결과 글이 신고 칸에 보인다', (await cellText()).includes(`신고 #${id1} 를 확인으로 표시했어요`));
     await shot('reports-after-seen-1280', '#cell-reports');
     // 낡은 화면: 열어 둔 채 다른 곳에서 바뀌면 거절

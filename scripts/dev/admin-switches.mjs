@@ -260,21 +260,25 @@ try {
         })()`);
         check(`[${tag}] 상태 태그와 보조 글 대비 4.5 이상`, contrast.length > 0 && contrast.every((x) => x >= 4.5), JSON.stringify(contrast));
 
-        // ---- 예산, 정책, 백업이 한 칸 ----
+        // ---- 예산, 정책 칸과 백업 칸 ----
         await nav(`${apiUrl}/admin#settings/ai`);
         await shot(`config-${tag}`, '#sub-settings-ai');
         const cfg = await ev(`document.querySelector('#sub-settings-ai').innerText`);
-        check(`[${tag}] 한 칸에 예산, 정책, 백업 현황`, cfg.includes('예산과 정책') && cfg.includes('정책 저장') && cfg.includes('백업 현황') && cfg.includes('이용자 서버 백업'));
-        check(`[${tag}] 설정 아래 칸은 셋 (기능 스위치, 예산 정책 백업, 운영 기록)`, (await ev(`document.querySelectorAll('#cell-settings .subnav a').length`)) === 3);
+        check(`[${tag}] 예산 정책 칸에 백업은 없다`, cfg.includes('예산과 정책') && cfg.includes('정책 저장') && !cfg.includes('이용자 서버 백업'));
+        await nav(`${apiUrl}/admin#settings/backup`);
+        await shot(`backup-${tag}`, '#sub-settings-backup');
+        const bk = await ev(`document.querySelector('#sub-settings-backup').innerText`);
+        check(`[${tag}] 백업 칸에 백업 현황과 이용자 서버 백업`, bk.includes('백업 현황') && bk.includes('이용자 서버 백업') && !bk.includes('정책 저장'));
+        check(`[${tag}] 설정 아래 칸은 넷 (기능 스위치, 예산 정책, 백업, 운영 기록)`, (await ev(`document.querySelectorAll('#cell-settings .subnav a').length`)) === 4);
         check(`[${tag}] 예산 칸 가로 넘침 없음`, await overflow());
       }
     }
     await size(1280, 900);
     await scheme(false);
 
-    // ---- 옛 주소 #settings/backup 은 같은 칸 ----
+    // ---- #settings/backup 은 백업 칸 ----
     await nav(`${apiUrl}/admin#settings/backup`);
-    check('#settings/backup 주소가 예산, 정책, 백업 칸을 연다', (await ev(`getComputedStyle(document.querySelector('#sub-settings-ai')).display`)) !== 'none' && (await ev(`document.querySelector('.subnav a[aria-current=page]').dataset.sub`)) === 'settings/ai');
+    check('#settings/backup 주소가 백업 칸을 연다', (await ev(`getComputedStyle(document.querySelector('#sub-settings-backup')).display`)) !== 'none' && (await ev(`document.querySelector('.subnav a[aria-current=page]').dataset.sub`)) === 'settings/backup');
 
     // ---- 확인 없이는 제출할 수 없다 ----
     await nav(`${apiUrl}/admin#settings/features`);
@@ -287,7 +291,7 @@ try {
     await submitAndWait(formIn('coin_reset', 'change'));
     check('바꾸면 DB 의 모드가 바뀐다', modeOf('coin_reset') === 'everyone');
     check('운영 기록에 이전 값과 바뀐 값이 남는다', Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'feature.mode'`)) === logsBefore + 1 && sql(`SELECT detail::text FROM admin_log WHERE action = 'feature.mode' ORDER BY id DESC LIMIT 1`).includes('"before": "off"'));
-    check('결과 글이 그 줄 안에 보이고 설정 칸에 머문다', (await rowText('coin_reset')).includes('coin_reset 모드: off → everyone') && (await ev(`location.hash`)).startsWith('#settings/features'));
+    check('결과 글이 그 줄 안에 보이고 설정 칸에 머문다', (await rowText('coin_reset')).includes('코인 초기화를 끔에서 모두로 바꿨어요') && (await ev(`location.hash`)).startsWith('#settings/features'));
     check('바뀐 줄에 이전 값(끔)과 되돌리기가 생긴다', (await rowText('coin_reset')).includes('이전 값: 끔') && (await ev(`!!document.querySelector(${JSON.stringify(formIn('coin_reset', 'undo'))})`)));
     await shot('features-after-change-1280', '#sub-settings-features');
 
@@ -321,7 +325,7 @@ try {
 
     // ---- 허용 계정 ----
     await nav(`${apiUrl}/admin#settings/features`);
-    check('허용 계정 칸이 기능마다 있다 (채팅 이용권은 예산 칸에)', (await ev(`document.querySelectorAll('details.allow').length`)) === 7);
+    check('허용 계정 칸이 기능마다 있다 (채팅 이용권은 예산 칸에)', (await ev(`document.querySelectorAll('details.allow').length`)) === 8, String(await ev(`document.querySelectorAll('details.allow').length`)));
 
     // ---- 보안 머리, 인라인 없음 ----
     const head = await fetch(`${apiUrl}/admin`);

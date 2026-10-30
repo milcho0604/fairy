@@ -19,7 +19,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'sha256-08pQB1PPC52+4enxOd3mSPgSNC+goZlq6UUGzMEmUDU=' 'sha256-bCJXrDO9pIqBAxdmnSRYRQKcozJwZxMYOae8dtrY/Z8=' 'sha256-rRE0tOOD3lt2/Q0ynxMwE6fqCMbVi/IfF8wVHPMs2DY='; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'sha256-1pKl673/A49RmgwKTBx/0qnSCXgrNhRJzwqVQhN7Imo=' 'sha256-6bXlwI8uooaxFNmRswH5aQb2V/C7gNfPQYUiexKg3ds=' 'sha256-kENu1SAoukZpg4/G7TcGniaraBhvckZH5vNqT0Qq4Bw='; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
         },
         {
           "key": "Referrer-Policy",
