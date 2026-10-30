@@ -41,8 +41,13 @@ jobs:
             echo "app=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           app=$(printf '%s\n' "$files" | grep -vE '^(server/|docs/|site/|\.github/workflows/(server-[^/]*|site)\.yml$|\.github/ISSUE_TEMPLATE/|LICENSE$)|\.md$' | grep -c . || true)
-          # 앱 시험이 글로 읽는 서버 파일 (src/shared/admin-web.test.ts). 이것만 바뀌어도 앱 검사를 돌린다
-          read=$(printf '%s\n' "$files" | grep -cxF 'server/src/admin-page.ts' || true)
+          # 앱 시험이 글로 읽는 server/ 파일(scripts/ci/app-reads-server.mjs 가 src/**/*.test.ts 에서 찾는다)이 바뀌어도 앱 검사를 돌린다.
+          # 찾는 쪽이 못 푸는 형식을 만나면(종료 코드 2) 안전하게 앱 검사를 돌린다
+          if ! node scripts/ci/app-reads-server.mjs > "$RUNNER_TEMP/app-reads.txt"; then
+            echo "앱 시험이 읽는 서버 파일을 다 풀지 못했다. 앱 검사를 돌린다"
+            echo "app=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          read=$(printf '%s\n' "$files" | grep -cxFf "$RUNNER_TEMP/app-reads.txt" || true)
           app=$((app + read))
           echo "앱에 닿는 파일 $app 개"
           [ "$app" -gt 0 ] && echo "app=true" >> "$GITHUB_OUTPUT" || echo "app=false" >> "$GITHUB_OUTPUT"
