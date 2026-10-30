@@ -90,7 +90,7 @@ const long = tx('아주 긴 일정 제목이 두 줄 세 줄로 꺾여도 세로
 await main("__jj.panel.togglePanel(); 1");
 await sleep(1800);
 await main("__jj.panel.window.removeAllListeners('blur'); 1");
-const p = await a.page('panel');
+let p = await a.page('panel');
 await p.dark(DARK);
 const rect = (sel) => p.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom, w: r.width, h: r.height }; })()`);
 
@@ -111,37 +111,75 @@ for (const w of [320, 360, 560]) {
   }
 }
 
-// ---- 일정 긴 제목 ----
-{
-  for (const w of [320, 360]) {
-    await setW(w);
-    await main("__jj.panel.openTab('event'); 1");
-    await sleep(700);
-    const m = JSON.parse(await p.ev(`(() => { document.querySelector('.event .end-time input')?.blur(); const t = document.querySelector('.events .title'); const e = document.querySelector('.event .end-time'); const i = e?.querySelector('input'); return JSON.stringify({ tw: t?.getBoundingClientRect().width, th: t?.getBoundingClientRect().height, ew: e?.getBoundingClientRect().width, none: e?.classList.contains('none'), hov: e?.closest('.event')?.matches(':hover'), fw: e?.matches(':focus-within'), ae: document.activeElement?.tagName, disp: i && getComputedStyle(i).display, vis: i && getComputedStyle(i).visibility }); })()`));
-    check(`일정 ${w}px: 끝 시각 단추가 자리를 먹지 않는다`, m.none && m.ew < 2, JSON.stringify(m));
-    check(`일정 ${w}px: 긴 제목 폭이 120 이상`, m.tw >= 120, String(m.tw));
-    check('일정: 입력은 키보드로 닿는다 (숨기지 않음)', m.disp !== 'none' && m.vis !== 'hidden');
-    await p.shot(`${TAG}-event-${LANG}-${DARK ? 'd' : 'l'}-w${w}`);
-    if (w === 360) {
-      // Tab 키로 제목 단추에서 끝 시각 칸까지 닿는다 (CDP 키 입력, 진짜 키보드가 아님)
-      await p.ev(`document.querySelector('.events .title').focus(); 1`);
-      let reached = false;
-      for (let k = 0; k < 8 && !reached; k++) {
-        await p.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
-        await p.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
-        await sleep(120);
-        reached = await p.ev(`document.activeElement?.closest('.end-time') !== null && document.activeElement?.tagName === 'INPUT'`);
-      }
-      check('일정: Tab 키로 끝 시각 칸에 닿는다', reached);
-      await p.ev(`document.querySelector('.event .end-time input').blur(); 1`);
-      // 초점이 남은 채로 다음 폭을 재면 흐려지지 않으니 마지막 폭에서 한 번만 본다
-      await p.ev(`document.querySelector('.event .end-time input').focus(); 1`);
-      await sleep(200);
-      const f = JSON.parse(await p.ev(`(() => { const e = document.querySelector('.event .end-time'); return JSON.stringify({ w: e.getBoundingClientRect().width, o: getComputedStyle(e).opacity }); })()`));
-      check(`일정 ${w}px: 초점이 가면 펴져 보인다`, f.w > 40 && Number(f.o) > 0.5, JSON.stringify(f));
-      await p.shot(`${TAG}-event-focus-${LANG}-${DARK ? 'd' : 'l'}-w${w}`);
-    }
+// ---- 일정 긴 제목: 끝 시각 칸은 줄 흐름에 자리가 없고, 올려도 제목 폭과 줄 높이가 그대로 ----
+const eventGeom = (pg) =>
+  pg.ev(`(() => { const li = document.querySelector('.event'); const t = li.querySelector('.title, .title-edit'); const e = li.querySelector('.end-time'); const tr = t.getBoundingClientRect(); const er = e.getBoundingClientRect(); const cs = getComputedStyle(e); return JSON.stringify({ tw: Math.round(tr.width * 10) / 10, th: Math.round(tr.height * 10) / 10, lh: Math.round(li.getBoundingClientRect().height * 10) / 10, op: Number(cs.opacity), pos: cs.position, ex: er.x, eb: er.bottom, er: er.right, ew: er.width, vw: innerWidth, vh: innerHeight }); })()`).then(JSON.parse);
+const mouseTo = async (pg, x, y) => {
+  await pg.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  await sleep(350);
+};
+async function eventChecks(pg, label, shot) {
+  await pg.ev(`document.activeElement?.blur(); 1`);
+  await mouseTo(pg, 2, 2);
+  const g0 = await eventGeom(pg);
+  check(`${label}: 평소에는 끝 시각 칸이 안 보이고 줄 흐름 밖`, g0.op === 0 && g0.pos === 'absolute', JSON.stringify(g0));
+  check(`${label}: 긴 제목 폭이 120 이상`, g0.tw >= 120, String(g0.tw));
+  const c = JSON.parse(await pg.ev(`(() => { const r = document.querySelector('.event .title').getBoundingClientRect(); return JSON.stringify([r.x + 10, r.y + 6]); })()`));
+  await mouseTo(pg, c[0], c[1]);
+  const g1 = await eventGeom(pg);
+  check(`${label}: 올려도 제목 폭이 같다`, g1.tw === g0.tw, `${g0.tw} ${g1.tw}`);
+  check(`${label}: 올려도 제목 줄 높이와 줄 높이가 같다`, g1.th === g0.th && g1.lh === g0.lh, `${g0.th}/${g0.lh} ${g1.th}/${g1.lh}`);
+  check(`${label}: 올리면 끝 시각 칸이 보이고 화면 안에 있다`, g1.op === 1 && g1.ex >= 0 && g1.er <= g1.vw + 0.5 && g1.eb <= g1.vh + 40, JSON.stringify(g1));
+  await pg.shot(`${TAG}-event-hover-${shot}-${LANG}-${DARK ? 'd' : 'l'}`);
+  await mouseTo(pg, 2, 2);
+  // 마우스 없이: 줄의 제목을 눌러 고치는 중이면(초점이 줄 안) 끝 시각 칸이 보인다
+  await pg.ev(`document.querySelector('.event .title').click(); 1`);
+  await sleep(300);
+  const g2 = await eventGeom(pg);
+  check(`${label}: 줄을 눌러 고치는 중에도 끝 시각 칸이 보인다`, g2.op === 1, JSON.stringify(g2));
+  await pg.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await pg.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await pg.ev(`document.activeElement?.blur(); 1`);
+  await sleep(200);
+  // Tab 키로 제목 단추에서 끝 시각 칸까지 닿는다 (CDP 키 입력, 진짜 키보드가 아님)
+  await pg.ev(`document.querySelector('.event .title').focus(); 1`);
+  let reached = false;
+  for (let k = 0; k < 8 && !reached; k++) {
+    await pg.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    await pg.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    await sleep(120);
+    reached = await pg.ev(`document.activeElement?.closest('.end-time') !== null && document.activeElement?.tagName === 'INPUT'`);
   }
+  check(`${label}: Tab 키로 끝 시각 칸에 닿고 보인다`, reached && (await eventGeom(pg)).op === 1);
+  await pg.ev(`document.activeElement?.blur(); 1`);
+}
+for (const w of [320, 360]) {
+  await setW(w);
+  await main("__jj.panel.openTab('event'); 1");
+  await sleep(800);
+  await eventChecks(p, `일정 작은 패널 ${w}`, `w${w}`);
+}
+{
+  await main("__jj.panel.window.close(); 1");
+  await sleep(500);
+  await main("__jj.home.open('event'); 1");
+  await sleep(1800);
+  await main('__jj.home.window.setSize(760, 760); 1');
+  await sleep(700);
+  const h = await a.page('home');
+  await h.dark(DARK);
+  if (!(await h.ev(`!!document.querySelector('.event')`))) {
+    await h.ev(`[...document.querySelectorAll('button')].find((b) => /^(목록|List)$/.test(b.textContent.trim()))?.click(); 1`);
+    await sleep(500);
+  }
+  await eventChecks(h, '일정 큰 창 760', 'big760');
+  await main('__jj.home.window.close(); 1');
+  await sleep(500);
+  await main('__jj.panel.togglePanel(); 1');
+  await sleep(1500);
+  await main("__jj.panel.window.removeAllListeners('blur'); 1");
+  p = await a.page('panel');
+  await p.dark(DARK);
 }
 
 // ---- 쪽지함 칩 줄과 덮개 닫기 ----
@@ -192,7 +230,11 @@ for (const w of [320, 360, 560]) {
   if (built) {
     await p.ev(`document.querySelector('.shop').scrollTop = 99999; 1`);
     await sleep(300);
+    const mb = () => p.ev(`getComputedStyle(document.querySelector('.house-styles')).marginBottom`);
+    check('상점: 안내가 없으면 집 모양 아래에 빈칸을 남기지 않는다', (await mb()) === '0px', await mb());
     await click('.house-styles li:not(.using) .ghost.buy');
+    await sleep(300);
+    check('상점: 안내가 떠 있을 때만 그 자리를 비운다', (await mb()) === '64px', await mb());
     await sleep(500);
     const ov = JSON.parse(await p.ev(`(() => { const a = document.querySelector('.shop small.need.ask'); if (!a) return JSON.stringify({ none: true }); const ar = a.getBoundingClientRect(); const sh = document.querySelector('.shop').getBoundingClientRect(); const hit = [...document.querySelectorAll('.shop small.need:not(.ask), .shop small')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.height && r.right > ar.left && r.left < ar.right && r.bottom > ar.top && r.top < ar.bottom && !e.classList.contains('ask'); }).map((e) => e.textContent.slice(0, 20)); const btns = [...document.querySelectorAll('.house-styles li')].map((l) => l.getBoundingClientRect()); const cardHit = btns.some((r) => r.right > ar.left && r.left < ar.right && r.bottom > ar.top + 1 && r.top < ar.bottom); return JSON.stringify({ hit, cardHit, top: ar.top, bottom: ar.bottom, shTop: sh.top, shBottom: sh.bottom, text: a.textContent }); })()`));
     check('집 모양 안내 상자가 다른 글을 가리지 않는다', !ov.none && ov.hit.length === 0 && !ov.cardHit, JSON.stringify(ov));

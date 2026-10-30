@@ -110,7 +110,12 @@ export function ShopTab({ s }: { s: PanelState }) {
       <div className="shop-slot" role="status">
         {msg && <p className={`shop-msg ${msg.bad ? 'bad' : ''}`}>{msg.text}</p>}
       </div>
-      <div className="scroll shop" ref={scroller} data-ask-up={askUp || undefined}>
+      <div
+        className="scroll shop"
+        ref={scroller}
+        data-ask-up={askUp || undefined}
+        data-ask-style={ask.startsWith('style:') || undefined}
+      >
         <section>
           <h2>{t('shop.foods')}</h2>
           <ul className="goods">

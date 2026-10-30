@@ -1783,7 +1783,7 @@ li.pin-end {
 }
 
 /* 집 모양 안내는 늘 목록 아래 빈 자리에 뜬다(위로 뜨면 위 줄의 이유 글을 가린다). 그 자리를 미리 비워 둔다 */
-.shop .house-styles {
+.shop[data-ask-style] .house-styles {
   margin-bottom: 64px;
 }
 
