@@ -136,7 +136,7 @@
 
 Vercel 은 `site-prod` 브랜치만 배포한다(`site/vercel.json` 의 `git.deploymentEnabled`). main 머지와 PR 은 Vercel 배포를 만들지 않는다. 무료 요금제 하루 배포 100번 한도를 PR 미리보기와 main 머지가 다 써서 막힌 일이 있었다(2026-10-29). Vercel 프로젝트 설정 Environments → Production 의 브랜치가 `site-prod` 여야 한다.
 
-`site-prod` 는 Actions `site-release.yml` 만 옮긴다. 직접 커밋하지 않는다.
+`site-prod` 는 보호 브랜치다(규칙 "Protect site-prod": 삭제와 강제 push 금지, 관리자만 예외). Actions `site-release.yml` 만 옮기고, 지금 `site-prod` 위에 커밋을 얹어 앞으로만 쌓는다(둘째 부모가 내보낸 main 커밋). 직접 커밋하지 않는다. 되돌릴 때는 이 워크플로를 옛 태그나 커밋으로 돌린다.
 
 - 릴리스 태그 `v*` 를 올리면 그 태그 커밋으로 옮긴다. 홈페이지 글은 나간 앱과 맞춘다.
 - 앱 릴리스 전에 홈페이지를 내야 하면(개인정보처리방침 고침 같은 것) Actions → site-release → Run workflow 에서 `ref` 를 `main` 으로 두고 돌린다. main 에 들어간 커밋만 고를 수 있다. 바뀐 것이 없어도 다시 배포하려면 `again` 을 켠다.
