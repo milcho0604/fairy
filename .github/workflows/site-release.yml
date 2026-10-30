@@ -7,7 +7,7 @@
 # - 운영 공지와 이벤트(site/events.json, notices.json)가 main 에 들어올 때(사람이 머지한 bot/site-feeds PR),
 #   또는 site-feeds 가 이것을 feeds 로 부를 때: site-prod 글은 그대로 두고 두 파일만 얹는다
 # 어느 경우든 끝에 main 의 공지와 이벤트 파일을 얹는다 (앱이 읽는 운영 파일은 늘 main 과 같다).
-# site-prod 는 main 의 커밋을 가리키는 표시일 뿐이라 강제로 옮긴다. 여기에 직접 커밋하지 않는다.
+# site-prod 는 보호 브랜치(강제 push, 삭제 금지)라 이 워크플로가 앞으로만 쌓는다. 여기에 직접 커밋하지 않는다.
 # 액션은 커밋 SHA 로 고정한다 (check.yml 과 같은 판).
 name: site-release
 
@@ -70,7 +70,13 @@ jobs:
             echo "::notice title=site-release::바뀐 것이 없어요"
             exit 0
           fi
-          # 늘 새 커밋을 얹는다. Vercel 은 이미 본 커밋(main 에서 배포를 건너뛴 것)을 가리키는 push 에는 배포를 만들지 않는다
-          git commit -q --allow-empty -m "site: $(git rev-parse --short "$base") 내보내기" -m "기준 $(git rev-parse --short "$base"), 공지와 이벤트는 main $(git rev-parse --short origin/main)"
-          git push -q --force origin HEAD:refs/heads/site-prod
+          # 늘 새 커밋을 얹는다. Vercel 은 이미 본 커밋(main 에서 배포를 건너뛴 것)을 가리키는 push 에는 배포를 만들지 않는다.
+          # site-prod 는 강제 push 와 삭제가 막힌 보호 브랜치라, 지금 site-prod 를 첫 부모로 둔 커밋을 만들어 앞으로만 쌓는다
+          # (둘째 부모는 내보낸 main 커밋. 되돌릴 때는 이 워크플로를 옛 커밋으로 돌린다)
+          tree=$(git write-tree)
+          parents="-p $base"
+          if [ -n "$prod" ] && [ "$prod" != "$base" ]; then parents="-p $prod -p $base"; fi
+          new=$(git commit-tree "$tree" $parents -m "site: $(git rev-parse --short "$base") 내보내기" -m "기준 $(git rev-parse --short "$base"), 공지와 이벤트는 main $(git rev-parse --short origin/main)")
+          git push -q origin "$new:refs/heads/site-prod"
+          git switch -q --detach "$new"
           echo "::notice title=site-release::site-prod 를 $(git rev-parse --short HEAD) 로 옮겼어요 (기준 $(git rev-parse --short "$base"))"
