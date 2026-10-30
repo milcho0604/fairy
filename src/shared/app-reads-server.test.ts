@@ -64,13 +64,15 @@ test('안전: 파일을 읽으면서 server 경로 글자를 쓰는 src 시험�
     /readFileSync|readdirSync|readFile\b|readdir\b|existsSync|statSync|import\.meta\.(dirname|url)/;
   const serverPath = /['"`]server['"`]|['"`/\\]server[/\\]/;
   let checked = 0;
-  for (const f of tests) {
+  for (const raw of tests) {
+    // 윈도우의 readdirSync 는 \ 로 이어 준다
+    const f = raw.split('\\').join('/');
     const text = readFileSync(join(REPO, 'src', f), 'utf8');
     if (f === 'shared/app-reads-server.test.ts') continue;
     if (!reads.test(text) || !serverPath.test(text)) continue;
     checked++;
     assert.ok(
-      reported.has(`src/${f.split('\\').join('/')}`),
+      reported.has(`src/${f}`),
       `${f}: 서버 경로를 쓰는데 app-reads-server.mjs 가 못 잡았다`,
     );
   }
