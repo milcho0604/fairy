@@ -541,6 +541,7 @@ mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox=
 .nf { min-height: 60vh; display: grid; place-items: center; text-align: center; padding: 80px 16px; }
 .friend-code { font-size: 1.6rem; font-weight: 700; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
 .friend-act { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.friend-act[hidden] { display: none; }
 .friend-note { max-width: 34em; margin-left: auto; margin-right: auto; color: var(--muted); }
 .friend-missing { margin: 20px auto 0; max-width: 34em; padding: 20px 22px; border-radius: var(--r-lg); background: var(--tint); }
 .friend-missing p { margin: 0 0 10px; }
@@ -686,7 +687,7 @@ html { scroll-behavior: auto; }
   <div>
     <div class="kong-still" role="img" aria-label="페어리 콩이" data-i18n-attr="aria-label:a11y.kongStill"></div>
     <h1 class="h2" data-i18n="fr.title">친구 신청이 왔어요</h1>
-    <p data-i18n="fr.body">페어리 친구 코드예요. 페어리에서 열면 설정의 데이터와 계정 탭 친구 칸에 이 코드가 들어가요.</p>
+    <p data-friend-only data-i18n="fr.body">페어리 친구 코드예요. 페어리에서 열면 설정의 데이터와 계정 탭 친구 칸에 이 코드가 들어가요.</p>
     <p class="friend-code" data-friend-code hidden></p>
     <p class="friend-bad" data-friend-bad hidden data-i18n="fr.bad">코드가 들어 있지 않은 링크예요. 링크를 다시 받아 주세요.</p>
     <p class="friend-act" data-friend-act hidden>
@@ -701,7 +702,7 @@ html { scroll-behavior: auto; }
       <p class="friend-guide" data-friend-guide="ok" hidden role="status" data-i18n="fr.guide">코드를 복사해 뒀어요. 설치한 뒤 설정 &gt; 데이터와 계정 &gt; 친구에 붙여 넣어요.</p>
       <p class="friend-guide" data-friend-guide="fail" hidden role="status" data-i18n="fr.guideFail">코드를 복사하지 못했어요. 위 코드를 길게 눌러 복사한 뒤, 설치하고 설정 &gt; 데이터와 계정 &gt; 친구에 붙여 넣어요.</p>
     </div>
-    <p class="friend-note" data-i18n="fr.note">페어리가 없거나 열리지 않으면 페어리를 설치하고 설정 &gt; 데이터와 계정 &gt; 친구 칸에 이 코드를 붙여 넣어 신청해요. 친구 기능은 로그인한 만 14세 이상만 쓸 수 있어요.</p>
+    <p class="friend-note" data-friend-only data-i18n="fr.note">페어리가 없거나 열리지 않으면 페어리를 설치하고 설정 &gt; 데이터와 계정 &gt; 친구 칸에 이 코드를 붙여 넣어 신청해요. 친구 기능은 로그인한 만 14세 이상만 쓸 수 있어요.</p>
     <p><a href="/#download" data-i18n="fr.get">페어리 받기</a></p>
   </div>
 </main>

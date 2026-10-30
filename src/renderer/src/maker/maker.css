@@ -49,6 +49,27 @@ header {
   padding-left: 80px;
 }
 
+header > strong {
+  /* 제목이 두 줄로 접혀 단계 표시에 붙지 않게 (좁은 창은 아래 규칙이 단계 글을 줄인다) */
+  min-width: 0;
+}
+
+/* 좁은 창(560 이하): 지금 단계만 이름을 보이고 나머지는 번호만 둔다. 영어 제목 "Make a fairy from a photo" 가 한 줄로 남는다 */
+@media (max-width: 560px) {
+  .steps {
+    gap: 8px;
+  }
+
+  .steps li:not(.on) {
+    font-size: 0;
+    gap: 0;
+  }
+
+  .steps li:not(.on) span {
+    font-size: 11px;
+  }
+}
+
 .steps {
   display: flex;
   gap: 12px;
@@ -219,13 +240,20 @@ section {
     var(--panel);
 }
 
+/* 좁은 창에서는 아래 안내 글이 두세 줄로 꺾여 다 됐어 줄이 글을 덮었다(en 480). 그만큼 사진을 더 줄인다 */
+@media (max-width: 560px) {
+  .canvas-wrap canvas {
+    --chrome: 370px;
+  }
+}
+
 .canvas-wrap canvas {
   display: block;
   /* --ar = 가로/세로. 칸에 맞게 키우거나 줄여(380px 높이, 칸 너비까지) 64px 사진도 칠할 만하게 보이고,
      아주 긴 사진도 높이 160px 아래로는 줄이지 않는다 (넘치면 칸 안에서 가로로 민다). 붓 자리는 화면 크기 비율로 맞춘다.
      높이는 창 높이에서 위아래 줄과 안내(--notes 줄)를 뺀 만큼까지: 안내가 뜨면 다 됐어 단추가 창 아래로 밀렸다 */
   width: max(
-    min(100%, 380px * var(--ar, 1), (100vh - 310px - var(--notes, 0) * 58px) * var(--ar, 1)),
+    min(100%, 380px * var(--ar, 1), (100vh - var(--chrome, 310px) - var(--notes, 0) * 58px) * var(--ar, 1)),
     160px *
     var(--ar, 1)
   );

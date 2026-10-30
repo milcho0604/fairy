@@ -155,6 +155,12 @@ input[type="range"] {
   gap: 12px;
 }
 
+.toggle .text > span,
+.toggle .text > small {
+  /* 한 낱말만 끝줄에 남지 않게 */
+  text-wrap: pretty;
+}
+
 .toggle .text {
   flex: 1;
   min-width: 0;
@@ -875,6 +881,20 @@ textarea.rules {
 
 .tab-hint {
   display: none;
+}
+
+/* 좁은 창(400 이하)에서는 탭 줄을 한 줄로 둔다: 여백과 글자를 줄여 영어 "About" 이 혼자 내려가지 않게 (en 360 실측).
+   큰 글씨로 정말 모자라면 위의 wrap 이 다음 줄로 내린다 */
+@media (max-width: 400px) {
+  .tabs {
+    padding: 0 4px;
+    gap: 0;
+  }
+
+  .tabs [role="tab"] {
+    padding-inline: 3px;
+    font-size: 12.5px;
+  }
 }
 
 /* 찾는 중: 맞은 칸 수, 맞은 게 없는 탭은 흐리게. 고른 탭 표시는 끈다 (모든 탭에서 찾는 중) */
@@ -1885,6 +1905,13 @@ textarea.rules {
   overflow-x: auto;
   padding: 6px 0;
   background: var(--bg);
+  /* 가로로 밀리는 줄이라 오른쪽 끝에 글자가 잘려 보이지 않게 끝을 흐리게, 마지막 칩에 닿으면 끝 여백 */
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.settings-jump::after {
+  content: "";
+  flex: 0 0 24px;
 }
 
 .settings-jump button {

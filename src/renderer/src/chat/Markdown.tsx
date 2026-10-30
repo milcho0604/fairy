@@ -1,8 +1,9 @@
 import { Fragment, type MouseEvent, type ReactNode } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import { safeExternalUrl, splitLinks } from '../../../shared/links.ts';
+import { parseTable } from './md-table.ts';
 
-// AI 답에 흔한 마크다운만 가볍게 보여 준다: 코드 블록, 인라인 코드, 굵게, 목록, 제목, 링크.
+// AI 답에 흔한 마크다운만 가볍게 보여 준다: 코드 블록, 인라인 코드, 굵게, 목록, 제목, 링크, 표.
 // HTML 로 넣지 않고 React 요소로 만들어 답에 섞인 태그가 실행될 일이 없다.
 // 링크는 http, https 만 누를 수 있고 앱 안에서 열지 않는다 (onLink 가 메인에 넘겨 기본 브라우저로)
 
@@ -64,6 +65,41 @@ export function Markdown({ text, onLink }: { text: string; onLink: OnLink }) {
       );
       continue;
     }
+    const table = parseTable(lines, i);
+    if (table) {
+      // 좁은 폭에서는 표만 가로로 밀린다. 칸 글은 inline 을 거쳐 React 글자 칸으로만 들어간다
+      blocks.push(
+        <div key={`t${i}`} className="md-table-wrap">
+          <table className="md-table">
+            <thead>
+              <tr>
+                {table.head.map((h, j) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 한 번 그리면 순서가 바뀌지 않는다
+                  <th key={j} style={{ textAlign: table.align[j] }}>
+                    {inline(h, `t${i}h${j}`, onLink)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((r, ri) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 한 번 그리면 순서가 바뀌지 않는다
+                <tr key={ri}>
+                  {r.map((c, j) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: 한 번 그리면 순서가 바뀌지 않는다
+                    <td key={j} style={{ textAlign: table.align[j] }}>
+                      {inline(c, `t${i}r${ri}c${j}`, onLink)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      i += table.length;
+      continue;
+    }
     if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
       const items: string[] = [];
       const ordered = /^\s*\d+\./.test(line);
@@ -101,7 +137,8 @@ export function Markdown({ text, onLink }: { text: string; onLink: OnLink }) {
       (lines[i] ?? '').trim() !== '' &&
       !(lines[i] ?? '').trimStart().startsWith('```') &&
       !/^\s*([-*]|\d+\.)\s+/.test(lines[i] ?? '') &&
-      !/^#{1,4}\s/.test(lines[i] ?? '')
+      !/^#{1,4}\s/.test(lines[i] ?? '') &&
+      !parseTable(lines, i)
     ) {
       para.push(lines[i++] ?? '');
     }

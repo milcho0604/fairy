@@ -259,8 +259,8 @@ try {
         const want = [
           ['#reports', '처리하지 않은 신고가 3건 있어요'],
           ['#settings/ai', '이번 달 비용이 예산의'],
-          ['#announce/events', '3일 안에 끝나는 이벤트가 1개 있어요'],
-          ['#announce/coupons', '3일 안에 끝나는 쿠폰이 1개 있어요'],
+          ['#announce/posts', '3일 안에 끝나는 이벤트가 1개 있어요'],
+          ['#announce/posts', '3일 안에 끝나는 쿠폰이 1개 있어요'],
           ['#settings/backup', '서버 백업이 상한의 81%를 썼어요'],
         ];
         for (const [href, label] of want)
@@ -291,7 +291,7 @@ try {
     await scheme(false);
 
     // ---- 카드를 누르면 그 칸이 보인다 ----
-    for (const [href, cell, sub] of [['#reports', 'reports', ''], ['#announce/events', 'announce', 'announce/events'], ['#announce/coupons', 'announce', 'announce/coupons'], ['#settings/ai', 'settings', 'settings/ai'], ['#settings/backup', 'settings', 'settings/ai']]) {
+    for (const [href, cell, sub] of [['#reports', 'reports', ''], ['#announce/posts', 'announce', 'announce/posts'], ['#settings/ai', 'settings', 'settings/ai'], ['#settings/backup', 'settings', 'settings/backup']]) {
       await nav(`${apiUrl}/admin#home`);
       await ev(`document.querySelector('#cell-home ul.todo a[href="${href}"]').click(); true`);
       await sleep(300);
@@ -306,8 +306,8 @@ try {
         await size(w, h);
         await scheme(dark);
         await nav(`${apiUrl}/admin#settings/backup`);
-        const t = await ev(`document.querySelector('#sub-settings-ai').innerText`);
-        await shot(`backup-${tag}`, '#sub-settings-ai');
+        const t = await ev(`document.querySelector('#sub-settings-backup').innerText`);
+        await shot(`backup-${tag}`, '#sub-settings-backup');
         check(`[${tag}] 백업 현황: 켜짐, 파일 6개, 총 크기와 상한, 81%`, t.includes('켜짐') && t.includes('6개') && t.includes('상한 1.0MB') && t.includes('81%'), t.slice(0, 300));
         check(`[${tag}] 백업 현황: 실패 기록과 덤프는 모른다고 쓴다`, t.includes('기록 없음') && (t.match(/알 수 없어요/g) ?? []).length >= 3 && t.includes('맥미니 외장 디스크'));
         check(`[${tag}] 백업 현황 가로 넘침 없음`, await overflow());

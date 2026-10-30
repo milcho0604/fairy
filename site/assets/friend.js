@@ -13,6 +13,8 @@
   function one(sel) { return document.querySelector(sel); }
   if (!code) {
     one('[data-friend-bad]').hidden = false;
+    // 코드가 없으면 코드 전용 설명(친구 코드예요, 붙여 넣으라는 안내)도 감춘다.
+    document.querySelectorAll('[data-friend-only]').forEach(function (el) { el.hidden = true; });
     return;
   }
   var url = 'fairy://friend/' + code;
