@@ -71,10 +71,7 @@ test('안전: 파일을 읽으면서 server 경로 글자를 쓰는 src 시험�
     if (f === 'shared/app-reads-server.test.ts') continue;
     if (!reads.test(text) || !serverPath.test(text)) continue;
     checked++;
-    assert.ok(
-      reported.has(`src/${f}`),
-      `${f}: 서버 경로를 쓰는데 app-reads-server.mjs 가 못 잡았다`,
-    );
+    assert.ok(reported.has(`src/${f}`), `${f}: 서버 경로를 쓰는데 app-reads-server.mjs 가 못 잡았다`);
   }
   assert.ok(checked >= 2, `server 경로를 쓰는 시험 ${checked}개 (admin-web, test-leftovers 는 있어야 한다)`);
 });
