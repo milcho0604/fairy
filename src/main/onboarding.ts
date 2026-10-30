@@ -119,6 +119,7 @@ export function createOnboarding(o: {
       resizable: false,
       title: t('main.onboardingTitle'),
       show: false,
+      acceptFirstMouse: true,
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
