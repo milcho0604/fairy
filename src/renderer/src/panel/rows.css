@@ -214,14 +214,18 @@
   row-gap: 2px;
 }
 
+.fullness .ghost.small {
+  padding-inline: 6px;
+}
+
 .fullness .track {
-  flex: 1 1 48px;
-  min-width: 48px;
+  flex: 1 1 32px;
+  min-width: 32px;
 }
 
 .fullness .life-vals {
   display: inline-flex;
-  gap: 8px;
+  gap: 6px;
   font-size: 12px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -277,13 +281,29 @@
   cursor: pointer;
 }
 
+/* 끝이 없으면 줄 흐름에 자리를 두지 않고, 올리거나 줄에 초점이 가면 줄 아래 오른쪽에 겹쳐 띄운다.
+   제목 폭과 줄 높이가 바뀌지 않으니 줄바꿈이 흔들리지 않는다. 키보드 초점과 줄을 눌러 고치는 중에도 보인다 */
+.event {
+  position: relative;
+}
+
 .event .end-time.none {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 0;
+  z-index: 4;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
   opacity: 0;
+  pointer-events: none;
 }
 
 .event:hover .end-time.none,
-.event .end-time.none:focus-within {
-  opacity: 0.8;
+.event:focus-within .end-time.none {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .event .end-time input {

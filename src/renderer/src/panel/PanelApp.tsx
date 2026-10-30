@@ -26,6 +26,7 @@ import { CoinIcon, ExpandIcon, GearIcon, MailIcon, PinIcon, SearchIcon } from '.
 import { escClosesSurface, type ModKeyLike, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
 import { MailPage, MailSheet } from './MailView.tsx';
 import { PlanSheetHost } from './MorningPlan.tsx';
+import { mailOverlayAfterTabRequest } from './mail-overlay.ts';
 import { OPEN_MAIL_EVENT, useMailUnread } from './mail-state.ts';
 import { NoteTab } from './NoteTab.tsx';
 import { openNoteById, revealRow } from './open-target.ts';
@@ -195,6 +196,8 @@ function PanelShell({ kind }: { kind: SurfaceKind }) {
         return;
       }
       if (!usable(kind, next)) return;
+      // 쪽지함이 열린 채 다른 탭을 부르면 덮개가 남지 않게 닫는다
+      setMailOpen((open) => mailOverlayAfterTabRequest(kind, next, open));
       setChatOn(false);
       setTabState(next);
     });
