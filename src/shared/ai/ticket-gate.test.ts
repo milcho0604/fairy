@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   canSendTicket,
   chooseDefault,
+  explicitPick,
   type TicketGateInput,
   ticketBlock,
   ticketIsDefaultable,
@@ -59,10 +60,26 @@ test('기본 AI 경계 표', () => {
   // 고른 적 없음
   assert.equal(row(true, undefined, false), 'ticket');
   assert.equal(row(false, undefined, false), 'auto');
+  // 옛 저장값(이용권 이전의 고름)은 saved 로 넘기지 않으니 고른 적 없음과 같다: 이용권을 쓸 수 있으면 이용권
+  assert.equal(row(true, undefined, true), 'ticket');
+  // 이용권 도입 뒤 직접 고름 + 이용권 가능 = 고른 것
   // 직접 고른 AI 가 설치되어 있음: 그것을 존중
   assert.equal(row(true, 'claude', true), 'saved');
   assert.equal(row(false, 'claude', true), 'saved');
   // 직접 고른 AI 가 설치 안 됨: 이용권 (못 쓰면 자동)
   assert.equal(row(true, 'claude', false), 'ticket');
   assert.equal(row(false, 'claude', false), 'auto');
+});
+
+test('저장값: 이용권 도입 뒤 직접 고른 것만 명시 선택', () => {
+  const pick = (f: Parameters<typeof explicitPick>[0]) =>
+    chooseDefault({ ticketUsable: true, saved: explicitPick(f), savedUsable: true });
+  // 옛 저장값 있음 + 이용권 가능 = 이용권
+  assert.equal(pick({ provider: 'claude' }), 'ticket');
+  assert.equal(pick({ provider: 'gemini', pickedAfterTicket: false }), 'ticket');
+  assert.equal(pick(undefined), 'ticket');
+  // 도입 뒤 직접 고름 + 이용권 가능 = 고른 것
+  assert.equal(pick({ provider: 'claude', pickedAfterTicket: true }), 'saved');
+  assert.equal(explicitPick({ provider: 'gemini', pickedAfterTicket: true }), 'gemini');
+  assert.equal(explicitPick({ pickedAfterTicket: true }), undefined);
 });

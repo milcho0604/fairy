@@ -54,7 +54,8 @@ export type DefaultPick = 'ticket' | 'saved' | 'auto';
 
 /**
  * 새 대화와 처음 켤 때 기본으로 고를 AI.
- * saved: 사용자가 직접 골라 기억해 둔 AI (없으면 undefined), savedUsable: 그 AI 가 지금 설치되어 쓸 수 있다.
+ * saved: 사용자가 채팅 이용권이 생긴 뒤에 직접 골라 기억해 둔 AI (없으면 undefined. 이용권 이전의 옛 저장값은 넘기지 않는다),
+ * savedUsable: 그 AI 가 지금 설치되어 쓸 수 있다.
  * 직접 고른 AI 가 쓸 수 있으면 그것(saved), 아니면 이용권을 쓸 수 있을 때 이용권(ticket), 그것도 아니면 예전처럼 자동(auto)
  */
 export function chooseDefault(i: {
@@ -65,4 +66,11 @@ export function chooseDefault(i: {
   if (i.saved && i.savedUsable) return 'saved';
   if (i.ticketUsable) return 'ticket';
   return 'auto';
+}
+
+/** 저장된 고름(chat-settings)에서 명시 선택만 꺼낸다. "이용권이 생긴 뒤 골랐다" 표시가 없는 옛 값은 명시 선택이 아니다 */
+export function explicitPick(
+  file: { provider?: string; pickedAfterTicket?: boolean } | undefined,
+): string | undefined {
+  return file?.pickedAfterTicket === true && typeof file.provider === 'string' ? file.provider : undefined;
 }

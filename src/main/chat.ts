@@ -30,7 +30,12 @@ import {
   TICKET_PROVIDER_ID,
 } from '../shared/ai/providers.ts';
 import { type Exchange, withHistory } from '../shared/ai/text.ts';
-import { chooseDefault, type TicketBlock, ticketIsDefaultable } from '../shared/ai/ticket-gate.ts';
+import {
+  chooseDefault,
+  explicitPick,
+  type TicketBlock,
+  ticketIsDefaultable,
+} from '../shared/ai/ticket-gate.ts';
 import type { AiEvent, AiProvider, ImageAttachment } from '../shared/ai/types.ts';
 import type { AiUsage } from '../shared/ai/usage.ts';
 import { cleanSendImages } from '../shared/capture.ts';
@@ -207,10 +212,22 @@ export function createChat(o: ChatOptions) {
     if (o.ticket.block) return o.ticket.block();
     return o.ticket.available() ? undefined : 'closed';
   };
+  /** 이용권을 못 쓰게 되면 돌아갈 AI: 기억된 AI 가 있으면 그것, 없으면 자동 선택이 정하기 전까지 claude */
+  const fallbackProvider = (): AiProvider => {
+    const id = (readJson(SETTINGS_FILE) as SavedPick | undefined)?.provider;
+    return id && id !== TICKET_PROVIDER_ID && specOf(id) ? id : 'claude';
+  };
   /** 기본으로 고를 만큼 쓸 수 있다 (막힘 없음, 남은 장수 1장 이상) */
   const ticketDefaultable = () => ticketIsDefaultable(ticketBlockNow(), o.ticket?.tickets() ?? null);
 
-  const saved = readJson(SETTINGS_FILE) as { provider?: AiProvider } | undefined;
+  type SavedPick = { provider?: AiProvider; pickedAfterTicket?: boolean };
+  const saved = readJson(SETTINGS_FILE) as SavedPick | undefined;
+  /**
+   * 사용자가 AI 를 직접 골랐다: 고른 AI 와 함께 "채팅 이용권이 생긴 뒤에 골랐다" 표시를 남긴다.
+   * 표시 없는 옛 저장값은 이용권 이전의 고름이라 명시 선택으로 보지 않는다 (기본 선택에서 이용권이 이긴다)
+   */
+  const rememberPick = (provider: AiProvider) =>
+    writeJson(SETTINGS_FILE, { provider, pickedAfterTicket: true } satisfies SavedPick);
   // 사용량은 마지막으로 본 값을 남겨 두었다가 창을 열자마자 보여 준다 (몇 분 전 값인지 같이 표시).
   const savedUsage = usageOf(readJson(USAGE_FILE));
   // 이용권을 골라 둔 채 못 쓰게 됐으면(장수 0 등) 처음부터 이용권이 아니다
@@ -246,7 +263,7 @@ export function createChat(o: ChatOptions) {
     const block = ticketBlockNow();
     // 대화권을 고른 채 로그아웃하거나 나이를 바꾸거나 장수가 0이 되면 쓸 수 없다: 기본 AI 로 돌린다
     if ((!ticketOn || block) && state.provider === TICKET_PROVIDER_ID && !state.pendingId)
-      state = switchProvider(state, 'claude');
+      state = switchProvider(state, fallbackProvider());
     state = {
       ...state,
       knowsTodos: o.knowsTodos(),
@@ -298,7 +315,8 @@ export function createChat(o: ChatOptions) {
    */
   const settleDefault = async () => {
     if (userPicked || state.pendingId || state.messages.length > 0 || !o.ticket) return;
-    const savedId = (readJson(SETTINGS_FILE) as { provider?: AiProvider } | undefined)?.provider;
+    const file = readJson(SETTINGS_FILE) as SavedPick | undefined;
+    const savedId = explicitPick(file) as AiProvider | undefined;
     const savedSpec = savedId ? specOf(savedId) : undefined;
     let savedUsable = false;
     if (savedId && savedSpec) {
@@ -765,7 +783,7 @@ export function createChat(o: ChatOptions) {
     if (lastUser.images?.length && !original) return 'missing-images';
     userPicked = true;
     state = switchProvider(state, provider);
-    writeJson(SETTINGS_FILE, { provider: state.provider });
+    rememberPick(state.provider);
     push();
     return ask(lastUser.text, original ?? []) ? 'sent' : 'unavailable';
   });
@@ -853,7 +871,7 @@ export function createChat(o: ChatOptions) {
     if (meta.provider && specOf(meta.provider) && meta.provider !== next.provider) {
       next = switchProvider(next, meta.provider);
       userPicked = true;
-      writeJson(SETTINGS_FILE, { provider: next.provider });
+      rememberPick(next.provider);
     }
     carry.clear();
     // 이어 갈 수 없는 세션(격리 설정이 바뀜, claude 의 오래된 세션)은 빼고 최근 문답을 글로 붙인다
@@ -923,7 +941,7 @@ export function createChat(o: ChatOptions) {
     if (provider === TICKET_PROVIDER_ID && ticketBlockNow()) return;
     userPicked = true;
     state = switchProvider(state, provider);
-    writeJson(SETTINGS_FILE, { provider: state.provider });
+    rememberPick(state.provider);
     push();
   });
 

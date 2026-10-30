@@ -119,7 +119,7 @@ try {
   await sleep(500);
   const base = JSON.parse(await main('JSON.stringify(__jj.chat.debugState)'));
   for (const [name, gate, blocked] of cases) {
-    const st = { ...base, provider: 'claude', messages: [], pendingId: undefined, ticketGate: gate };
+    const st = { ...base, provider: name === 'usable' ? 'fairy-ticket' : 'claude', messages: [], pendingId: undefined, ticketGate: gate };
     await main(`__jj.chat.faces()[0].contents.send('chat:state', ${JSON.stringify(st)}); 1`);
     await sleep(300);
     for (const dark of [false, true]) {
@@ -149,11 +149,15 @@ try {
         check(`${tag} 이름표`, gate.tickets === null ? m.tag === '' : m.tag === (LANG === 'en' ? `${gate.tickets} left` : `${gate.tickets}장 남음`), m.tag);
         check(`${tag} 까닭과 길 한 줄씩`, blocked ? m.lines.length === 2 && m.lines.every((l) => l.length > 0) : m.lines.length === 0, m.lines.join(' / '));
         check(`${tag} 가로 넘침 없음`, !m.over);
+        if (name === 'usable') {
+          const sel = JSON.parse(await c.ev(`JSON.stringify({ label: document.querySelector('.picker-label').textContent, checked: document.querySelector('.picker-menu > button').getAttribute('aria-checked') })`));
+          check(`${tag} 이용권이 선택된 상태`, sel.label === (LANG === 'en' ? 'Chat pass' : '채팅 이용권') && sel.checked === 'true', `${sel.label}/${sel.checked}`);
+        }
         if (blocked && w === 560 && !dark) {
           await c.ev("document.querySelector('.picker-menu > button').click()");
           await sleep(300);
           const prov = await main('__jj.chat.debugState.provider');
-          check(`${tag} 눌러도 AI 가 안 바뀜`, prov === 'claude' && (await c.ev("!!document.querySelector('.picker-menu')")), prov);
+          check(`${tag} 눌러도 AI 가 안 바뀜`, prov !== 'fairy-ticket' && (await c.ev("!!document.querySelector('.picker-menu')")), prov);
         }
       }
     }
