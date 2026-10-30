@@ -170,6 +170,11 @@ describe('운영자 화면 CSS 접근성 규칙', () => {
     assert.match(adminCss, /tr\.off td \{ color: var\(--muted\)/);
   });
 
+  test('글 안의 링크는 브라우저 기본 파란색이 아니라 앱 강조색이다 (어두운 화면도 같은 토큰)', () => {
+    assert.match(adminCss, /\na \{ color: var\(--accent\); \}\n/);
+    assert.match(adminCss, /@media \(prefers-color-scheme: dark\) \{ :root \{[^}]*--accent: #e58c63/);
+  });
+
   test('거친 포인터(손가락)에서는 누르는 곳이 44px 이상이다', () => {
     const coarse = adminCss.slice(adminCss.indexOf('@media (pointer: coarse) {'));
     assert.match(coarse, /\.subnav a/);

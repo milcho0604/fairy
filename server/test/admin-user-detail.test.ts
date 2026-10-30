@@ -80,6 +80,19 @@ const resultText = async () => {
 describe('이용자 상세 한 화면', () => {
   let a: { token: string; id: string; code: string };
 
+  test('지급과 정기 지급 단추는 이름 뒤에 빈 칸이 끼지 않고, 닉네임이 없어도 어색하지 않다', async () => {
+    const x = await newDevice('18+', '조사고양이');
+    const none = await newDevice('18+', '임시이름');
+    await h.pool.query('UPDATE account SET nickname = NULL WHERE id = $1', [none.id]);
+    const named = cellOf((await admin.page(`?user=${x.id}`)).text, 'users');
+    assert.match(named, /<button type="submit">지급 대상 확인하기: 조사고양이<\/button>/);
+    assert.match(named, /<button type="submit">정기 지급 걸기: 조사고양이<\/button>/);
+    assert.doesNotMatch(named, /조사고양이 에게|조사고양이 정기/);
+    const blank = cellOf((await admin.page(`?user=${none.id}`)).text, 'users');
+    assert.match(blank, /<button type="submit">지급 대상 확인하기: \(닉네임 없음\)<\/button>/);
+    assert.match(blank, /<button type="submit">정기 지급 걸기: \(닉네임 없음\)<\/button>/);
+  });
+
   test('행을 누르면(user=번호) 지급, 막기, 정기 지급, 회수, 신고, 내역, 운영 기록이 한 화면에 있다', async () => {
     a = await newDevice('18+', '상세고양이');
     await addCoins(a.id, 30);
@@ -95,7 +108,7 @@ describe('이용자 상세 한 화면', () => {
     assert.match(users, /<form method="post" action="\/admin\/grants\/preview" class="grid grant-one">/);
     assert.match(users, /받는 사람: <strong>상세고양이<\/strong>/);
     assert.match(users, new RegExp(`<input type="hidden" name="accounts" value="${a.code}">`));
-    assert.match(users, /상세고양이 에게 지급, 대상 확인하기/);
+    assert.match(users, /지급 대상 확인하기: 상세고양이/);
     for (const part of [
       'action="/admin/ai/block"',
       'action="/admin/ai/subscribe"',
@@ -497,11 +510,11 @@ describe('이용자 상세 길이와 목록 (사용성 2차)', () => {
     assert.doesNotMatch(outside, /action="\/admin\/coins\/revoke\/preview"/);
     // 순서: 지급 단추, 막기와 허용, 쪽지, 내역, 그 뒤에 접힌 회수
     const at = (s: string) => users.indexOf(s);
-    assert.ok(at('에게 지급, 대상 확인하기') < at('<h3>막기와 허용</h3>'));
+    assert.ok(at('지급 대상 확인하기') < at('<h3>막기와 허용</h3>'));
     assert.ok(at('<h3>코인 내역</h3>') < at('id="user-revoke"'));
     assert.ok(at('id="user-revoke"') < at('<h3>이 사람의 운영 기록</h3>'));
     // 지급 단추와 회수 단추 사이에는 다른 칸이 끼어 있다
-    const between = users.slice(at('에게 지급, 대상 확인하기'), at('id="user-revoke"'));
+    const between = users.slice(at('지급 대상 확인하기'), at('id="user-revoke"'));
     assert.ok((between.match(/<h3/g) ?? []).length >= 3);
   });
 

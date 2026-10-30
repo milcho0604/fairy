@@ -734,7 +734,7 @@ ${a.mergedFrom ? `<p class="flash warn" role="status">찾은 계정 #${esc(a.mer
 <label>채팅 이용권 수${a.age === '18+' ? '' : ' (만 18세 미만은 줄 수 없어요)'} <input name="chat_passes" type="number" min="0" max="1000" value="${esc(val(mine, 'chat_passes', '0'))}" required></label>
 <label>만료 날수 <input name="days" type="number" min="1" max="365" value="${esc(val(mine, 'days', '30'))}" required></label>
 <label class="wide">지급 사유, 이용자에게 보여요 <textarea name="reason" required maxlength="200">${esc(val(mine, 'reason'))}</textarea></label>
-<button type="submit">${esc(name)} 에게 지급, 대상 확인하기</button></form>
+<button type="submit">지급 대상 확인하기: ${esc(name)}</button></form>
 
 <h3>막기와 허용</h3>
 <div class="row">
@@ -758,7 +758,7 @@ ${a.ai.subscription ? sureForm(v, '/admin/ai/cancel', { account: a.code }, `${pl
 <label>방식 <select name="mode">${opt(sub, 'mode', 'fill', 'N장까지 채우기 (이월 없음)', 'fill')}${opt(sub, 'mode', 'add', 'N장 더하기', 'fill')}</select></label>
 <label>시작일 (비우면 오늘) <input name="starts_on" type="date" value="${esc(val(sub, 'starts_on'))}"></label>
 <label>끝일 (비우면 무기한) <input name="ends_on" type="date" value="${esc(val(sub, 'ends_on'))}"></label>
-<button type="submit">${esc(name)} 정기 지급 걸기</button>
+<button type="submit">정기 지급 걸기: ${esc(name)}</button>
 </form>
 <h3 id="user-notes">받은 쪽지와 받았는지</h3>
 <p class="hint">쪽지를 열면 코인과 채팅 이용권을 받아요. 서버가 아는 것은 연 시각과 그때 실제로 받은 양이에요. 앱에서 알림을 봤는지는 알 수 없어요. 아직 안 연 쪽지는 철회할 수 있고, 철회하면 이용자 쪽지함에서 사라져요. 최근 15건.</p>
@@ -852,7 +852,7 @@ ${searchForm}
 /** 이번 달 추정 비용이 예산의 50%, 80% 를 넘으면 경고 */
 export function budgetWarn(cost: number, budget: number): string {
   if (budget <= 0)
-    return '<p class="flash error">월 예산이 0 이라 채팅 이용권 질문이 모두 막혀요 (.env AI_MONTHLY_BUDGET_USD)</p>';
+    return '<p class="flash error">월 예산이 0 이라 채팅 이용권 질문이 모두 막혀요. 서버 설정 파일에서 월 예산을 올려 주세요 (.env 의 AI_MONTHLY_BUDGET_USD)</p>';
   const p = cost / budget;
   if (p >= 0.8)
     return `<p class="flash error">이번 달 비용이 예산의 ${Math.floor(p * 100)}% 예요 (80% 넘음)</p>`;
@@ -945,7 +945,7 @@ const FEATURE_SHORT: Record<string, string> = {
 
 /** 채팅 이용권(ai_chat)의 긴 설명 */
 const AI_CHAT_HINT =
-  '1장 = 질문 1번. 허용 목록만이면 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번 받아요.';
+  '1장 = 질문 1번. 허용 목록만이면 목록의 계정과 서버 설정에 적어 둔 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번 받아요.';
 
 /** 표의 상태 배지 글 (자세한 뜻은 영향 칸에) */
 const SWITCH_TAG_KO: Record<string, string> = { off: '끔', allowlist: '허용 목록', everyone: '모두' };
@@ -1048,11 +1048,11 @@ ${rows}
 ${v.features.map((x) => featureAllow(x, v)).join('\n')}
 </section>`;
   const tickets = `<section><h2>예산과 정책</h2>
-<p class="hint">채팅 이용권을 누가 쓰는지(접근 설정)는 <a href="#settings/features">기능 스위치</a> 표에서 바꿔요. 지금 설정: <strong>${esc(MODE_KO[ai.mode])}</strong>. 허용 목록만이면 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요.</p>
+<p class="hint">채팅 이용권을 누가 쓰는지(접근 설정)는 <a href="#settings/features">기능 스위치</a> 표에서 바꿔요. 지금 설정: <strong>${esc(MODE_KO[ai.mode])}</strong>. 허용 목록만이면 목록의 계정과 서버 설정에 적어 둔 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요.</p>
 <form method="post" action="/admin/ai/limits" class="grid">${formErr(v, 'ai/limits')}${hidden(csrf)}
-<label>월 예산 달러 (.env 상한 ${usd(ai.capBudgetMicros)} 이하, 비우면 상한) <input name="budget_usd" inputmode="decimal" value="${esc(val(dLim, 'budget_usd', ai.setBudgetMicros === null ? '' : (ai.setBudgetMicros / 1e6).toString()))}"></label>
-<label>사람마다 하루 질문 (.env 상한 ${ai.capDailyLimit} 이하, 비우면 상한) <input name="daily_limit" type="number" min="0" value="${esc(val(dLim, 'daily_limit', String(ai.setDailyLimit ?? '')))}"></label>
-<label>질문 한 번에 쓸 글자 수 (.env 상한 ${ai.capInputChars} 이하, 비우면 상한) <input name="input_chars" type="number" min="1" max="${ai.capInputChars}" value="${esc(val(dLim, 'input_chars', String(ai.setInputChars ?? '')))}"></label>
+<label>월 예산 달러 (서버 설정 파일의 상한 ${usd(ai.capBudgetMicros)} 이하, 비우면 상한, .env) <input name="budget_usd" inputmode="decimal" value="${esc(val(dLim, 'budget_usd', ai.setBudgetMicros === null ? '' : (ai.setBudgetMicros / 1e6).toString()))}"></label>
+<label>사람마다 하루 질문 (서버 설정 파일의 상한 ${ai.capDailyLimit} 이하, 비우면 상한, .env) <input name="daily_limit" type="number" min="0" value="${esc(val(dLim, 'daily_limit', String(ai.setDailyLimit ?? '')))}"></label>
+<label>질문 한 번에 쓸 글자 수 (서버 설정 파일의 상한 ${ai.capInputChars} 이하, 비우면 상한, .env) <input name="input_chars" type="number" min="1" max="${ai.capInputChars}" value="${esc(val(dLim, 'input_chars', String(ai.setInputChars ?? '')))}"></label>
 <button type="submit">예산 저장</button>
 </form>
 <p class="hint">지금 쓰는 값: 월 ${usd(ai.monthlyBudgetMicros)}, 하루 ${ai.dailyLimit}번, 질문 ${ai.inputChars}자 이하. 이번 달(UTC 기준) ${usd(v.summary.aiCostMicros)} 썼어요.</p>
@@ -1293,7 +1293,7 @@ function backupGlance(b: BackupStatus): string {
     ? `<p class="hint">데이터베이스 덤프와 외장 디스크 사본의 결과는 아직 못 읽었어요 (상태 파일이 없어요). <a href="#settings/backup">백업 현황</a></p>`
     : `<ul class="todo">${jobGlance('db', b.external.db)}${jobGlance('files', b.external.files)}</ul>`;
   if (!b.enabled)
-    return `<p class="hint">서버 백업이 꺼져 있어요 (BACKUP_ENC_KEY 가 비었어요). <a href="#settings/backup">백업 현황</a></p>${ext}`;
+    return `<p class="hint">서버 백업이 꺼져 있어요. 서버 설정에 백업 암호 키를 넣으면 켜져요 (BACKUP_ENC_KEY 가 비었어요). <a href="#settings/backup">백업 현황</a></p>${ext}`;
   const used = backupPercent(b);
   const blocked = b.maxBytes === 0;
   const last =
@@ -1335,7 +1335,7 @@ function backupSection(v: AdminView): string {
   return `<section id="backup-status"><h2>백업 현황</h2>
 <h3>이용자 서버 백업 (앱에서 올린 .fairybackup)</h3>
 <dl class="stats">
-${row('상태', b.enabled ? '켜짐' : '꺼짐 (BACKUP_ENC_KEY 가 비었어요)')}
+${row('상태', b.enabled ? '켜짐' : '꺼짐 (서버 설정에 백업 암호 키가 없어요, BACKUP_ENC_KEY 가 비었어요)')}
 ${row('마지막으로 올라온 때', b.lastUploadAt === null ? '없어요' : esc(when(b.lastUploadAt)))}
 ${row('파일', `${b.files}개 (${b.accounts}명)`)}
 ${row('총 크기', `${esc(bytesText(b.bytes))}${b.maxBytes === 0 ? ' / 상한 0 (모두 막힘)' : b.maxBytes ? ` / 상한 ${esc(bytesText(b.maxBytes))}` : ' (상한 없음)'}`)}
@@ -2256,7 +2256,7 @@ function logSection(v: AdminView): string {
   return `<section><h2>운영 기록 ${p.total}건</h2>
 <form method="get" action="/admin#settings/log" class="row">
 <label>대상 이용자 (번호, 기기 코드, 닉네임) <input name="lu" maxlength="40" value="${esc(p.user)}"></label>
-<label>동작 종류 <select name="la"><option value="">전체</option>${p.actions.map((a) => `<option value="${esc(a)}"${a === p.action ? ' selected' : ''}>${esc(actionKo(a))}${actionKo(a) === a ? '' : ` (${esc(a)})`}</option>`).join('')}</select></label>
+<label>동작 종류 <select name="la"><option value="">전체</option>${(p.action && !p.actions.includes(p.action) ? [...p.actions, p.action] : p.actions).map((a) => `<option value="${esc(a)}"${a === p.action ? ' selected' : ''}>${esc(actionKo(a))}${actionKo(a) === a ? '' : ` (${esc(a)})`}</option>`).join('')}</select></label>
 <label>글 검색 (이름, 대상, 자세히) <input name="lt" maxlength="60" value="${esc(p.text)}"></label>
 <button type="submit">찾기</button>${filtered ? `<a class="button-link" href="${placeHref('settings/log')}">모두 보기</a>` : ''}
 </form>
@@ -2350,6 +2350,7 @@ export const adminCss = `${viewCss()}:root { color-scheme: light dark; --bg: #fa
   --accent: #b5532f; --on-accent: #fff; --ok: #2f7a4a; --bad: #b3261e; --warn: #8a5a00; }
 @media (prefers-color-scheme: dark) { :root { --bg: #1d1a17; --fg: #eee6dd; --muted: #a99e92; --line: #3a342e; --card: #26221e; --accent: #e58c63; --on-accent: #1d1a17; --ok: #6cc28a; --bad: #f2867c; --warn: #e0a84a; } }
 * { box-sizing: border-box; }
+a { color: var(--accent); }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
 main { max-width: 1280px; margin: 0 auto; padding: 16px; }
 main.narrow { max-width: 420px; padding-top: 12vh; }

@@ -4,7 +4,7 @@
 //
 // 웹: 실패한 제출(허용 안 되는 링크)의 입력 보존과 오류 자리, 느린 응답에서 단추 막기와 진행 표시, 끊긴 네트워크 뒤 되살리기,
 //     대상 이름이 적힌 확인 칸(웹은 확인이 없거나 다른 대상이면 서버가 거절), 운영 기록의 누가와 대상, 동작, 글 찾기. 폭 320 과 1100, 밝은 어두운.
-//     웹 화면은 한국어만 있다 (LANG_UNDER_TEST 는 앱에만 쓴다). 다섯 칸 구조(#150)에서 칸은 주소 해시(#announce/events 등)로 연다.
+//     웹 화면은 한국어만 있다 (LANG_UNDER_TEST 는 앱에만 쓴다). 다섯 칸 구조(#150)에서 칸은 주소 해시(#announce/posts 등)로 연다.
 // 앱: 관리 작업은 웹으로 옮겼으므로(#150) 앱 운영자 칸에는 쓰기 입력이 없고 요약과 "웹에서 열기"만 있다. 운영자 칸의 요약,
 //     불러오기 실패와 다시 시도, 웹 열기는 scripts/dev/admin-ia.mjs 가 본다. 서버(server/dist)와 시험용 Postgres(jj-admin155-pg-<무작위>)는 이 프로세스가 띄우고 지운다.
 //
@@ -135,7 +135,7 @@ async function adminPost(path, fields) {
 }
 /** 지급과 공지의 확정은 미리보기를 거친 것만 받는다 (#150): 미리보기를 만들고 확정 폼의 숨은 칸(번호)을 실어 보낸다 */
 async function adminFlow(path, fields) {
-  const preview = path === '/admin/grants/batch' ? '/admin/grants/preview' : '/admin/notices/preview';
+  const preview = path === '/admin/grants/batch' ? '/admin/grants/preview' : `${path}/preview`;
   await adminPost(preview, fields);
   const page = await adminPage();
   const m = new RegExp(`<form method="post" action="${path}"[^>]*>([\\s\\S]*?)</form>`).exec(page);
@@ -300,7 +300,7 @@ async function webPart() {
   const noticeValues = { id: 'keep-me', kind: 'important', title_ko: '보존될 제목', title_en: 'Kept title', body_ko: '한국어 본문\n두 번째 줄', body_en: 'English body', link: 'https://evil.example.com/x' };
   for (const width of [1100, 320]) {
     await size(width);
-    await nav(U('/notices', 'announce/notices'));
+    await nav(U('/notices', 'announce/new'));
     const noticeForm = TAG === 'before' ? 'form[action="/admin/notices"]' : 'form[action="/admin/notices/preview"]';
     await fill(noticeForm, noticeValues);
     await submitAndWait(noticeForm);
@@ -316,18 +316,18 @@ async function webPart() {
       continue;
     }
     check(`[${width}] 실패한 공지 폼: 쓴 글이 그대로 (id, 종류, 제목 둘, 본문, 링크)`, st.id === 'keep-me' && st.kind === 'important' && st.ko === '보존될 제목' && st.en === 'Kept title' && st.body === '한국어 본문\n두 번째 줄' && st.link === noticeValues.link, JSON.stringify(st));
-    check(`[${width}] 오류가 그 폼 안에 있고 화면에 보인다 (칸 주소는 그대로)`, st.errInForm && st.visible && st.hash === '#announce/notices' && st.errText.includes('링크는'), `${st.hash} ${st.errText}`);
+    check(`[${width}] 오류가 그 폼 안에 있고 화면에 보인다 (칸 주소는 그대로)`, st.errInForm && st.visible && st.hash === '#announce/new' && st.errText.includes('링크는'), `${st.hash} ${st.errText}`);
     check(`[${width}] 맨 위 알림 줄에는 오류가 없다, 가로로 넘치지 않는다`, !st.topFlash && st.wide);
     // 새로 고치면 사라진다 (한 번만)
-    await nav(U('/notices', 'announce/notices'));
+    await nav(U('/notices', 'announce/new'));
     check(`[${width}] 다시 열면 채워진 값이 없다`, (await ev(`document.querySelector(${JSON.stringify(noticeForm)}).elements.title_ko.value`)) === '');
   }
   if (TAG === 'before') {
     // 비교 그림용: 확인 칸 없는 이벤트 끝내기 한 줄
     await size(1100);
-    await adminPost('/admin/events', { id: 'cmp-live', kind: 'gift', title_ko: '가을 선물', title_en: 'Autumn gift', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 86_400_000), coins: 30 });
-    await nav(U('/events', 'announce/events'));
-    await shot(`web-${TAG}-2-events`, S('announce-events'));
+    await adminFlow('/admin/events', { id: 'cmp-live', kind: 'gift', title_ko: '가을 선물', title_en: 'Autumn gift', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 86_400_000), coins: 30 });
+    await nav(U('/events', 'announce/posts'));
+    await shot(`web-${TAG}-2-events`, S('announce-posts'));
     if (process.env.MIGRATE_ROOT) {
       await nav(U('/log', 'settings/log'));
       console.log('옛 코드 + 새 스키마: 기록', sql('SELECT count(*) FROM admin_log'), '이름 칸 비어 있음', sql('SELECT count(*) FROM admin_log WHERE actor_name IS NULL'), '기록 탭', (await ev(`document.querySelectorAll('table tbody tr').length`)) > 0 ? '열림' : '비어 있음');
@@ -337,12 +337,12 @@ async function webPart() {
 
   // ---- 2. 되돌릴 수 없는 동작: 대상 이름이 적힌 확인 칸 ----
   await size(1100);
-  await adminPost('/admin/events', { id: 'sure-live', kind: 'gift', title_ko: '가을 선물', title_en: 'Autumn gift', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 86_400_000), coins: 30 });
-  await adminPost('/admin/events', { id: 'sure-soon', kind: 'gift', title_ko: '내일 선물', title_en: 'Tomorrow', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() + 86_400_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 10 });
-  await adminPost('/admin/coupons', { label: '시험 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
+  await adminFlow('/admin/events', { id: 'sure-live', kind: 'gift', title_ko: '가을 선물', title_en: 'Autumn gift', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 86_400_000), coins: 30 });
+  await adminFlow('/admin/events', { id: 'sure-soon', kind: 'gift', title_ko: '내일 선물', title_en: 'Tomorrow', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() + 86_400_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 10 });
+  await adminFlow('/admin/coupons', { label: '시험 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
   await adminFlow('/admin/notices', { id: 'sure-notice', kind: 'info', title_ko: '지울 공지', title_en: 'Old notice', body_ko: '본문', body_en: 'Body' });
-  await nav(U('/events', 'announce/events'));
-  await shot(`web-${TAG}-2-events`, S('announce-events'));
+  await nav(U('/events', 'announce/posts'));
+  await shot(`web-${TAG}-2-events`, S('announce-posts'));
   const rowForm = (id) => `form.sure input[name=id][value="${id}"]`;
   const label = await ev(`document.querySelector(${JSON.stringify(rowForm('sure-live'))}).form.querySelector('label.confirm').textContent.trim()`);
   check('이벤트 끝내기: 확인 칸에 대상 이름(제목과 id)이 있다', label.includes('가을 선물') && label.includes('sure-live') && label.includes('끝낼게요'), label);
@@ -351,7 +351,7 @@ async function webPart() {
   const before = Number(sql(`SELECT count(*) FROM admin_log WHERE action IN ('event.end', 'event.delete')`));
   await ev(`document.querySelector(${JSON.stringify(rowForm('sure-live'))}).form.requestSubmit(); true`);
   await sleep(500);
-  check('체크 없이 누르면 제출되지 않는다', Number(sql(`SELECT count(*) FROM admin_log WHERE action IN ('event.end', 'event.delete')`)) === before && (await ev(`location.hash`)) === '#announce/events');
+  check('체크 없이 누르면 제출되지 않는다', Number(sql(`SELECT count(*) FROM admin_log WHERE action IN ('event.end', 'event.delete')`)) === before && (await ev(`location.hash`)) === '#announce/posts');
   // 서버도 웹에서 확인 없는 요청과 다른 대상 확인을 거절한다 (브라우저 검사를 우회해도)
   const noConfirm = await adminPost('/admin/events/end', { id: 'sure-live' });
   check('서버도 웹에서 확인 없는 끝내기를 거절한다', noConfirm.includes('확인 칸을 체크해 주세요') && sql(`SELECT ends_at > now() FROM event WHERE id = 'sure-live'`) === 't', noConfirm);
@@ -359,34 +359,34 @@ async function webPart() {
   check('서버도 다른 대상으로 확인한 끝내기를 거절한다', refused.includes('확인한 대상이 달라요') && sql(`SELECT ends_at > now() FROM event WHERE id = 'sure-live'`) === 't', refused);
   // 체크하고 누르면 된다
   await ev(`(() => { const f = document.querySelector(${JSON.stringify(rowForm('sure-live'))}).form; f.querySelector('input[type=checkbox]').checked = true; return true; })()`);
-  await shot(`web-${TAG}-2-events-checked`, S('announce-events'));
+  await shot(`web-${TAG}-2-events-checked`, S('announce-posts'));
   const loaded = c.once('Page.loadEventFired');
   await ev(`document.querySelector(${JSON.stringify(rowForm('sure-live'))}).form.requestSubmit(); true`);
   await loaded;
   await sleep(200);
   check('체크하고 누르면 끝난다', sql(`SELECT ends_at <= now() FROM event WHERE id = 'sure-live'`) === 't' && (await ev(`document.getElementById('form-ok')?.textContent ?? ''`)).includes('끝냈어요'));
   // 쿠폰 끄기, 공지 지우기, 정기 지급 해지, 막기도 같은 모양
-  await nav(U('/events', 'announce/coupons'));
+  await nav(U('/events', 'announce/posts'));
   const couponLabel = await ev(`document.querySelector('form.sure input[name=id]:not([value^="sure"])')?.form.querySelector('label.confirm').textContent.trim() ?? ''`);
   check('쿠폰 끄기: 확인 칸에 쿠폰 번호와 메모', couponLabel.includes('시험 쿠폰') && couponLabel.includes('끌게요'), couponLabel);
-  await nav(U('/notices', 'announce/notices'));
-  const noticeLabel = await ev(`document.querySelector('form.sure label.confirm')?.textContent.trim() ?? ''`);
+  await nav(U('/notices', 'announce/posts'));
+  const noticeLabel = await ev(`document.querySelector('form.sure input[name=id][value="sure-notice"]')?.form.querySelector('label.confirm').textContent.trim() ?? ''`);
   check('공지 지우기: 확인 칸에 제목과 id', noticeLabel.includes('지울 공지') && noticeLabel.includes('sure-notice'), noticeLabel);
   await shot(`web-${TAG}-2-notice-delete`, 'article.notice');
   await size(320);
-  await nav(U('/events', 'announce/events'));
+  await nav(U('/events', 'announce/posts'));
   check('[320] 이벤트 자리가 가로로 넘치지 않는다', (await ev(`document.documentElement.scrollWidth <= innerWidth`)) === true);
-  await shot(`web-${TAG}-2-events-320`, S('announce-events'));
+  await shot(`web-${TAG}-2-events-320`, S('announce-posts'));
   await c.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
   await size(1100);
-  await nav(U('/events', 'announce/events'));
-  await shot(`web-${TAG}-2-events-dark`, S('announce-events'));
+  await nav(U('/events', 'announce/posts'));
+  await shot(`web-${TAG}-2-events-dark`, S('announce-posts'));
   await c.send('Emulation.setEmulatedMedia', { features: [] });
 
   // ---- 3. 처리 중: 제출하면 단추가 막히고 진행 표시가 뜨고, 두 번째 제출은 막힌다 ----
   // 응답이 올 때까지 기다리는 화면을 그대로 보려고, 운영자 스크립트 뒤에 붙인 시험용 듣개가 이동을 멈춘다
   await size(1100);
-  await nav(U('/events', 'announce/coupons'));
+  await nav(U('/events', 'announce/posts'));
   await ev(`window.__submits = []; document.addEventListener('submit', (e) => { window.__submits.push(e.defaultPrevented ? 'blocked' : 'sent'); e.preventDefault(); }); true`);
   await fill('form[action="/admin/rewards/policy"]', { login_only: '0' });
   await submit('form[action="/admin/rewards/policy"]');
@@ -400,25 +400,25 @@ async function webPart() {
   await ev(`window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); true`);
   check('뒤로 와서 다시 보이면 단추가 풀린다', (await ev(`(() => { const f = document.querySelector('form[action="/admin/rewards/policy"]'); return !f.classList.contains('busy') && !f.querySelector('button').disabled && f.querySelector('button').textContent === '저장'; })()`)) === true);
   // 진짜 제출은 끝까지 간다 (단추 막힘이 제출을 취소하지 않는다)
-  await nav(U('/events', 'announce/coupons'));
+  await nav(U('/events', 'announce/posts'));
   await fill('form[action="/admin/rewards/policy"]', { login_only: '0' });
   const policyBefore = Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'rewards.policy'`));
   await submitAndWait('form[action="/admin/rewards/policy"]');
   check('막힌 단추로도 제출은 한 번 서버에 닿는다', Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'rewards.policy'`)) === policyBefore + 1 && (await ev(`document.getElementById('form-ok')?.textContent ?? ''`)).includes('기기 계정도'));
 
   // ---- 4. 네트워크가 끊긴 제출 ----
-  await nav(U('/events', 'announce/coupons'));
+  await nav(U('/events', 'announce/new'));
   await c.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
-  await fill('form[action="/admin/coupons"]', { label: '끊김 시험', coins: '7', tickets: '0', max_uses: '5', until: kstInput(Date.now() + 86_400_000) });
-  await submit('form[action="/admin/coupons"]');
+  await fill('form[action="/admin/coupons/preview"]', { label: '끊김 시험', coins: '7', tickets: '0', max_uses: '5', until: kstInput(Date.now() + 86_400_000) });
+  await submit('form[action="/admin/coupons/preview"]');
   await sleep(1500);
   const errPage = await ev('location.href');
   await c.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   // 사용자가 그 화면을 다시 연다 (뒤로 가기가 bfcache 로 옛 화면을 그대로 살리는 경우는 값이 원래 남아 있다)
-  await nav(U('/events', 'announce/coupons'));
+  await nav(U('/events', 'announce/new'));
   await sleep(300);
-  const restored = await ev(`(() => { const f = document.querySelector('form[action="/admin/coupons"]'); return { label: f.elements.label.value, coins: f.elements.coins.value, max: f.elements.max_uses.value, note: document.querySelector('p.flash.warn')?.textContent ?? '', confirm: [...document.querySelectorAll('input[name=confirm]')].some((x) => x.checked) }; })()`);
-  await shot(`web-${TAG}-4-offline-restored`, 'form[action="/admin/coupons"]');
+  const restored = await ev(`(() => { const f = document.querySelector('form[action="/admin/coupons/preview"]'); return { label: f.elements.label.value, coins: f.elements.coins.value, max: f.elements.max_uses.value, note: document.querySelector('p.flash.warn')?.textContent ?? '', confirm: [...document.querySelectorAll('input[name=confirm]')].some((x) => x.checked) }; })()`);
+  await shot(`web-${TAG}-4-offline-restored`, 'form[action="/admin/coupons/preview"]');
   check('끊긴 제출: 브라우저가 오류 화면으로 갔다', errPage.startsWith('chrome-error'), errPage);
   check('돌아오면 쓰던 글이 되살아나고 안내가 뜬다', restored.label === '끊김 시험' && restored.coins === '7' && restored.max === '5' && restored.note.includes('확인하지 못했어요'), JSON.stringify(restored));
   check('끊긴 제출은 서버에 닿지 않았다', sql(`SELECT count(*) FROM coupon WHERE label = '끊김 시험'`) === '0');
@@ -436,7 +436,7 @@ async function webPart() {
   check('운영 기록에 "웹 운영자" 이름과 세션 표시', logAll.includes('웹 운영자') && logAll.includes('admin:'));
   check('옛 기록(이름 없음)은 세션 표시만으로 그려진다', logAll.includes('admin:deadbeef'));
   await nav(`${apiUrl}/admin?lu=${encodeURIComponent('찾는사')}&la=note.send#settings/log`);
-  const filtered = await ev(`({ rows: document.querySelectorAll('#sub-settings-log table.log tbody tr').length, text: document.querySelector('#sub-settings-log table.log tbody').innerText, sel: document.querySelector('select[name=la]').value, user: document.querySelector('input[name=lu]').value })`);
+  const filtered = await ev(`({ rows: document.querySelectorAll('#sub-settings-log table.log tbody tr').length, text: document.querySelector('#sub-settings-log table.log tbody').innerText, sel: document.querySelector('#sub-settings-log select[name=la]').value, user: document.querySelector('#sub-settings-log input[name=lu]').value })`);
   await shot(`web-${TAG}-5-log-filtered`, S('settings-log'));
   check('대상 이용자(닉네임 일부)와 동작 종류로 거른다', filtered.rows === 2 && filtered.text.includes(`#${findId}`) && filtered.sel === 'note.send' && filtered.user === '찾는사', JSON.stringify(filtered));
   await nav(`${apiUrl}/admin?lt=${encodeURIComponent('라마바')}#settings/log`);
