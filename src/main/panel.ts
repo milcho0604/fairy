@@ -98,6 +98,7 @@ import { readJson, removeJson, writeJson } from './store.ts';
 import type { SurfaceWin } from './surface.ts';
 import { closesPanelFor, originOf, pickSurface } from './surface.ts';
 import { saveBounds, savedBounds } from './window-bounds.ts';
+import { floatingWindowOptions } from './window-options.ts';
 
 /** 날이 바뀌었는지 보는 간격. 자정 뒤 이만큼 안에 패널이 새 날로 바뀐다 */
 const DAY_CHECK_MS = 20_000;
@@ -1297,17 +1298,7 @@ export function createPanel(o: PanelOptions) {
 
   function makeWindow(kind: 'panel' | 'quick', bounds: Rectangle, tab?: PanelTab) {
     const win = new BrowserWindow({
-      ...bounds,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      hasShadow: false,
-      alwaysOnTop: true,
-      show: false,
+      ...floatingWindowOptions(bounds),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
         additionalArguments: [`--jj-window=${kind}`, langArg()],

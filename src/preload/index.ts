@@ -103,6 +103,9 @@ if (kind === 'pet') {
     onLayout: (listener) => {
       ipcRenderer.on(IPC.layout, (_e, layout: BubbleLayout) => listener(layout));
     },
+    onHoverReset: (listener) => {
+      ipcRenderer.on(IPC.hoverReset, () => listener());
+    },
     bubbleSize: (id: string, width: number, height: number) =>
       ipcRenderer.send(IPC.bubbleSize, id, width, height),
     bubbleAnchor: (anchor) => ipcRenderer.send(IPC.bubbleAnchor, anchor),

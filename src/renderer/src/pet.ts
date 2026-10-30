@@ -1657,6 +1657,13 @@ bridge.onBubble((b) => {
   if (!b.ambient) setInputs({ talkingUntil: performance.now() + b.ttlMs + 60_000 });
 });
 
+// 펫이 커서 아래를 비켜 가면 메인이 통과로 돌리고 알린다. 마우스가 안 움직여도 펫 위 표시가 남지 않게 (남으면 다음에 펫 위로 와도 알리지 않는다)
+bridge.onHoverReset(() => {
+  overPet = false;
+  // 말풍선 위에 있던 것으로 남으면 사라질 시간이 멈춘 채 남는다
+  setBubbleHover(false);
+});
+
 bridge.onLayout((layout) => {
   petBox = { x: layout.pet.x, y: layout.pet.y, size: layout.pet.size };
   bubbleShown = !!layout.bubble && !!bubbleId;

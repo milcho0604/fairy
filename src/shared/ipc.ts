@@ -82,6 +82,7 @@ export const IPC = {
   bubbleClosed: 'pet:bubble-closed',
   /** 메인 → 펫 화면: 창 안에서 펫과 말풍선 자리 */
   layout: 'pet:layout',
+  hoverReset: 'pet:hover-reset',
   /** 펫 화면 → 메인: 한가하니 행동을 하나 골라 달라 (P1-06) */
   activityRequest: 'pet:activity-request',
   /** 펫 화면 → 메인: 행동을 멈춘다 (잡힘, 상태 바뀜) */
@@ -677,6 +678,8 @@ export interface PetBridge {
   /** null 이면 닫아라 */
   onBubble(listener: (bubble: BubbleMessage | null) => void): void;
   onLayout(listener: (layout: BubbleLayout) => void): void;
+  /** 메인이 펫이 비켜 간 것을 알아 마우스 통과로 돌렸다: 화면도 펫 위 표시를 거둔다 (다시 펫 위에 오면 새로 알린다) */
+  onHoverReset(listener: () => void): void;
   bubbleSize(id: string, width: number, height: number): void;
   bubbleAnchor(anchor: BubbleAnchor): void;
   bubbleClosed(id: string, action: string): void;
