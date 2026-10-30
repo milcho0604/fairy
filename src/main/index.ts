@@ -294,6 +294,7 @@ ready
       ticket: {
         available: () => !!serverCore?.aiAvailable(),
         tickets: () => serverCore?.tickets() ?? null,
+        block: () => serverCore?.aiBlock() ?? 'checking',
         agreed: () => !!serverCore?.aiAgreed(),
         agree: () => serverCore?.agreeAi(),
         ask: (body, onText, signal) =>
