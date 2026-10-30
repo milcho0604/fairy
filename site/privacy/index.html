@@ -740,7 +740,7 @@ html { scroll-behavior: auto; }
       <ul>
           <li data-i18n="pv.keep1">할 일, 메모, 일정, 일기, 코인, 페어리 상태와 페어리가 기억하는 것, 설정 (SQLite 저장 파일과 설정 파일)</li>
           <li data-i18n="pv.keep2">채팅 창의 최근 대화 40개. 붙인 그림은 저장하지 않아요</li>
-          <li data-i18n="pv.keep3">구글 캘린더 연결 토큰과, 넣었다면 Hugging Face 토큰을 저장해요. 나만 읽을 수 있는 파일에 두고, 운영체제 열쇠를 쓸 수 있으면 암호화해요. &lt;details&gt;&lt;summary&gt;자세히 보기&lt;/summary&gt;나만 읽을 수 있는 파일(권한 0600)에 두고, 운영체제 열쇠(맥 키체인, 윈도우 DPAPI, 리눅스 libsecret 등)를 쓸 수 있으면 암호화해요.&lt;/details&gt;</li>
+          <li data-i18n-html="pv.keep3">구글 캘린더 연결 토큰과, 넣었다면 Hugging Face 토큰을 저장해요. 나만 읽을 수 있는 파일에 두고, 운영체제 열쇠를 쓸 수 있으면 암호화해요. <details><summary>자세히 보기</summary>나만 읽을 수 있는 파일(권한 0600)에 두고, 운영체제 열쇠(맥 키체인, 윈도우 DPAPI, 리눅스 libsecret 등)를 쓸 수 있으면 암호화해요.</details></li>
           <li data-i18n="pv.keep4">진단 기록(logs 폴더, 합쳐서 2MB 이하). 질문, 답, 할 일과 일정 제목은 남기지 않고 파일 경로 속 사용자 이름은 가려요</li>
           <li data-i18n="pv.keep5">받아 둔 AI 모델과 도구, 모델 목록 사본</li>
           <li data-i18n="pv.keep6">&quot;같이 보기&quot;로 찍은 화면은 디스크에 저장하지 않아요</li>
@@ -794,7 +794,7 @@ html { scroll-behavior: auto; }
       <p><strong data-i18n="pv.srvNoT">받지 않는 것</strong></p>
       <ul>
           <li data-i18n="pv.no1">실명, 이메일, 전화번호, 생년월일. 닉네임은 내가 정하는 별명이라 실명이 아니어도 돼요.</li>
-          <li data-i18n="pv.no2">서버 프로그램은 IP 주소를 데이터베이스나 파일에 저장하지 않아요. 너무 많은 요청을 막는 데 IP 주소를 쓰지만, 되돌릴 수 없는 값으로 바꿔요. 그 값은 메모리에만 잠시 둬요. 다만 Cloudflare를 지나는 동안은 Cloudflare가 IP 주소를 봐요. &lt;details&gt;&lt;summary&gt;자세히 보기&lt;/summary&gt;너무 많은 요청을 막으려고(레이트리밋) IP 주소를 되돌릴 수 없게 바꾼 값을 메모리에만 잠시 둬요.&lt;/details&gt;</li>
+          <li data-i18n-html="pv.no2">서버 프로그램은 IP 주소를 데이터베이스나 파일에 저장하지 않아요. 너무 많은 요청을 막는 데 IP 주소를 쓰지만, 되돌릴 수 없는 값으로 바꿔요. 그 값은 메모리에만 잠시 둬요. 다만 Cloudflare를 지나는 동안은 Cloudflare가 IP 주소를 봐요. <details><summary>자세히 보기</summary>너무 많은 요청을 막으려고(레이트리밋) IP 주소를 되돌릴 수 없게 바꾼 값을 메모리에만 잠시 둬요.</details></li>
           <li data-i18n="pv.no3">할 일, 메모, 일정을 서버에 늘 맞춰 두지 않아요. 서버 백업을 직접 누를 때(저장 파일 전체가 가요), 그리고 바쁜 시간 보여 주기를 켠 친구에게는 일정의 시작과 끝 시각만 가요. 제목 보여 주기를 켠 친구에게만 제목도 가요. 채팅 기록은 서버로 가지 않아요.</li>
           <li data-i18n="pv.no4">광고, 마케팅, 방문 분석에 쓰지 않고, 그런 동의도 받지 않아요.</li>
           <li data-i18n="pv.no5">만 14세 미만이거나 서버 계정을 켜지 않으면 서버로 아무것도 보내지 않아요. 코인은 이 컴퓨터의 장부에만 있어요.</li>
@@ -855,7 +855,7 @@ html { scroll-behavior: auto; }
           <li data-i18n="pv.del10">나이 답을 만 14세 미만으로 바꾸면 서버 기능이 꺼지고, 서버 계정을 지우도록 안내해요.</li>
           <li data-i18n="pv.del11">로그인하지 않은 기기 계정은 앱을 지우거나 기기를 바꾸면 되찾을 수 없어요. 그래서 1년 동안 한 번도 쓰지 않은 로그인 없는 기기 계정은 서버가 정기적으로 확인해 지워요. 구글로 로그인해 둔 계정은 이 자동 지우기 대상이 아니고, 직접 지울 때까지 남아요.</li>
           <li data-i18n="pv.del12">서버의 기록은 데이터베이스에서 지우고, 서버 백업 파일은 디스크에서 파일을 지워요. 이 컴퓨터의 데이터는 직접 지워요.</li>
-          <li data-i18n="pv.del13">장애에 대비한 서버 데이터베이스 사본은 7일 뒤 지워요. 그래서 서버 계정을 지워도 그 사본에는 최대 7일 남을 수 있어요. &lt;details&gt;&lt;summary&gt;자세히 보기&lt;/summary&gt;서버 백업 파일은 이 사본에 들어 있지 않아요. 그 파일의 외장 디스크 사본은 서버에서 파일을 지운 뒤 하루 안에 같이 지워져요.&lt;/details&gt;</li>
+          <li data-i18n-html="pv.del13">장애에 대비한 서버 데이터베이스 사본은 7일 뒤 지워요. 그래서 서버 계정을 지워도 그 사본에는 최대 7일 남을 수 있어요. <details><summary>자세히 보기</summary>서버 백업 파일은 이 사본에 들어 있지 않아요. 그 파일의 외장 디스크 사본은 서버에서 파일을 지운 뒤 하루 안에 같이 지워져요.</details></li>
           <li data-i18n="pv.del14">쪽지함에서 연 쪽지는 1년 뒤 지워요.</li>
           <li data-i18n="pv.del15">로그인 세션(토큰의 해시)은 로그아웃하면 지워요. 오래 쓰지 않아 못 쓰게 된 세션도 서버 계정을 지울 때까지 남아요.</li>
       </ul>
@@ -875,7 +875,7 @@ html { scroll-behavior: auto; }
       <h2 id="pv-safe" class="h3" data-i18n="pv.safeT">안전하게 지키는 법</h2>
       <ul>
           <li data-i18n="pv.safe1">서버에는 기기 토큰과 세션 토큰의 해시만 둬요. 앱 쪽 토큰은 운영체제 열쇠로 암호화해 둬요.</li>
-          <li data-i18n="pv.safe2">서버 백업은 서버 디스크에 암호화해 저장해요. 암호 키는 서버 설정 파일에 있고 운영자가 관리해요. &lt;details&gt;&lt;summary&gt;자세히 보기&lt;/summary&gt;서버 백업은 서버 디스크에 AES-256-GCM으로 암호화해 저장해요. 암호 키는 서버 설정 파일에 있고 운영자가 관리해요.&lt;/details&gt;</li>
+          <li data-i18n-html="pv.safe2">서버 백업은 서버 디스크에 암호화해 저장해요. 암호 키는 서버 설정 파일에 있고 운영자가 관리해요. <details><summary>자세히 보기</summary>서버 백업은 서버 디스크에 AES-256-GCM으로 암호화해 저장해요. 암호 키는 서버 설정 파일에 있고 운영자가 관리해요.</details></li>
           <li data-i18n="pv.safe3">API 키와 로그인 비밀 같은 비밀값은 서버 설정 파일에만 두고, 공개 저장소에는 넣지 않아요.</li>
           <li data-i18n="pv.safe4">요청이 너무 많으면 기기와 계정 단위로 막아요.</li>
           <li data-i18n="pv.safe5">운영자 작업은 모두 기록으로 남겨요.</li>
@@ -884,7 +884,7 @@ html { scroll-behavior: auto; }
     </section>
     <section aria-labelledby="pv-site">
       <h2 id="pv-site" class="h3" data-i18n="pv.siteT">이 사이트</h2>
-      <p data-i18n="pv.site">쿠키, 방문 분석, 광고를 쓰지 않아요. 브라우저에는 고른 언어와 최신 버전 정보만 저장해요. 브라우저 설정에서 지울 수 있어요. 지워도 사이트를 쓰는 데는 지장이 없어요. 언어만 다시 골라요. 최신 버전을 알려고 브라우저가 GitHub에 물어보고, 글꼴은 Google Fonts에서 받아요. 사이트와 앱이 받는 공지 파일은 Vercel에서 호스팅해요. 이곳들은 요청을 받을 때 IP 주소 같은 접속 정보를 보게 돼요. &lt;details&gt;&lt;summary&gt;자세히 보기&lt;/summary&gt;브라우저에는 고른 언어(localStorage)와 15분 동안의 최신 버전 정보(sessionStorage)만 저장해요. 최신 버전을 알려고 브라우저가 GitHub API에 물어봐요.&lt;/details&gt;</p>
+      <p data-i18n-html="pv.site">쿠키, 방문 분석, 광고를 쓰지 않아요. 브라우저에는 고른 언어와 최신 버전 정보만 저장해요. 브라우저 설정에서 지울 수 있어요. 지워도 사이트를 쓰는 데는 지장이 없어요. 언어만 다시 골라요. 최신 버전을 알려고 브라우저가 GitHub에 물어보고, 글꼴은 Google Fonts에서 받아요. 사이트와 앱이 받는 공지 파일은 Vercel에서 호스팅해요. 이곳들은 요청을 받을 때 IP 주소 같은 접속 정보를 보게 돼요. <details><summary>자세히 보기</summary>브라우저에는 고른 언어(localStorage)와 15분 동안의 최신 버전 정보(sessionStorage)만 저장해요. 최신 버전을 알려고 브라우저가 GitHub API에 물어봐요.</details></p>
     </section>
     <section aria-labelledby="pv-kids">
       <h2 id="pv-kids" class="h3" data-i18n="pv.kidsT">어린이와 나이</h2>

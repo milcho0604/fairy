@@ -222,7 +222,11 @@ function stamp(html, p) {
   html = html.replace(/<html\b[^>]*>/, (m) => m.replace(/\slang="[^"]*"/, ` lang="${LANG}"`));
   // <tag ... data-i18n="key">…</tag>  (an element with data-i18n must not contain another element of its own tag name)
   html = html.replace(/<([a-z][a-z0-9]*)((?:\s[^>]*?)?\sdata-i18n="([^"]+)"[^>]*)>([\s\S]*?)<\/\1>/g,
-    (_, tag, attrs, key) => `<${tag}${attrs}>${esc(t(key))}</${tag}>`);
+    (_, tag, attrs, key) => {
+      // 태그가 든 글을 data-i18n 에 두면 <details> 같은 것이 글자 그대로 보인다 (data-i18n-html 로)
+      if (/<[a-z]/i.test(D.ko[key] ?? "") || /<[a-z]/i.test(D.en[key] ?? "")) throw new Error(`${p.file}: ${key} 는 태그가 있어 data-i18n-html 이어야 한다`);
+      return `<${tag}${attrs}>${esc(t(key))}</${tag}>`;
+    });
   html = html.replace(/<([a-z][a-z0-9]*)((?:\s[^>]*?)?\sdata-i18n-html="([^"]+)"[^>]*)>([\s\S]*?)<\/\1>/g,
     (_, tag, attrs, key) => `<${tag}${attrs}>${t(key)}</${tag}>`);
   html = html.replace(/<([a-z][a-z0-9]*)((?:\s[^>]*?)?\sdata-name\b[^>]*)>([\s\S]*?)<\/\1>/g,
