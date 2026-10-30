@@ -416,7 +416,7 @@ try {
 
         // ---- 표 ----
         await nav(`${apiUrl}/admin#users/list`);
-        check(`[${tag}] 표에 이용자 29행 (합쳐진 옛 계정은 없음)`, (await ev(`document.querySelectorAll('#sub-users-list tbody tr').length`)) === 29);
+        check(`[${tag}] 표는 한 쪽에 20행, 쪽 표시는 1 / 2 (29명, 합쳐진 옛 계정은 없음)`, (await ev(`document.querySelectorAll('#sub-users-list tbody tr').length`)) === 20 && (await text('#sub-users-list .pager')).includes('1 / 2'), String(await ev(`document.querySelectorAll('#sub-users-list tbody tr').length`)));
         check(`[${tag}] 찾는 칸이 하나`, (await ev(`document.querySelectorAll('#cell-users input[name=q]').length`)) === 1);
         check(`[${tag}] 가로 넘침 없음 (표)`, await overflow());
         check(`[${tag}] 열기와 지급 단추가 화면 안 (왼쪽 0 이상, 오른쪽 폭 이하)`, await inside('#sub-users-list td.act a'));
@@ -429,13 +429,14 @@ try {
         } else {
           check(`[${tag}] 넓은 폭에서는 열 12개가 다 보인다`, (await ev(`[...document.querySelectorAll('#sub-users-list thead th')].filter((t) => t.getClientRects().length).length`)) === 12);
         }
-        check(`[${tag}] 단추 이름에 대상 이름이 붙는다 ("고양이 지급")`, (await ev(`[...document.querySelectorAll('#sub-users-list td.act a')].some((a) => a.textContent === '고양이 지급')`)) === true);
+        check(`[${tag}] 단추 이름에 대상 이름이 붙는다 ("이용자26 지급")`, (await ev(`[...document.querySelectorAll('#sub-users-list td.act a')].some((a) => a.textContent === '이용자26 지급')`)) === true, JSON.stringify(await ev(`[...document.querySelectorAll('#sub-users-list td.act a')].slice(0, 4).map((a) => a.textContent)`)));
         await shot(`users-list-${tag}`, '#cell-users', 1700);
 
         // ---- 상세 ----
         await nav(`${apiUrl}/admin?user=${id1}#users/list`);
         const t = await text('#user-detail');
-        check(`[${tag}] 상세 한 화면에 지급, 막기, 정기 지급, 회수, 신고, 내역, 운영 기록`, ['이 사람에게 지급', '막기와 허용', '정기 지급', '채팅 이용권 회수', '신고', '받은 쪽지와 받았는지', '코인 내역', '이 사람의 운영 기록'].every((s) => t.includes(s)), t.slice(0, 200));
+        check(`[${tag}] 상세 한 화면에 지급, 막기, 정기 지급, 회수, 신고, 내역, 운영 기록`, ['이 사람에게 지급', '막기와 허용', '정기 지급', '회수 (채팅 이용권, 코인)', '신고', '받은 쪽지와 받았는지', '코인 내역', '이 사람의 운영 기록'].every((s) => t.includes(s)), ['이 사람에게 지급', '막기와 허용', '정기 지급', '회수 (채팅 이용권, 코인)', '신고', '받은 쪽지와 받았는지', '코인 내역', '이 사람의 운영 기록'].filter((s) => !t.includes(s)).join(', '));
+        check(`[${tag}] 이름 뒤 빈 칸 없이 "지급 대상 확인하기: 고양이", "정기 지급 걸기: 고양이"`, (await ev(`[...document.querySelectorAll('#user-detail form button[type=submit]')].map((b) => b.textContent)`)).filter((x) => x.includes('고양이')).sort().join('|') === '정기 지급 걸기: 고양이|지급 대상 확인하기: 고양이');
         check(`[${tag}] 받는 사람 이름이 지급 단추 곁에 있고 숨은 대상 칸과 같다`,
           (await ev(`(() => { const f = document.querySelector('#user-detail form.grant-one'); const code = f.querySelector('input[name=accounts]').value; return f.querySelector('.target').innerText.includes('고양이') && f.querySelector('.target').innerText.includes(code) && f.querySelector('button[type=submit]').textContent.includes('고양이') && code === 'F-ABCD-0001'; })()`)) === true);
         check(`[${tag}] 지급 단추가 화면 안`, await inside('#user-detail form.grant-one button[type=submit]'));
@@ -477,20 +478,10 @@ try {
     const pv = await text('#sub-users-grants');
     check('지급 단추를 누르면 확정이 아니라 대상 확인 화면 (3. 미리보기), 아직 안 보냄', pv.includes('3. 미리보기') && pv.includes('강아지') && notes(id2) === 0, pv.slice(0, 160));
     await shot('preview-single-1280', '#cell-users', 1400);
-    check('인원 수 칸은 비우면 제출할 수 없다', (await ev(`document.querySelector('#sub-users-grants form[action="/admin/grants/batch"]').checkValidity()`)) === false);
-    await setVal('input[name=people]', '2');
-    await ev(`document.querySelector('input[name=people]').removeAttribute('pattern'); document.querySelector('#sub-users-grants input[name=confirm]').checked = true; true`);
-    await submitAndWait('#sub-users-grants form[action="/admin/grants/batch"]');
-    check('인원 수를 틀리게 적으면 서버가 거절하고 아무것도 안 보낸다', (await text('#cell-users')).includes('받는 사람 수가 달라요') && notes(id2) === 0);
-    // 처음부터 다시
-    await nav(`${apiUrl}/admin?user=${id2}#users/list`);
-    await setVal('#user-detail form.grant-one input[name=coins]', '7');
-    await setVal('#user-detail form.grant-one textarea[name=reason]', '시험 지급');
-    await submitAndWait('#user-detail form.grant-one');
-    await setVal('input[name=people]', '1');
+    check('한 명이면 인원 수를 다시 적는 칸이 없고 확인 체크 하나로 확정한다', (await ev(`document.querySelectorAll('#sub-users-grants input[name=people]').length`)) === 0 && (await ev(`document.querySelector('#sub-users-grants form[action="/admin/grants/batch"]').checkValidity()`)) === false);
     await ev(`document.querySelector('#sub-users-grants input[name=confirm]').checked = true; true`);
     await submitAndWait('#sub-users-grants form[action="/admin/grants/batch"]');
-    check('맞게 적으면 쪽지가 한 통 가고 5. 결과 확인', notes(id2) === 1 && (await text('#sub-users-grants')).includes('5. 결과 확인') && (await text('#sub-users-grants')).includes('1명에게 지급 쪽지를 보냈어요'));
+    check('확인을 체크하고 확정하면 쪽지가 한 통 가고 5. 결과 확인', notes(id2) === 1 && (await text('#sub-users-grants')).includes('5. 결과 확인') && (await text('#sub-users-grants')).includes('1명에게 지급 쪽지를 보냈어요'));
     await shot('result-1280', '#cell-users', 1600);
 
     // ---- 받았는지 추적 ----

@@ -316,7 +316,7 @@ describe('운영 기록의 누가, 대상, 동작 종류', () => {
     assert.equal(page.status, 200);
     assert.match(page.text, /운영고양이 #\d+<br><small><code>account:\d+<\/code>/);
     assert.match(page.text, /웹 운영자<br><small><code>admin:/);
-    assert.match(page.text, /<td><code>admin:deadbeef<\/code><\/td>/);
+    assert.match(page.text, /<td data-l="누가"><code>admin:deadbeef<\/code><\/td>/);
     assert.match(page.text, /이벤트 끝내기<br><small><code>event\.end<\/code>/);
     // 앱 개요에도 같은 자료
     const ov = await adminApi('overview');
@@ -398,7 +398,7 @@ describe('운영 기록의 누가, 대상, 동작 종류', () => {
     assert.match(logOnly(p1.text), new RegExp(`href="/admin\\?lu=${t.id}&amp;lp=2#settings/log"`));
     const p3 = await admin.page(`/log?user=${t.id}&page=3`);
     assert.match(logOnly(p3.text), /3 \/ 3/);
-    assert.equal(logOnly(p3.text).split('<td>').length - 1 > 0, true);
+    assert.equal(logOnly(p3.text).split('<td data-l=').length - 1 > 0, true);
     const over = await admin.page(`/log?user=${t.id}&page=99`);
     assert.match(logOnly(over.text), /3 \/ 3/);
   });
