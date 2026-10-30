@@ -52,7 +52,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
           </button>
           <button
             type="button"
-            className="ghost small"
+            className="ghost"
             title={t('settings.importFolderHint')}
             onClick={async () => {
               show(importFlash(await bridge.importData('folder').catch(() => undefined)));

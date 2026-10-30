@@ -47,7 +47,7 @@ export function AiSupportBox() {
           const cap = CAPABILITIES[id];
           const state = row?.state;
           const chip = (on: boolean, label: string) => (
-            <li key={label} className={on ? 'on' : 'off'}>
+            <li key={label} className={`cap ${on ? 'on' : 'off'}`}>
               {label} <span className="sr-or-text">{on ? t('support.ai.yes') : t('support.ai.no')}</span>
             </li>
           );

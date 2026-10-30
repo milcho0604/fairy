@@ -236,20 +236,21 @@ header .new-chat .new-icon {
   }
 }
 
-/* 맥 좁은 창(320): 창 버튼 자리(72px)를 빼면 얼굴과 이름이 다 안 들어가서 새 대화 단추를 그림(+)으로 줄인다.
-   글은 화면 읽기 프로그램용으로 남기고 올리면 title 로 보인다. 리눅스, 윈도우는 320 에서도 글 그대로 들어간다 */
-@media (max-width: 360px) {
-  body.mac header .new-chat {
+/* 좁은 창(440 미만): 새 대화 단추를 그림(+)으로 줄여 펫 이름이 다섯 글자쯤 남게 한다 (en 320, 400 에서 이름이 "K..." 로 잘렸다).
+   글은 화면 읽기 프로그램용으로 남기고 올리면 title 로 보인다 */
+@media (max-width: 439px) {
+  header .new-chat {
     display: inline-flex;
     align-items: center;
-    padding: 4px 5px;
+    justify-content: center;
+    padding: 4px;
   }
 
-  body.mac header .new-chat .new-icon {
+  header .new-chat .new-icon {
     display: block;
   }
 
-  body.mac header .new-chat .new-label {
+  header .new-chat .new-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -259,9 +260,23 @@ header .new-chat .new-icon {
   }
 }
 
-/* 아주 좁은 창(320 창을 1.5배로 키운 것과 같은 260 이하): 단추가 머리줄 밖으로 나가지 않게 줄을 나눈다.
+/* 머리줄 단추는 높이를 하나로 (목록 단추 22, 고르기 26, 새 대화 31.7 로 들쭉날쭉했다) */
+body header .icon-btn,
+body header .new-chat,
+body header .picker-button {
+  height: 28px;
+  padding-block: 0;
+  line-height: 1;
+}
+
+body header .icon-btn,
+body header .new-chat {
+  min-width: 28px;
+}
+
+/* 좁은 창(340 이하, 320 창 포함): 단추가 머리줄 밖으로 나가지 않고 펫 이름이 다섯 글자쯤 남게 줄을 나눈다.
    얼굴, 이름과 단추들이 윗줄, AI 고르기는 아랫줄(자리가 남으면 새 대화 단추 옆) */
-@media (max-width: 260px) {
+@media (max-width: 340px) {
   body header {
     flex: none;
     flex-wrap: wrap;
