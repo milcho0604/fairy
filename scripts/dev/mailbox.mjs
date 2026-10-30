@@ -92,6 +92,8 @@ const DAY = 86_400_000;
 const pad = (n) => String(n).padStart(2, '0');
 const dayOf = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const NOW = Date.now();
+/** 그 날의 낮 12시: 밤에 돌려도 쪽지의 날짜와 시각이 어긋나 보이지 않게 */
+const noonOf = (ms) => { const d = new Date(ms); d.setHours(12, 0, 0, 0); return d.getTime(); };
 
 /** 펫 쪽지 줄 */
 const lines3 = (v = 1) => [
@@ -104,7 +106,7 @@ const local = (id, daysAgo, over = {}) => ({
   source: 'local',
   kind: 'daily',
   day: dayOf(NOW - daysAgo * DAY),
-  at: NOW - daysAgo * DAY - 3_600_000 * 2,
+  at: noonOf(NOW - daysAgo * DAY),
   look: 'note',
   milestone: null,
   coins: null,
@@ -117,7 +119,7 @@ const srv = (id, kind, over = {}) => ({
   source: 'server',
   kind,
   day: dayOf(NOW - (id % 5) * DAY),
-  at: NOW - (id % 5) * DAY - 7_200_000,
+  at: noonOf(NOW - (id % 5) * DAY),
   look: 'note',
   milestone: null,
   coins: null,
