@@ -6,6 +6,16 @@ import { moveCell, stopCell } from './roving.ts';
 import './records.css';
 
 const bridge = window.jjakkungPanel;
+/** 칸 아래 분 숫자를 보이는지 (창을 열 때마다 새로 만들어 브라우저 저장소에 둔다. 작은 패널과 큰 창이 같이 쓴다) */
+const DETAIL_KEY = 'jj.records.focusDetail';
+
+function savedDetail(): boolean {
+  try {
+    return localStorage.getItem(DETAIL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /** 분을 "1시간 15분" / "1h 15m" 로 */
 export function fmtMinutes(min: number): string {
@@ -30,7 +40,8 @@ const monthLabel = (ym: string): string => {
 
 /**
  * 집중 월간 잔디 (#125, shared/focus-month.ts). 이번 주 칸 옆에서 달을 넘겨 가며 날마다 집중한 양을 색 다섯 단계로 본다.
- * 색만으로 구분하지 않게 칸에 분 숫자를 쓰고 칸마다 툴팁(title)과 읽기 글(aria-label)이 있다.
+ * 칸마다 툴팁(title)과 읽기 글(aria-label)에 그날 분이 있어 색만으로 구분하지 않는다. 칸 아래 분 숫자는 기본으로 숨기고
+ * 머리의 "자세히 보기" 단추로 펼친다(기억한다).
  * 날짜를 누르면 그날 총 시간과 가장 길게 이어 간 집중이 아래에 나온다
  */
 export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
@@ -44,6 +55,15 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
   }
   const [view, setView] = useState<FocusMonthView>();
   const [pick, setPick] = useState<string>();
+  const [detail, setDetailState] = useState(savedDetail);
+  const setDetail = (next: boolean) => {
+    setDetailState(next);
+    try {
+      localStorage.setItem(DETAIL_KEY, next ? '1' : '0');
+    } catch {
+      // 못 적어도 이번에는 바뀐다
+    }
+  };
   // 집중이 끝나거나 멈추면(단계가 바뀜) 오늘 칸이 바뀐다
   const refresh = `${s.focus.phase}:${s.week?.focusMin ?? 0}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh 는 다시 읽을 때를 알리는 값이다
@@ -91,7 +111,17 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
         {t('records.month.title')}
         <small>{t('records.month.summary', { min: fmtMinutes(totals.min), days: totals.days })}</small>
       </summary>
-      <small>{t('records.month.hint')}</small>
+      <div className="fm-head">
+        <small>{t('records.month.hint')}</small>
+        <button
+          type="button"
+          className="ghost small fm-detail-toggle"
+          aria-expanded={detail}
+          onClick={() => setDetail(!detail)}
+        >
+          {detail ? t('records.month.detailHide') : t('records.month.detailShow')}
+        </button>
+      </div>
       <div className="fm-nav">
         <button
           type="button"
@@ -118,7 +148,7 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
         </button>
       </div>
       <fieldset
-        className="fm-grid"
+        className={`fm-grid${detail ? ' with-min' : ''}`}
         ref={gridRef}
         aria-label={t('records.month.grid', { month: monthLabel(month) })}
       >
@@ -153,7 +183,7 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
               onClick={() => setPick(pick === day ? undefined : day)}
             >
               <span className="fm-d">{Number(day.slice(8, 10))}</span>
-              {c.min > 0 && <b className="fm-m">{c.min}</b>}
+              {detail && c.min > 0 && <b className="fm-m">{c.min}</b>}
             </button>
           );
         })}
@@ -177,7 +207,7 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
             : t('records.month.pick')}
       </p>
       <div className="fm-legend" aria-hidden="true">
-        <small>{t('records.month.legend')}</small>
+        <small>{detail ? t('records.month.legendMin') : t('records.month.legend')}</small>
         <span className="fm-swatches">
           <span>
             <i className="lv0" />

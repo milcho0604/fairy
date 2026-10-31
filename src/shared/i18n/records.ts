@@ -49,7 +49,10 @@ export const ko = {
   'records.month.detailNone': (v: { date: string }) => `${v.date}: 집중 기록이 없어.`,
   'records.month.pick': '날짜를 누르면 그날 기록이 보여.',
   'records.month.empty': '이 달에는 집중 기록이 없어.',
-  'records.month.legend': '색이 진할수록 많이 집중한 날 (칸의 숫자는 분)',
+  'records.month.legend': '색이 진할수록 많이 집중한 날',
+  'records.month.legendMin': '색이 진할수록 많이 집중한 날 (칸 아래 숫자는 분)',
+  'records.month.detailShow': '자세히 보기',
+  'records.month.detailHide': '접기',
   'records.month.legendStep': (v: { min: number }) => `${v.min}분 이상`,
   'records.month.note': '집중 시간만 센다. 컴퓨터가 잠든 사이는 빼고, 자정을 넘긴 집중은 끝난 날에 센다.',
 
@@ -156,7 +159,10 @@ export const en: Translation<typeof ko> = {
   'records.month.detailNone': (v: { date: string }) => `${v.date}: no focus recorded.`,
   'records.month.pick': 'Tap a day to see its record.',
   'records.month.empty': 'No focus recorded this month.',
-  'records.month.legend': 'Darker days had more focus (the number in a cell is minutes)',
+  'records.month.legend': 'Darker days had more focus',
+  'records.month.legendMin': 'Darker days had more focus (the number under a date is minutes)',
+  'records.month.detailShow': 'Show details',
+  'records.month.detailHide': 'Hide details',
   'records.month.legendStep': (v: { min: number }) => `${v.min}+ min`,
   'records.month.note':
     'Only focus time counts. Time while the computer slept is left out, and a session past midnight counts on the day it ended.',
