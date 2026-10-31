@@ -282,6 +282,8 @@ export const SETTINGS = {
   reset: 'settings:reset',
   setScale: 'settings:set-scale',
   openMaker: 'settings:open-maker',
+  /** 설정 창에서 큰 창의 페어리, 비서 구역을 연다 */
+  openHome: 'settings:open-home',
   /** 베타 기록 (P4-04) */
   stats: 'settings:stats',
   copyStats: 'settings:copy-stats',
@@ -467,6 +469,8 @@ export interface SettingsBridge {
   setScale(scale: number): void;
   /** 사진 펫 만들기 (target 을 주면 상태별 포즈) */
   openMaker(target?: MakerTarget): void;
+  /** 큰 창의 구역(페어리, 비서)을 연다 (설정에서 꺼낸 항목으로 가는 길) */
+  openHome(tab: 'pet' | 'assist'): void;
   stats(): Promise<BetaReport>;
   /** 베타 기록 글을 클립보드에 복사한다 */
   copyStats(): Promise<boolean>;
@@ -1315,7 +1319,18 @@ export interface NoteHit {
 
 // records 는 큰 창 사이드바에만 있다 (이슈 #166). 작은 패널의 탭 줄(renderer panel/tabs.ts)에는 없다
 // mail(쪽지함)은 큰 창에서는 사이드바 구역이고, 작은 패널에서는 탭이 아니라 머리줄 봉투가 여는 덮개다 (feat/mailbox)
-export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop', 'records', 'mail'] as const;
+// pet(페어리 꾸미기)과 assist(비서)도 큰 창 전용 구역이다 (설정에서 꺼낸 것, ui/settings-slim)
+export const PANEL_TABS = [
+  'today',
+  'todo',
+  'note',
+  'event',
+  'shop',
+  'records',
+  'mail',
+  'pet',
+  'assist',
+] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 export const isPanelTab = (v: unknown): v is PanelTab => PANEL_TABS.includes(v as PanelTab);
 

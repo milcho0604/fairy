@@ -136,6 +136,8 @@ export interface PetActions {
   openPanel?(): void;
   /** 큰 창으로 열기 (큰 창 설계 #159). 없으면 우클릭 메뉴에 항목이 없다 */
   openHome?(): void;
+  /** 큰 창의 페어리, 비서 구역으로 열기 (설정에서 꺼낸 것) */
+  openHub?(tab: 'pet' | 'assist'): void;
   feed(): void;
   makePet(): void;
   /** 집중 타이머가 도는지 (메뉴 글자를 바꾼다) */
@@ -797,6 +799,12 @@ export function createPetWindow({
               accelerator: settings.get().shortcuts.home || undefined,
               click: () => actions.openHome?.(),
             },
+          ]
+        : []),
+      ...(actions.openHub
+        ? [
+            { label: t('pet.menu.openPet'), click: () => actions.openHub?.('pet') },
+            { label: t('pet.menu.openAssist'), click: () => actions.openHub?.('assist') },
           ]
         : []),
       ...(actions.openMailbox

@@ -16,6 +16,7 @@ import {
 import type { Todo } from '../../../shared/todo-store.ts';
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
+import { HubHost } from '../hub/HubHost.tsx';
 import { LanguageContext } from '../language-context.ts';
 import { PetFace } from '../PetFace.tsx';
 import { useLanguageUpdates } from '../use-language.ts';
@@ -52,9 +53,9 @@ const MAC = navigator.userAgent.includes('Mac');
 /** 탭 풀이와 설정 단축키 칸에 보이는 수식키 */
 const MOD = MAC ? 'Cmd' : 'Ctrl';
 
-/** 이 면에서 열 수 있는 탭인가: 작은 패널은 탭 줄에 있는 것만, 큰 창은 기록과 쪽지함 구역도 (#166, 쪽지함은 작은 패널에서는 머리줄 봉투가 여는 덮개) */
+/** 이 면에서 열 수 있는 탭인가: 작은 패널은 탭 줄에 있는 것만, 큰 창은 기록, 쪽지함, 페어리, 비서 구역도 (#166, 쪽지함은 작은 패널에서는 머리줄 봉투가 여는 덮개) */
 const usable = (kind: SurfaceKind, v: unknown): v is PanelTab =>
-  isTab(v) || (kind === 'home' && (v === 'records' || v === 'mail'));
+  isTab(v) || (kind === 'home' && (v === 'records' || v === 'mail' || v === 'pet' || v === 'assist'));
 
 /** 마지막에 본 탭 (창은 열 때마다 새로 만들어서 브라우저 저장소에 둔다). 못 읽으면 오늘. */
 function savedTab(kind: SurfaceKind): PanelTab {
@@ -545,6 +546,7 @@ function PanelShell({ kind }: { kind: SurfaceKind }) {
         {tab === 'shop' && <ShopTab s={s} />}
         {tab === 'records' && kind === 'home' && <RecordsTab s={s} />}
         {tab === 'mail' && kind === 'home' && <MailPage />}
+        {kind === 'home' && <HubHost tab={tab} />}
         {tab === 'event' && (
           <EventTab
             s={s}

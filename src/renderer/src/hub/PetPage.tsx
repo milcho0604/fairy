@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { PERSONAS } from '../../../../shared/ai/persona.ts';
-import { saverOn } from '../../../../shared/battery.ts';
-import { t } from '../../../../shared/i18n/index.ts';
-import { styleForCopy } from '../../../../shared/persona-voice.ts';
-import { PET_CLICK_ACTIONS, type PetClickAction } from '../../../../shared/pet-click.ts';
-import { restDaysOf } from '../../../../shared/routine.ts';
+import { PERSONAS } from '../../../shared/ai/persona.ts';
+import { saverOn } from '../../../shared/battery.ts';
+import { t } from '../../../shared/i18n/index.ts';
+import { styleForCopy } from '../../../shared/persona-voice.ts';
+import { PET_CLICK_ACTIONS, type PetClickAction } from '../../../shared/pet-click.ts';
+import { restDaysOf } from '../../../shared/routine.ts';
 import {
   cleanPetName,
   isPersonalPet,
@@ -13,18 +13,19 @@ import {
   POSE_KINDS,
   petNameLength,
   starterStand,
-} from '../../../../shared/settings.ts';
-import { MAX_SCALE, MIN_SCALE } from '../../../../shared/size.ts';
-import { parseStyle } from '../../../../shared/speech-style.ts';
-import { PetNameInput } from '../../PetNameInput.tsx';
-import { Friends } from '../Friends.tsx';
-import { GaitPicker } from '../GaitPicker.tsx';
-import { Gallery } from '../Gallery.tsx';
-import { LinesEditor } from '../LinesEditor.tsx';
-import { PetPicker } from '../PetPicker.tsx';
-import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
-import { WearBox } from '../WearBox.tsx';
-import { SpeechEditor, SpeechPreview } from './SpeechEditor.tsx';
+} from '../../../shared/settings.ts';
+import { MAX_SCALE, MIN_SCALE } from '../../../shared/size.ts';
+import { parseStyle } from '../../../shared/speech-style.ts';
+import { PetNameInput } from '../PetNameInput.tsx';
+import { Friends } from '../settings/Friends.tsx';
+import { GaitPicker } from '../settings/GaitPicker.tsx';
+import { Gallery } from '../settings/Gallery.tsx';
+import { LinesEditor } from '../settings/LinesEditor.tsx';
+import { PetPicker } from '../settings/PetPicker.tsx';
+import { SpeechEditor, SpeechPreview } from '../settings/tabs/SpeechEditor.tsx';
+import { bridge, isMac, Section, type TabProps, Toggle } from '../settings/ui.tsx';
+import { WearBox } from '../settings/WearBox.tsx';
+import { JumpNav } from './JumpNav.tsx';
 
 /** 만나는 시간을 켰을 때 삐짐 칸의 안내: 만나지 않는 요일을 이름으로 (일, 토) */
 const restByRoutine = (days: readonly number[]): string => {
@@ -34,8 +35,8 @@ const restByRoutine = (days: readonly number[]): string => {
     : t('settings.restDaysByRoutine', { days: days.map((d) => names[d] ?? '').join(', ') });
 };
 
-/** 펫 탭: 펫(이름, 모습, 크기, 움직임), 친구 펫, 삐짐 */
-export function PetTab({ snap, setSnap, update, flash }: TabProps) {
+/** 큰 창의 페어리 구역: 이름과 모습, 말투, 움직임과 반응, 친구와 갤러리, 삐짐, 성능 (설정에서 꺼낸 것) */
+export function PetPage({ snap, setSnap, update, flash }: TabProps) {
   const s = snap.settings;
   const mac = isMac(snap);
   const mod = mac ? 'Cmd' : 'Ctrl';
@@ -93,81 +94,9 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
 
   return (
     <>
-      <nav className="settings-jump" aria-label={t('settings.pet')}>
-        {(['speech', 'appearance', 'clicks', 'movement', 'notifications', 'performance'] as const).map(
-          (key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() =>
-                document.getElementById(`pet-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }
-            >
-              {t(`settings.pet.${key}`)}
-            </button>
-          ),
-        )}
-      </nav>
-      <Section id="pet-speech" title={t('settings.pet.speech')}>
-        <div className="field">
-          <span>{t('settings.persona')}</span>
-          <fieldset className="segmented wrap" aria-label={t('settings.persona')}>
-            {PERSONAS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                aria-pressed={s.persona === p.id}
-                className={s.persona === p.id ? 'on' : ''}
-                onClick={() => update({ persona: p.id })}
-              >
-                {p.label}
-              </button>
-            ))}
-          </fieldset>
-          <small>
-            {PERSONAS.find((p) => p.id === s.persona)?.hint} {t('settings.personaNext')}
-          </small>
-        </div>
-        {s.persona === 'custom' ? (
-          <SpeechEditor value={s.speech} petName={s.petName} onSave={(speech) => void update({ speech })} />
-        ) : (
-          <>
-            <SpeechPreview persona={s.persona} style={s.speech} petName={s.petName} />
-            <div className="field">
-              <button
-                type="button"
-                className="link"
-                onClick={() =>
-                  void update({ persona: 'custom', speech: parseStyle(styleForCopy(s.persona)) })
-                }
-              >
-                {t('speech.copyPreset')}
-              </button>
-              <small>{t('speech.copyPresetHint')}</small>
-            </div>
-          </>
-        )}
-        <Toggle
-          label={t('settings.doingBubble')}
-          hint={t('settings.doingBubbleHint')}
-          on={s.doingBubble}
-          onChange={(v) => update({ doingBubble: v })}
-        />
-        <Toggle
-          label={t('settings.sounds')}
-          hint={t('settings.soundsHint')}
-          on={s.sounds}
-          onChange={(v) => update({ sounds: v })}
-        />
-        <small>{t('records.lines.hint')}</small>
-        <div className="action-row">
-          <button type="button" className="ghost" onClick={() => setLinesOpen(true)}>
-            {t('records.lines.open')}
-          </button>
-        </div>
-        {linesOpen && <LinesEditor onClose={() => setLinesOpen(false)} onMsg={flash} />}
-      </Section>
-      <Section id="pet-appearance" title={t('settings.pet.appearance')}>
+      <p className="hub-intro">{t('hub.pet.intro')}</p>
+      <JumpNav ns="pet" keys={['look', 'voice', 'move', 'friends', 'mood', 'perf'] as const} />
+      <Section id="hub-pet-look" title={t('hub.pet.look')} lede={t('hub.pet.look.lede')}>
         <label className="field">
           <span>{t('settings.name')}</span>
           <div className="row">
@@ -260,32 +189,6 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           />
           <small>{t('settings.sizeHint', { mod })}</small>
         </label>
-      </Section>
-
-      <Section id="pet-clicks" title={t('settings.pet.clicks')}>
-        {(['petClick', 'petDoubleClick'] as const).map((key) => (
-          <label className="field" key={key}>
-            <span>{t(key === 'petClick' ? 'settings.pet.click.single' : 'settings.pet.click.double')}</span>
-            <select
-              value={s[key]}
-              onChange={(e) => {
-                const value = e.currentTarget.value as PetClickAction;
-                if (key === 'petClick') void update({ petClick: value });
-                else void update({ petDoubleClick: value });
-              }}
-            >
-              {PET_CLICK_ACTIONS.map((action) => (
-                <option key={action} value={action}>
-                  {t(`settings.pet.click.action.${action}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
-        <small className="below">{t('settings.pet.clickHint')}</small>
-      </Section>
-
-      <Section id="pet-movement" title={t('settings.pet.movement')}>
         {/* 밀크, 초코는 네 발로 선 피규어를 켰을 때만 입체 (끄면 사진 그대로라 입체로 보기가 쓸모없다) */}
         {(!s.petImage || s.petModel || s.petDepth || starterStand(s)) && (
           <Toggle
@@ -314,7 +217,62 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
             <small>{t(`settings.petStyleHint.${s.petStyle}`)}</small>
           </div>
         )}
-
+      </Section>
+      <WearBox snap={snap} update={update} />
+      <Section id="hub-pet-voice" title={t('hub.pet.voice')} lede={t('hub.pet.voice.lede')}>
+        <div className="field">
+          <span>{t('settings.persona')}</span>
+          <fieldset className="segmented wrap" aria-label={t('settings.persona')}>
+            {PERSONAS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={s.persona === p.id}
+                className={s.persona === p.id ? 'on' : ''}
+                onClick={() => update({ persona: p.id })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </fieldset>
+          <small>
+            {PERSONAS.find((p) => p.id === s.persona)?.hint} {t('settings.personaNext')}
+          </small>
+        </div>
+        {s.persona === 'custom' ? (
+          <SpeechEditor value={s.speech} petName={s.petName} onSave={(speech) => void update({ speech })} />
+        ) : (
+          <>
+            <SpeechPreview persona={s.persona} style={s.speech} petName={s.petName} />
+            <div className="field">
+              <button
+                type="button"
+                className="link"
+                onClick={() =>
+                  void update({ persona: 'custom', speech: parseStyle(styleForCopy(s.persona)) })
+                }
+              >
+                {t('speech.copyPreset')}
+              </button>
+              <small>{t('speech.copyPresetHint')}</small>
+            </div>
+          </>
+        )}
+        <Toggle
+          label={t('settings.doingBubble')}
+          hint={t('settings.doingBubbleHint')}
+          on={s.doingBubble}
+          onChange={(v) => update({ doingBubble: v })}
+        />
+        <small>{t('records.lines.hint')}</small>
+        <div className="action-row">
+          <button type="button" className="ghost" onClick={() => setLinesOpen(true)}>
+            {t('records.lines.open')}
+          </button>
+        </div>
+        {linesOpen && <LinesEditor onClose={() => setLinesOpen(false)} onMsg={flash} />}
+      </Section>
+      <Section id="hub-pet-move" title={t('hub.pet.move')} lede={t('hub.pet.move.lede')}>
         <Toggle
           label={t('settings.wander')}
           hint={t('settings.wanderHint')}
@@ -357,42 +315,28 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           }
           onChange={(v) => update({ typeAlong: v })}
         />
+        {(['petClick', 'petDoubleClick'] as const).map((key) => (
+          <label className="field" key={key}>
+            <span>{t(key === 'petClick' ? 'settings.pet.click.single' : 'settings.pet.click.double')}</span>
+            <select
+              value={s[key]}
+              onChange={(e) => {
+                const value = e.currentTarget.value as PetClickAction;
+                if (key === 'petClick') void update({ petClick: value });
+                else void update({ petDoubleClick: value });
+              }}
+            >
+              {PET_CLICK_ACTIONS.map((action) => (
+                <option key={action} value={action}>
+                  {t(`settings.pet.click.action.${action}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        <small className="below">{t('settings.pet.clickHint')}</small>
       </Section>
-      <Section id="pet-notifications" title={t('settings.pet.notifications')}>
-        <Toggle
-          label={t('settings.dailyNotes')}
-          hint={t('settings.dailyNotesHint')}
-          on={s.dailyNotes}
-          onChange={(v) => update({ dailyNotes: v })}
-        />
-        <Toggle
-          label={t('settings.eveningNotes')}
-          hint={t('settings.eveningNotesHint')}
-          on={s.eveningNotes}
-          disabled={!s.dailyNotes}
-          onChange={(v) => update({ eveningNotes: v })}
-        />
-      </Section>
-      <Section id="pet-performance" title={t('settings.pet.performance')}>
-        <Toggle
-          label={t('settings.boost')}
-          hint={t('settings.boostHint')}
-          on={s.boost}
-          note={s.boost && snap.onBattery ? t('settings.boostResting') : undefined}
-          onChange={(v) => update({ boost: v })}
-        />
-        <Toggle
-          label={t(mac ? 'settings.sysMonitor' : 'settings.sysMonitorWin')}
-          hint={t(mac ? 'settings.sysMonitorHint' : 'settings.sysMonitorWinHint')}
-          on={s.sysMonitor}
-          note={s.sysMonitor && snap.onBattery ? t('settings.sysMonitorResting') : undefined}
-          onChange={(v) => update({ sysMonitor: v })}
-        />
-      </Section>
-
-      <WearBox snap={snap} update={update} />
-
-      <Section title={t('settings.friends')}>
+      <Section id="hub-pet-friends" title={t('hub.pet.friends')} lede={t('hub.pet.friends.lede')}>
         <Friends
           list={s.friends}
           petName={s.petName}
@@ -413,21 +357,10 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           }}
         />
       </Section>
-
       <Section title={t('settings.gallery')}>
         <Gallery onMsg={flash} meta={snap.current?.meta} personal={isPersonalPet(snap.settings)} />
       </Section>
-
-      <Section title={t('records.lines.title')}>
-        <small>{t('records.lines.hint')}</small>
-        <div className="action-row">
-          <button type="button" className="ghost" onClick={() => setLinesOpen(true)}>
-            {t('records.lines.open')}
-          </button>
-        </div>
-      </Section>
-
-      <Section title={t('settings.sulk')}>
+      <Section id="hub-pet-mood" title={t('hub.pet.mood')} lede={t('hub.pet.mood.lede')}>
         {/* 만나는 시간을 켜면 쉬는 날은 거기서 정한다 (만나지 않는 요일). restDays 는 지우지 않고 꺼지면 다시 쓴다 */}
         {s.routine.on ? (
           <div className="field">
@@ -464,6 +397,22 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           hint={t('settings.spicyHint')}
           on={s.spicy}
           onChange={(v) => update({ spicy: v })}
+        />
+      </Section>
+      <Section id="hub-pet-perf" title={t('hub.pet.perf')} lede={t('hub.pet.perf.lede')}>
+        <Toggle
+          label={t('settings.boost')}
+          hint={t('settings.boostHint')}
+          on={s.boost}
+          note={s.boost && snap.onBattery ? t('settings.boostResting') : undefined}
+          onChange={(v) => update({ boost: v })}
+        />
+        <Toggle
+          label={t(mac ? 'settings.sysMonitor' : 'settings.sysMonitorWin')}
+          hint={t(mac ? 'settings.sysMonitorHint' : 'settings.sysMonitorWinHint')}
+          on={s.sysMonitor}
+          note={s.sysMonitor && snap.onBattery ? t('settings.sysMonitorResting') : undefined}
+          onChange={(v) => update({ sysMonitor: v })}
         />
       </Section>
     </>

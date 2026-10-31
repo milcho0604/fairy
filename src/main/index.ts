@@ -396,6 +396,10 @@ ready
         addNote: () => panel.newNote(),
         openPanel: () => panel.openTab(),
         openHome: openHomeFromMenu,
+        openHub: (tab) => {
+          panel.closePanel();
+          home?.open(tab);
+        },
         feed: () => feedPet(),
         makePet: () => maker.open(),
         petted: () => {
@@ -659,10 +663,7 @@ ready
         sendStatus();
         friends.resendStatus();
       },
-      fromSettings: (sender) => {
-        const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === sender;
-      },
+      fromSettings: (sender) => settingsWindow.owns(sender),
       log,
     });
     // 저장 파일이 깨졌거나 새 판이었으면 펫이 화면에 뜬 뒤 알린다 (버그잡이 6차)
@@ -1011,7 +1012,11 @@ ready
       log,
     });
     function openCalendarSettings(a: string | undefined) {
-      if (a === 'settings') settingsWindow.open();
+      // 캘린더 연결은 큰 창의 비서 구역으로 옮겼다
+      if (a === 'settings') {
+        panel.closePanel();
+        home?.open('assist');
+      }
     }
     // 백업을 되살리기 전에 지금 코인 장부를 서버 대기열에 넣어 둔다 (서버 모드, server.ts)
     const backup = createBackup({ vacuumInto, log, beforeSwap: () => server.beforeRestore() });
@@ -1471,6 +1476,12 @@ ready
       scale: () => pet.scale(),
       setScale: (n) => pet.setScale(n),
       openMaker: (target) => maker.open(target),
+      hub: () => home?.contents,
+      // 설정에서 꺼낸 페어리, 비서 구역: 열려 있는 작은 패널은 닫고 큰 창의 그 구역으로
+      openHome: (tab) => {
+        panel.closePanel();
+        home?.open(tab);
+      },
       remakeBody: (gait) => maker.remake(gait),
       cancelRemake: () => maker.cancelRemake(),
       stats,
@@ -1558,11 +1569,9 @@ ready
         panel.refresh();
         planner.check();
       },
-      isSettings: (wc) => {
-        const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === wc;
-      },
+      isSettings: (wc) => settingsWindow.owns(wc),
       target: () => settingsWindow.window,
+      also: () => home?.contents,
       onLost: () => {
         void pet
           .say({
@@ -1665,10 +1674,7 @@ ready
     app.on('before-quit', () => visitors?.stop());
     // ---- 펫 대사 고치기 (#125, main/lines.ts) ----
     registerLines({
-      isSettings: (wc) => {
-        const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === wc;
-      },
+      isSettings: (wc) => settingsWindow.owns(wc),
       petName,
       log,
     });

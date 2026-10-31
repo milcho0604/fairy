@@ -17,10 +17,22 @@ export interface TabProps {
 
 export const isMac = (snap: SettingsSnapshot) => snap.platform === 'darwin';
 
-export function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
+export function Section({
+  title,
+  children,
+  id,
+  lede,
+}: {
+  title: string;
+  children: ReactNode;
+  id?: string;
+  /** 제목 아래 한 줄 설명 (큰 창의 페어리, 비서 구역에서 이 묶음이 무엇을 하는지) */
+  lede?: string;
+}) {
   return (
     <section id={id}>
       <h2>{title}</h2>
+      {lede && <p className="section-lede">{lede}</p>}
       <div className="card">{children}</div>
     </section>
   );

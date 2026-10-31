@@ -9,6 +9,7 @@ import {
   ipcMain,
   powerMonitor,
   shell,
+  type WebContents,
 } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
@@ -55,6 +56,10 @@ export interface SettingsWindowOptions {
   scale: () => number;
   setScale: (scale: number) => void;
   openMaker: (target: MakerTarget) => void;
+  /** 큰 창의 페어리, 비서 구역 화면 (설정 창의 화면 조각을 쓰므로 같은 설정 다리를 받는다). 없으면 undefined */
+  hub: () => WebContents | undefined;
+  /** 큰 창의 구역을 연다 (설정에서 꺼낸 항목으로 가는 길) */
+  openHome: (tab: 'pet' | 'assist') => void;
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (maker.ts remake) */
   remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake: () => void;
@@ -123,6 +128,8 @@ export function createSettingsWindow({
   scale,
   setScale,
   openMaker,
+  hub,
+  openHome,
   remakeBody,
   cancelRemake,
   stats,
@@ -139,7 +146,22 @@ export function createSettingsWindow({
   let win: BrowserWindow | undefined;
   // 마지막으로 본 탭. 창은 닫으면 없어져서 메인이 앱이 켜져 있는 동안만 기억한다 (설정 파일에는 남기지 않는다)
   let lastTab: SettingsTab | undefined;
-  const fromSettings = (e: IpcMainEvent | IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
+  /** 설정 창이나 큰 창의 페어리, 비서 구역 화면이 보낸 것인가 */
+  const owns = (wc: WebContents) => {
+    if (win && !win.isDestroyed() && wc === win.webContents) return true;
+    const h = hub();
+    return !!h && !h.isDestroyed() && wc === h;
+  };
+  /** 두 화면 모두에게 (설정 창, 큰 창 구역) */
+  const sendAll = (channel: string, ...args: unknown[]) => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
+    const h = hub();
+    if (h && !h.isDestroyed()) h.send(channel, ...args);
+  };
+  const fromSettings = (e: IpcMainEvent | IpcMainInvokeEvent) => owns(e.sender);
+  ipcMain.on(SETTINGS.openHome, (e, tab: unknown) => {
+    if (fromSettings(e) && (tab === 'pet' || tab === 'assist')) openHome(tab);
+  });
 
   ipcMain.handle(SETTINGS.get, (e): SettingsSnapshot | undefined =>
     fromSettings(e)
@@ -362,11 +384,11 @@ export function createSettingsWindow({
     if (fromSettings(e)) openOnboarding();
   });
   settings.onChange((next) => {
-    if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.changed, next);
+    sendAll(SETTINGS.changed, next);
   });
   // 전원을 꽂고 빼면 부스트가 쉬는지 표시를 바꾼다
   const sendPower = () => {
-    if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.power, powerMonitor.isOnBatteryPower());
+    sendAll(SETTINGS.power, powerMonitor.isOnBatteryPower());
   };
   powerMonitor.on('on-ac', sendPower);
   powerMonitor.on('on-battery', sendPower);
@@ -428,6 +450,7 @@ export function createSettingsWindow({
   return {
     open,
     sendRestore,
+    owns,
     get window() {
       return win;
     },
