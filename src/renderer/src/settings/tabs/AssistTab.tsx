@@ -88,6 +88,12 @@ export function AssistTab({ snap, update, flash }: TabProps) {
           on={s.osNotify}
           onChange={(v) => update({ osNotify: v })}
         />
+        <Toggle
+          label={t('settings.dueSoonAlert')}
+          hint={t('settings.dueSoonAlertHint')}
+          on={s.dueSoonAlert}
+          onChange={(v) => update({ dueSoonAlert: v })}
+        />
       </Section>
       <Section title={t('routine.set.title')}>
         <Toggle
