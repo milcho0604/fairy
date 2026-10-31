@@ -585,6 +585,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
       return () => void ipcRenderer.removeListener(PANEL.hiding, on);
     },
     expand: (tab) => ipcRenderer.send(PANEL.expand, tab),
+    shrink: (tab) => ipcRenderer.send(PANEL.shrink, tab),
     expandHintAt: () => ipcRenderer.sendSync(PANEL.expandHintAt) as number,
     expandHintShown: () => ipcRenderer.send(PANEL.expandHintShown),
     onExpandNow: (listener) => {
