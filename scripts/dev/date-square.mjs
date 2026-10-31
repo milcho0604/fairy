@@ -59,6 +59,13 @@ for (const d of [1, 5, 9, 10, 15, 22, 28]) {
   const at = new Date(nowD.getFullYear(), nowD.getMonth(), d, 14, 0, 0).getTime();
   await main(`__jj.events.add({ title: 'e${d}', startAt: ${at}, reminds: [] }, ${Date.now()}); 1`);
 }
+// 칸이 넘치는지 보는 달(2026-08 은 6주): 12일 7개, 1일 3개, 31일 1개
+for (const [d, n] of [[12, 7], [1, 3], [31, 1]]) {
+  for (let i = 0; i < n; i++) {
+    const at = new Date(2026, 7, d, 8 + i, 0, 0).getTime();
+    await main(`__jj.events.add({ title: 'overflow ${d}-${i}', startAt: ${at}, reminds: [] }, ${Date.now()}); 1`);
+  }
+}
 await main('__jj.panel.togglePanel(); 1');
 await sleep(1800);
 await main("__jj.panel.window.removeAllListeners('blur'); 1");
@@ -85,6 +92,51 @@ async function checks(pg, label, shot) {
   }
   await pg.shot(`${TAG}-${shot}-${LANG}-${DARK ? 'd' : 'l'}`);
 }
+/** 일정 있는 칸이 넘치지 않고, 줄이 잘렸으면 +N, 점 모드면 점이 보인다. 패널이면 한 달(그리드)이 보이는 칸 안에 들어온다 */
+async function overflowScan(pg, label, shot, inPanel) {
+  const r = await pg.ev(`JSON.stringify((() => {
+    const bad = [];
+    let withItems = 0;
+    for (const b of document.querySelectorAll('.cal-cell button')) {
+      const d = b.closest('td').dataset.day;
+      const dot = b.querySelector('.cal-dot');
+      const lines = b.querySelector('.cal-lines');
+      const dotMode = getComputedStyle(lines).display === 'none';
+      const hasItems = !!dot;
+      if (!hasItems) continue;
+      withItems++;
+      const br = b.getBoundingClientRect();
+      if (b.scrollHeight > b.clientHeight + 1) bad.push(d + ' 넘침 ' + b.scrollHeight + '/' + b.clientHeight);
+      if (dotMode) { if (getComputedStyle(dot).display === 'none') bad.push(d + ' 점 없음'); continue; }
+      const all = lines.querySelectorAll('.cal-line, .cal-more');
+      for (const e of all) { const er = e.getBoundingClientRect(); if (er.bottom > br.bottom - 1 || er.right > br.right + 0.5) bad.push(d + ' 줄 잘림'); }
+      const n = Number(b.getAttribute('aria-label').match(/(\\d+)\\s*(개|item|event)/i)?.[1] ?? 0);
+    }
+    const g = document.querySelector('.cal-grid');
+    const sc = document.querySelector('.cal-scroll');
+    const gr = g.getBoundingClientRect();
+    const fit = sc ? gr.bottom <= sc.getBoundingClientRect().bottom + 0.5 : true;
+    const cell = document.querySelector('.cal-cell button').getBoundingClientRect();
+    const bar = document.querySelector('.cal-bar').getBoundingClientRect();
+    return { bad, withItems, fit, rows: g.querySelectorAll('tbody tr').length, side: Math.round(cell.width), gl: Math.round(gr.left), gr: Math.round(gr.right), bl: Math.round(bar.left), br: Math.round(bar.right) };
+  })())`).then(JSON.parse);
+  if (r.withItems < 3) console.log('title', await pg.ev(`document.querySelector('.cal-title')?.textContent`));
+  check(`${label}: 일정 칸 ${r.withItems}개가 넘치지 않고 +N 이나 점이 보인다`, r.withItems >= 3 && r.bad.length === 0, r.bad.slice(0, 3).join(', ') + ' 칸 ' + r.side);
+  if (inPanel) check(`${label}: 패널에서 한 달(${r.rows}주)이 스크롤 없이 보인다`, r.fit, `칸 ${r.side}`);
+  check(`${label}: 제목줄이 달력과 같은 왼쪽 선, 달력 폭 안`, Math.abs(r.bl - r.gl) <= 1 && r.br <= r.gr + 1, `달력 ${r.gl}-${r.gr} 제목줄 ${r.bl}-${r.br}`);
+  if (shot) await pg.shot(`${TAG}-${shot}-${LANG}-${DARK ? 'd' : 'l'}`);
+}
+const toAug = async (pg) => {
+  const here = () => pg.ev(`!!document.querySelector('.cal-grid td[data-day="2026-08-12"]:not(.out)')`);
+  for (const [k, n] of [[0, 14], [1, 28]]) {
+    for (let i = 0; i < n && !(await here()); i++) {
+      await pg.ev(`document.querySelectorAll('.cal-bar .cal-nav')[${k}].click(); 1`);
+      await sleep(250);
+    }
+    if (await here()) break;
+  }
+  await sleep(400);
+};
 const setW = async (w, h = 700) => {
   await main(`__jj.panel.window.setBounds({ ...__jj.panel.window.getBounds(), width: ${w}, height: ${h} }); 1`);
   await sleep(600);
@@ -104,6 +156,14 @@ for (const w of [320, 560, 900]) {
   await p.ev(`[...document.querySelectorAll('.cal-mode button, .cal-mode label, .cal-mode input')].find((b) => /month|월/i.test(b.textContent + (b.value ?? '')))?.click(); 1`);
   await sleep(400);
 }
+// ---- 넘침 훑기: 패널 폭 300~859, 높이 700 ----
+await main("__jj.panel.openTab('event'); 1");
+await setW(400);
+await toAug(p);
+for (const w of [300, 320, 340, 360, 380, 399, 400, 480, 560, 700, 859]) {
+  await setW(w);
+  await overflowScan(p, `넘침 패널 ${w}px 8월`, [320, 360, 400, 700].includes(w) ? `over-panel-w${w}` : '', true);
+}
 await main('__jj.panel.window.close(); 1');
 await sleep(500);
 await main("__jj.home.open('event'); 1");
@@ -121,6 +181,12 @@ await checks(h, '큰 창 900', 'home-w900');
 await main('__jj.home.window.setSize(1400, 900); 1');
 await sleep(800);
 await checks(h, '큰 창 1400', 'home-w1400');
+await toAug(h);
+for (const [w, hh] of [[860, 700], [1100, 800], [1400, 900], [2400, 1000], [3000, 700]]) {
+  await main(`__jj.home.window.setSize(${w}, ${hh}); 1`);
+  await sleep(800);
+  await overflowScan(h, `넘침 큰 창 ${w}x${hh} 8월`, [1100, 2400].includes(w) ? `over-home-${w}` : '', false);
+}
 await cleanup();
 console.log(failed ? `FAILED ${failed}` : 'ALL PASS');
 process.exit(failed ? 1 : 0);
