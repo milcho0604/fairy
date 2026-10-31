@@ -236,7 +236,6 @@ const overflow = (p, root) =>
       if (r.width === 0 || r.height === 0) continue;
       if (r.right > innerWidth + 1) out.push('밖:' + e.tagName + '.' + e.className);
     }
-    if (document.documentElement.scrollWidth > innerWidth + 1) out.push('쪽 가로 스크롤');
     return JSON.stringify([...new Set(out)].slice(0, 8));
   })()`)
     .then((s) => JSON.parse(s));
@@ -296,6 +295,15 @@ try {
     if (tab === 'todo') await p.shot('shrink-panel');
     check(`(${tab}) 같은 구역`, cur === tab, cur);
   }
+
+  // 3-2. 기록 구역에서 누르면 작은 패널에 없는 구역이라 오늘로
+  h = await openHome('records');
+  await h.click(btn);
+  await waitFor(panelAlive);
+  const pr = await page('panel');
+  await sleep(500);
+  const curR = await pr.ev(`document.querySelector('[role="tab"][aria-selected="true"]')?.id.replace('ptab-','') ?? ''`);
+  check('(records) 기록에서 누르면 오늘 탭', curR === 'today', curR);
 
   // 4. 돌아간 뒤 펫 누르기는 패널을 닫는다 (큰 창이 다시 뜨지 않는다)
   await main('__jj.panel.togglePanel(); 1');

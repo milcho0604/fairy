@@ -1,5 +1,5 @@
 // 큰 창(home)을 언제 어떻게 열고 닫는지의 정함. 창 객체에 기대지 않는 순수 함수라 단위 시험이 된다 (큰 창 설계 #159, #161).
-import type { HomeChatRect } from './ipc.ts';
+import type { HomeChatRect, PanelTab } from './ipc.ts';
 
 /** 패널 보기: 펫 클릭과 패널 단축키, 메뉴 막대 "패널"이 여는 것. 작은 패널 또는 큰 창 */
 export type PanelView = 'compact' | 'window';
@@ -62,6 +62,19 @@ export function homeClickAction(h: HomeSeen): 'create' | 'show' | 'raise' | 'hid
   if (!h.alive) return 'create';
   if (h.hidden || h.minimized) return 'show';
   return h.focused && !h.freshFocus ? 'hide' : 'raise';
+}
+
+/**
+ * 작은 패널(늘 다른 창 위에 떠 있다)을 다시 눌렀을 때: 보이면 닫고, 안 보이면(내려갔거나 가려짐) 앞으로.
+ * 다른 앱이 앞이어도 패널은 눈에 보이는 맨 앞이라 한 번에 닫는다
+ */
+export function panelClickAction(p: { visible: boolean; minimized: boolean }): 'close' | 'raise' {
+  return p.visible && !p.minimized ? 'close' : 'raise';
+}
+
+/** 큰 창에서 작게 보기를 눌렀을 때 작은 패널이 열 탭: 작은 패널에 없는 구역(기록)은 오늘로 */
+export function shrinkTab(tab: PanelTab): PanelTab {
+  return tab === 'records' ? 'today' : tab;
 }
 
 /**
