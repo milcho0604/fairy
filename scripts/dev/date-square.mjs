@@ -73,6 +73,16 @@ async function checks(pg, label, shot) {
   check(`${label}: 날짜 칸 ${m.length}개가 모두 폭=높이`, m.length >= 7 && m.every((x) => Math.abs(x.w - x.h) < 0.6), [...sizes].join(' '));
   check(`${label}: 날짜 칸 크기가 전부 같다`, sizes.size === 1, [...sizes].join(' '));
   check(`${label}: 숫자가 칸 가운데 (가로 1px, 세로 2px 안)`, m.every((x) => x.dx <= 1 && x.dy <= 2), JSON.stringify(m.filter((x) => x.dx > 1 || x.dy > 2).slice(0, 3)));
+  if (await pg.ev(`document.querySelector('.cal.month') !== null`)) {
+    const c = await pg.ev(`JSON.stringify([...document.querySelectorAll('.cal-cell button')].map((b) => { const r = b.getBoundingClientRect(); return { w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 }; }))`).then(JSON.parse);
+    const cs = new Set(c.map((x) => `${x.w}x${x.h}`));
+    check(`${label}: 월 보기 날짜 칸 ${c.length}개가 모두 폭=높이`, c.length >= 28 && c.every((x) => Math.abs(x.w - x.h) < 1), [...cs].slice(0, 3).join(' '));
+    check(`${label}: 월 보기 칸 한 변이 120px 을 넘지 않는다`, c.every((x) => x.w <= 120), String(Math.max(...c.map((x) => x.w))));
+    // 숫자 칩과 일정 줄이 같은 왼쪽 선 (좁은 칸은 줄 대신 점이라 줄이 있는 칸만)
+    const lefts = await pg.ev(`JSON.stringify([...document.querySelectorAll('.cal-cell button')].map((b) => { const n = b.querySelector('.cal-num'); const l = b.querySelector('.cal-line'); if (!l || !l.offsetParent) return null; return Math.round(Math.abs(n.getBoundingClientRect().left - l.getBoundingClientRect().left) * 10) / 10; }).filter((x) => x !== null))`).then(JSON.parse);
+    const narrow = await pg.ev(`getComputedStyle(document.querySelector('.cal-lines')).display === 'none'`);
+    check(`${label}: 숫자와 일정 줄이 같은 왼쪽 선`, narrow || (lefts.length > 0 && lefts.every((x) => x <= 1)), JSON.stringify(lefts));
+  }
   await pg.shot(`${TAG}-${shot}-${LANG}-${DARK ? 'd' : 'l'}`);
 }
 const setW = async (w, h = 700) => {
@@ -108,6 +118,9 @@ if (!(await h.ev(`!!document.querySelector('.cal-grid')`))) {
   await sleep(700);
 }
 await checks(h, '큰 창 900', 'home-w900');
+await main('__jj.home.window.setSize(1400, 900); 1');
+await sleep(800);
+await checks(h, '큰 창 1400', 'home-w1400');
 await cleanup();
 console.log(failed ? `FAILED ${failed}` : 'ALL PASS');
 process.exit(failed ? 1 : 0);
