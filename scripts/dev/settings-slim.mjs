@@ -163,6 +163,15 @@ try {
   await sleep(500);
   check('다른 곳에서 바꾼 설정이 구역에 반영됨', await h.ev("!!document.querySelector('#hub-pet-voice .speech-editor')"));
 
+  // 대사 고치기와 갤러리는 페어리 구역 안에서 열린다 (qa-pr133, todo-gallery-setup 이 쓰는 길)
+  await h.ev("document.querySelector('#ptab-pet').click()");
+  await sleep(300);
+  await h.ev(`[...document.querySelectorAll('#hub-pet-voice button')].find((b) => b.innerText.trim() === ${JSON.stringify(ko ? '대사 고치기' : 'Edit lines')}).click()`);
+  check('페어리 구역에서 대사 고치기 시트가 열림', await until(() => h.ev("document.querySelectorAll('.lines-group').length > 5")));
+  await h.ev("document.querySelector('.lines-sheet button.link, .lines-sheet .ghost')?.click(); 1");
+  await sleep(300);
+  check('갤러리 열기 단추가 페어리 구역에 있음', await h.ev(`[...document.querySelectorAll('#hub-page-pet button')].some((b) => b.textContent === ${JSON.stringify(ko ? '페어리 갤러리 열기' : 'Open the fairy gallery')})`));
+
   // ---- 설정 창: 남긴 탭만 ----
   await main('__jj.settingsWindow.open(); 1');
   const s = await page('settings');
@@ -209,6 +218,33 @@ try {
   check('설정에서 페어리 구역 열기', await until(() => h.ev("document.querySelector('#ptab-pet')?.getAttribute('aria-current') === 'page'")));
   // 큰 창에서만 쓰는 것이 설정 창으로 새지 않음: 큰 창에는 설정 다리 중 서버 계정이 없다
   check('큰 창에는 서버 계정 다리가 없음', (await h.ev('typeof window.jjakkungServer')) === 'undefined');
+  // ---- 로그인 상태의 데이터와 계정 탭: 서버 상태를 메인에서 흉내 내고 로그아웃 단추를 본다 ----
+  await main(`(() => {
+    const core = __jj.server.core;
+    const st = { enabled: true, age: 'adult', on: true, device: true, signedIn: true, loggingIn: false, syncing: false, balance: 120, pending: 0, lastSyncAt: Date.now(), problem: null, merge: null, leftover: false, ai: false, tickets: null, aiWaitlisted: false, subscription: null, nickname: 'tester', code: 'F-AB12-CD34', inbox: 0, admin: false, providers: null, logins: ['google'], backup: null, features: {}, calendarHint: false };
+    globalThis.__slimOut = false;
+    core.status = () => (globalThis.__slimOut ? { ...st, signedIn: false, logins: [] } : st);
+    core.allowed = () => true;
+    core.refreshProviders = async () => {};
+    return 1;
+  })()`);
+  await main('__jj.settingsWindow.window.setSize(520, 760); 1');
+  // 서버 상태가 바뀌었다고 설정 창에 알린다 (화면이 다시 받아 그린다)
+  await main("__jj.settingsWindow.window.webContents.send('server:changed', __jj.server.core.status()); 1");
+  await until(() => s.ev("!!document.querySelector('.server-box')"));
+  await sleep(300);
+  await s.ev("document.querySelector('#tab-data').click()");
+  await sleep(500);
+  const first = await s.ev("document.querySelector('#panel-data > section:first-child .server-box') ? 'server' : 'other'");
+  check('데이터와 계정 탭 맨 위가 계정 칸', first === 'server', first + ' ' + (await s.ev("document.querySelector('#panel-data').innerText.slice(0, 120)")));
+  const lo = await s.ev("(() => { const b = document.querySelector('.server-box .ghost.logout'); if (!b) return null; const r = b.getBoundingClientRect(); const row = b.parentElement; return { text: b.textContent.trim(), first: row.firstElementChild === b, color: getComputedStyle(b).color, visible: r.width > 0 && r.top < innerHeight }; })()");
+  check('로그인 상태에 로그아웃 단추가 줄 맨 앞에 눈에 띄게 보임', !!lo && lo.first && lo.visible && lo.text === (ko ? '로그아웃' : lo.text), JSON.stringify(lo));
+  for (const dark of [false, true]) {
+    await s.dark(dark);
+    await sleep(200);
+    await s.shot(`${TAG}-settings-data-loggedin-${LANG}${dark ? '-dark' : ''}`);
+  }
+  await s.dark(false);
 } catch (err) {
   check('시험 실행', false, String(err?.stack ?? err).slice(0, 300));
 } finally {

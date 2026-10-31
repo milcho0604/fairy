@@ -31,7 +31,8 @@ export const ko = {
   'hub.assist.routine': '만나는 시간',
   'hub.assist.routine.lede': '일을 시작하고 끝내는 시간에 맞춰 인사하고 오늘 브리핑을 보여 줘.',
   'hub.assist.review': '하루 회고와 쪽지',
-  'hub.assist.review.lede': '하루를 마칠 때 돌아보는 글과, 아침과 저녁에 받는 쪽지를 켜고 꺼. 할 일 마감 알림은 설정의 일반, 알림과 소리에서 끄고 켜.',
+  'hub.assist.review.lede':
+    '하루를 마칠 때 돌아보는 글과, 아침과 저녁에 받는 쪽지를 켜고 꺼. 할 일 마감 알림은 설정의 일반, 알림과 소리에서 끄고 켜.',
   'hub.assist.calendar': '캘린더 연결',
   'hub.assist.calendar.lede': '쓰던 캘린더의 일정을 가져와서 일정 구역과 브리핑에 함께 보여 줘.',
   'hub.assist.ai': 'AI 도우미',
@@ -78,7 +79,8 @@ export const en: Translation<typeof ko> = {
   'hub.assist.routine': 'Meeting time',
   'hub.assist.routine.lede': 'Greets you when work starts and ends, and shows today’s briefing.',
   'hub.assist.review': 'Daily review and notes',
-  'hub.assist.review.lede': 'Turn on the end-of-day look back and the morning and evening notes. Due-soon alerts for to-dos are under General, Alerts and sound in Settings.',
+  'hub.assist.review.lede':
+    'Turn on the end-of-day look back and the morning and evening notes. Due-soon alerts for to-dos are under General, Alerts and sound in Settings.',
   'hub.assist.calendar': 'Calendar link',
   'hub.assist.calendar.lede':
     'Bring in events from the calendar you already use, shown in Events and the briefing.',

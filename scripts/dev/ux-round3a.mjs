@@ -367,7 +367,7 @@ if (has('tab')) {
   const name = await tabName(s);
   check('탭 이름이 "데이터와 계정"', name === tx('데이터와 계정', 'Data and account'), name);
   const hint = await s.ev(`document.querySelector('#tab-data .tab-hint')?.textContent.trim()`);
-  check('탭 풀이에 서버 계정과 친구', hint.includes(tx('서버 계정', 'server account')) && hint.includes(tx('친구', 'friends')), hint);
+  check('탭 풀이에 로그인과 백업', hint.includes(tx('로그인', 'Sign in')) && hint.includes(tx('백업', 'backup')), hint);
   await s.shots('ux3a-tabs', `document.querySelector('.tabs')`);
   // Cmd+F 색인: 계정, 로그인, 친구로 찾으면 데이터 탭의 칸이 맞는다
   for (const q of tx(['계정', '로그인', '친구'], ['account', 'sign in', 'friends'])) {
@@ -424,10 +424,16 @@ if (has('server')) {
   check('단추가 "코인 동기화"', syncBtn.includes(tx('코인 동기화', 'Sync coins')), syncBtn.join('|'));
   const dataText = await s.ev(`document.getElementById('panel-data').innerText`);
   check('데이터와 계정 탭 글에 "모드", "지금 맞추기", "서버 기능" 이 없음', !/모드|지금 맞추기|코인 맞추기|서버 기능|\bmode\b|Sync now|server feature/i.test(dataText), (dataText.match(/.{0,12}(모드|지금 맞추기|코인 맞추기|서버 기능|mode|Sync now|server feature).{0,12}/i) ?? [''])[0]);
-  await s.click(`document.getElementById('tab-pet')`);
-  await sleep(300);
-  const petTitles = await s.ev(`[...document.querySelectorAll('#panel-pet section > h2')].map((x) => x.textContent.trim())`);
-  check('펫 탭 칸 이름이 "페어리 공유"', petTitles.includes(tx('페어리 공유', 'Share a fairy')), petTitles.join('|'));
+  // 페어리 꾸미기는 큰 창 페어리 구역으로 옮겼다 (친구 페어리와 갤러리 묶음)
+  await main("__jj.home.open('pet'); 1");
+  await sleep(1500);
+  const hp = await page('home');
+  await hp.click(`document.getElementById('ptab-pet')`);
+  await sleep(500);
+  const petTitles = await hp.ev(`[...document.querySelectorAll('#hub-page-pet section > h2')].map((x) => x.textContent.trim())`);
+  check('페어리 구역에 친구 페어리와 갤러리 묶음', petTitles.includes(tx('친구 페어리와 갤러리', 'Friend fairies and gallery')), petTitles.join('|'));
+  await main('__jj.home.window.close(); 1');
+  s = await page('settings');
   await s.click(`document.getElementById('tab-data')`);
   await sleep(300);
   await shotSec(s, 'ux3a-server', SERVER_SEC);
