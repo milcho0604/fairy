@@ -21,11 +21,20 @@ export const ko = {
   'home.nav.chat': '채팅',
   'home.nav.records': '기록',
   'home.nav.friends': '친구',
-  'home.opensWindow': '따로 창으로 열려',
   'home.openOnPet': '펫을 누르면 큰 창으로 열기',
   'home.shrink': '작게 보기',
   'home.shrinkTitle': '작게 보기: 지금 보던 구역 그대로 작은 패널로 돌아가요. 펫을 눌러도 작은 패널이 떠요',
   'home.settings': '설정',
+  'home.friends.openSettings': '설정 열기',
+  'home.friends.off.noServer': '이 판에는 서버 계정이 없어서 친구를 쓸 수 없어.',
+  'home.friends.off.age':
+    '친구는 만 14세 이상이 서버 계정을 켜야 쓸 수 있어. 설정 > 데이터와 계정에서 나이를 알려 주고 서버 계정을 켜 줘.',
+  'home.friends.off.serverOff':
+    '서버 계정이 꺼져 있어서 친구를 볼 수 없어. 설정 > 데이터와 계정에서 서버 계정을 켜 줘.',
+  'home.friends.off.signedOut': '로그인하지 않아서 친구를 볼 수 없어. 설정 > 데이터와 계정에서 로그인해 줘.',
+  'home.friends.off.featureOff':
+    '친구 기능을 아직 열지 않았어. 열리면 이 구역에 친구가 보여. 설정 > 데이터와 계정에서 서버 계정 상태를 볼 수 있어.',
+  'home.friends.loading': '친구 목록을 불러오는 중이야.',
   'home.keys': '구역 옮기기',
 };
 
@@ -48,11 +57,21 @@ export const en: Translation<typeof ko> = {
   'home.nav.chat': 'Chat',
   'home.nav.records': 'Records',
   'home.nav.friends': 'Friends',
-  'home.opensWindow': 'Opens in its own window',
   'home.openOnPet': 'Open the large window when I click the fairy',
   'home.shrink': 'Small view',
   'home.shrinkTitle':
     'Small view: go back to the small panel on this section. Clicking the fairy opens the small panel too',
   'home.settings': 'Settings',
+  'home.friends.openSettings': 'Open Settings',
+  'home.friends.off.noServer': 'This build has no server account, so Friends is not available.',
+  'home.friends.off.age':
+    'Friends needs a server account, and you must be 14 or older. Tell us your age and turn on the server account in Settings > Data and account.',
+  'home.friends.off.serverOff':
+    'The server account is off, so friends cannot show up. Turn it on in Settings > Data and account.',
+  'home.friends.off.signedOut':
+    'You are not signed in, so friends cannot show up. Sign in under Settings > Data and account.',
+  'home.friends.off.featureOff':
+    'Friends is not open yet. Once it opens, your friends will show up here. You can check your server account in Settings > Data and account.',
+  'home.friends.loading': 'Loading your friends.',
   'home.keys': 'Switch sections',
 };

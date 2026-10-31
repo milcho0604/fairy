@@ -4,7 +4,7 @@ import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { CoinIcon, GearIcon, ShrinkIcon } from '../panel/icons.tsx';
 import { useMailUnread } from '../panel/mail-state.ts';
-import { HOME_SECTIONS, type HomeSection, sectionShortcut, visibleSections } from './sections.ts';
+import { HOME_SECTIONS, type HomeSection, sectionShortcut } from './sections.ts';
 
 const bridge = window.jjakkungPanel;
 const MAC = navigator.userAgent.includes('Mac');
@@ -30,7 +30,7 @@ interface HomeShellProps {
 
 /**
  * 큰 창의 껍데기 (이슈 #161): 사이드바(머리, 구역, 바닥)와 본문 칸. 본문은 작은 패널의 탭 본문을 그대로 쓴다.
- * 채팅은 본문 칸 자리에 채팅 화면(별도 view)이 얹히고 (#165), 친구는 따로 창을 열고, 설정은 늘 따로 창이다.
+ * 채팅은 본문 칸 자리에 채팅 화면(별도 view)이 얹히고 (#165), 친구는 본문 칸에 목록을 보이고 (관리는 설정 창), 설정은 늘 따로 창이다.
  */
 export function HomeShell({
   s,
@@ -44,17 +44,14 @@ export function HomeShell({
   planSheet,
   toastStack,
 }: HomeShellProps) {
-  const sections = visibleSections(s.friendsOn);
   /** 쪽지함 구역 옆 안 읽음 숫자 */
   const mailUnread = useMailUnread();
   const current = HOME_SECTIONS.find((x) => x.id === (chatOn ? 'chat' : tab));
-  /** 지금 고른 구역인가 (창을 여는 구역은 늘 아니다) */
-  const picked = (sec: HomeSection) =>
-    sec.kind === 'chat' ? chatOn : sec.kind === 'tab' && !chatOn && tab === sec.id;
+  /** 지금 고른 구역인가 */
+  const picked = (sec: HomeSection) => (sec.kind === 'chat' ? chatOn : !chatOn && tab === sec.id);
   const pick = (sec: HomeSection) => {
     // 채팅 열기는 메인을 거친다 (대화권 잠금을 보고, 따로 뜬 채팅 창을 닫는다)
     if (sec.id === 'chat') bridge.openChat();
-    else if (sec.id === 'friends') bridge.openFriends();
     else setTab(sec.id);
   };
   const full = s.fullness >= 100;
@@ -104,9 +101,8 @@ export function HomeShell({
           </button>
         </div>
         <nav className="home-nav" aria-label={t('home.nav')}>
-          {sections.map((sec) => {
-            const key = sectionShortcut(sec.id, s.friendsOn, MOD);
-            const own = sec.kind === 'window';
+          {HOME_SECTIONS.map((sec) => {
+            const key = sectionShortcut(sec.id, MOD);
             return (
               <button
                 key={sec.id}
@@ -115,18 +111,12 @@ export function HomeShell({
                 aria-current={picked(sec) ? 'page' : undefined}
                 aria-controls={sec.kind === 'tab' ? 'ptab-panel' : undefined}
                 className={picked(sec) ? 'on' : ''}
-                title={own ? t('home.opensWindow') : undefined}
                 onClick={() => pick(sec)}
               >
                 <span className="name">{t(sec.label)}</span>
                 {sec.id === 'mail' && mailUnread > 0 && (
                   <span className="mail-badge" role="img" aria-label={t('mail.unreadN', { n: mailUnread })}>
                     {mailUnread > 99 ? '99+' : mailUnread}
-                  </span>
-                )}
-                {own && (
-                  <span className="out" aria-hidden="true">
-                    ↗
                   </span>
                 )}
                 {key && <kbd>{key.replace('Cmd+', '⌘').replace('Ctrl+', 'Ctrl ')}</kbd>}

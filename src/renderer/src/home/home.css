@@ -164,11 +164,6 @@ html.home-win body {
   white-space: nowrap;
 }
 
-.home-nav .out {
-  flex: none;
-  color: var(--muted);
-}
-
 .home-side kbd {
   flex: none;
   font: inherit;

@@ -8,6 +8,7 @@ import {
   app,
   type BrowserWindow,
   clipboard,
+  type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
   shell,
@@ -67,6 +68,8 @@ export function createServer(o: {
   shop: ItemStore;
   isSettings: (wc: WebContents) => boolean;
   target: () => BrowserWindow | undefined;
+  /** 큰 창 본문 화면 (친구 구역이 설정 창의 친구 칸과 같은 IPC 를 쓴다). 없으면 undefined */
+  homeView?: () => WebContents | undefined;
   onWrite: (listener: (sql: string) => void) => void;
   /** 맞추기로 잔액이나 물건이 바뀌었다 */
   onCoins: () => void;
@@ -204,9 +207,31 @@ export function createServer(o: {
   });
   let friendsWas = false;
 
+  /** 시험 손잡이: 큰 창 친구 구역이 보는 상태를 대신 정한다 (서버 없이 목록 모양을 보려고). null 이면 실제 상태 */
+  let friendsOverride: FriendsState | null = null;
+  const friendsNow = (): FriendsState => friendsOverride ?? friends.state();
+  const homeIsSender = (wc: WebContents) => {
+    const v = o.homeView?.();
+    return !!v && !v.isDestroyed() && v === wc;
+  };
+
+  /** 앱 페이지(파일, 개발 서버)의 맨 위 틀에서 온 요청인가 */
+  const appFrame = (e: IpcMainInvokeEvent | IpcMainEvent): boolean => {
+    const f = e.senderFrame;
+    if (!f || f !== e.sender.mainFrame) return false;
+    try {
+      const u = new URL(f.url);
+      return u.protocol === 'file:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    } catch {
+      return false;
+    }
+  };
+
   function sendFriends(s: FriendsState) {
     const w = o.target();
-    if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, s);
+    if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, friendsOverride ?? s);
+    const v = o.homeView?.();
+    if (v && !v.isDestroyed()) v.send(FRIENDS.changed, friendsOverride ?? s);
   }
 
   function send(s: ServerStatus) {
@@ -363,53 +388,73 @@ export function createServer(o: {
   const amount = (v: unknown, max: number) =>
     typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : -1;
   const refused = { ok: false as const, error: 'invalid' };
+  /**
+   * 친구 IPC 는 설정 창이나 큰 창 본문의 앱 페이지(맨 위 틀)가 보낸 것만 받는다. 하위 틀이나 밖의 주소에서 온 것은 받지 않는다.
+   * createServer 의 isSettings 는 넓히지 않는다 (나이, 로그인, 탈퇴 IPC 가 같이 열린다)
+   */
+  const friendsOk = (e: IpcMainInvokeEvent | IpcMainEvent) =>
+    (o.isSettings(e.sender) || homeIsSender(e.sender)) && appFrame(e);
   ipcMain.handle(FRIENDS.state, (e) => {
-    if (!ok(e)) return undefined;
-    void friends.refresh();
-    return friends.state();
+    if (!friendsOk(e)) return undefined;
+    if (!friendsOverride) void friends.refresh();
+    return friendsNow();
   });
   ipcMain.handle(FRIENDS.refresh, async (e) => {
-    if (!ok(e)) return undefined;
-    await friends.refresh();
-    return friends.state();
+    if (!friendsOk(e)) return undefined;
+    if (!friendsOverride) await friends.refresh();
+    return friendsNow();
   });
-  ipcMain.handle(FRIENDS.request, (e, text: unknown) => (ok(e) ? friends.request(text) : refused));
-  ipcMain.handle(FRIENDS.accept, (e, v: unknown) => (ok(e) && id(v) ? friends.accept(id(v)) : refused));
-  ipcMain.handle(FRIENDS.decline, (e, v: unknown) => (ok(e) && id(v) ? friends.decline(id(v)) : refused));
-  ipcMain.handle(FRIENDS.cancel, (e, v: unknown) => (ok(e) && id(v) ? friends.cancel(id(v)) : refused));
-  ipcMain.handle(FRIENDS.remove, (e, v: unknown) => (ok(e) && code(v) ? friends.remove(code(v)) : refused));
-  ipcMain.handle(FRIENDS.block, (e, v: unknown) => (ok(e) && code(v) ? friends.block(code(v)) : refused));
-  ipcMain.handle(FRIENDS.unblock, (e, v: unknown) => (ok(e) && code(v) ? friends.unblock(code(v)) : refused));
+  ipcMain.handle(FRIENDS.request, (e, text: unknown) => (friendsOk(e) ? friends.request(text) : refused));
+  ipcMain.handle(FRIENDS.accept, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.accept(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.decline, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.decline(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.cancel, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.cancel(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.remove, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.remove(code(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.block, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.block(code(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.unblock, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.unblock(code(v)) : refused,
+  );
   ipcMain.handle(FRIENDS.gift, (e, to: unknown, coins: unknown, passes: unknown) => {
     const c = amount(coins, 500);
     const p = amount(passes, 5);
-    if (!ok(e) || !code(to) || c < 0 || p < 0 || c + p === 0) return refused;
+    if (!friendsOk(e) || !code(to) || c < 0 || p < 0 || c + p === 0) return refused;
     return friends.gift(code(to), c, p);
   });
   ipcMain.handle(FRIENDS.share, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
   );
   ipcMain.handle(FRIENDS.shareTitle, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
   );
   ipcMain.handle(FRIENDS.visit, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
   );
-  ipcMain.handle(FRIENDS.busy, (e, to: unknown) => (ok(e) && code(to) ? friends.busy(code(to)) : refused));
+  ipcMain.handle(FRIENDS.busy, (e, to: unknown) =>
+    friendsOk(e) && code(to) ? friends.busy(code(to)) : refused,
+  );
   ipcMain.handle(FRIENDS.copyCode, (e) => {
-    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    const me = friendsOk(e) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(me);
     return true;
   });
   ipcMain.handle(FRIENDS.copyLink, (e) => {
-    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    const me = friendsOk(e) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(inviteLink(me));
     return true;
   });
   ipcMain.on(FRIENDS.clearPrefill, (e) => {
-    if (o.isSettings(e.sender)) friends.clearPrefill();
+    if (friendsOk(e)) friends.clearPrefill();
   });
 
   return {
@@ -432,6 +477,16 @@ export function createServer(o: {
      * 시험용 (JJ_TEST_SECRETS=memory 일 때만, #115): 이 기기의 구글 일정 연결 상태를 흉내 낸다 (undefined 면 진짜 상태로).
      * 진짜 구글은 부르지 않는다 (scripts/dev/calendar-link.mjs)
      */
+    /**
+     * 시험용 (JJ_TEST_SECRETS=memory 일 때만): 큰 창과 설정 창 친구 칸이 보는 상태를 대신 정한다. null 이면 진짜 상태로
+     * (서버 없이 0명, 여러 명, 못 쓰는 까닭을 본다, scripts/dev/friends-list.mjs)
+     */
+    debugFriendsView(next: FriendsState | null): boolean {
+      if (!memory) return false;
+      friendsOverride = next;
+      sendFriends(friends.state());
+      return true;
+    },
     async debugCalendarLinked(linked: boolean | undefined): Promise<boolean> {
       if (!memory) return false;
       calendarOverride = linked;
