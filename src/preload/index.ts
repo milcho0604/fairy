@@ -52,12 +52,7 @@ import type { MoveAsk } from '../shared/moves.ts';
 import { NOTES, type NoteBridge } from '../shared/note-ipc.ts';
 import { NOTICE, type NoticeBridge, type NoticeView } from '../shared/notice-ipc.ts';
 import { SERVER, type ServerBridge, type ServerStatus } from '../shared/server-account.ts';
-import {
-  FRIENDS,
-  type FriendsBridge,
-  type FriendsState,
-  type FriendsViewBridge,
-} from '../shared/server-friends.ts';
+import { FRIENDS, type FriendsBridge, type FriendsState } from '../shared/server-friends.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
 import type { TogetherLook } from '../shared/together.ts';
@@ -390,36 +385,6 @@ if (kind === 'settings') {
     calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
   };
   contextBridge.exposeInMainWorld('jjakkungServer', server);
-  // 서버 친구 (#110): 상태만 오간다. 토큰은 메인에만 있다
-  const friends: FriendsBridge = {
-    state: () => ipcRenderer.invoke(FRIENDS.state),
-    refresh: () => ipcRenderer.invoke(FRIENDS.refresh),
-    request: (text) => ipcRenderer.invoke(FRIENDS.request, text),
-    accept: (id) => ipcRenderer.invoke(FRIENDS.accept, id),
-    decline: (id) => ipcRenderer.invoke(FRIENDS.decline, id),
-    cancel: (id) => ipcRenderer.invoke(FRIENDS.cancel, id),
-    remove: (code) => ipcRenderer.invoke(FRIENDS.remove, code),
-    block: (code) => ipcRenderer.invoke(FRIENDS.block, code),
-    unblock: (code) => ipcRenderer.invoke(FRIENDS.unblock, code),
-    gift: (code, coins, passes) => ipcRenderer.invoke(FRIENDS.gift, code, coins, passes),
-    share: (code, on) => ipcRenderer.invoke(FRIENDS.share, code, on),
-    shareTitle: (code, on) => ipcRenderer.invoke(FRIENDS.shareTitle, code, on),
-    busy: (code) => ipcRenderer.invoke(FRIENDS.busy, code),
-    visit: (code, on) => ipcRenderer.invoke(FRIENDS.visit, code, on),
-    visitInfo: () => ipcRenderer.invoke(FRIENDS.visitInfo),
-    visitPause: (on) => ipcRenderer.invoke(FRIENDS.visitPause, on),
-    copyCode: () => ipcRenderer.invoke(FRIENDS.copyCode),
-    copyLink: () => ipcRenderer.invoke(FRIENDS.copyLink),
-    clearPrefill: () => ipcRenderer.send(FRIENDS.clearPrefill),
-    onChanged: (listener) => {
-      const h = (_e: unknown, s: FriendsState) => listener(s);
-      ipcRenderer.on(FRIENDS.changed, h);
-      return () => {
-        ipcRenderer.removeListener(FRIENDS.changed, h);
-      };
-    },
-  };
-  contextBridge.exposeInMainWorld('jjakkungFriends', friends);
   // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다
   const siteEvents: EventsBridge = {
     list: () => ipcRenderer.invoke(EVENTS.list),
@@ -468,12 +433,29 @@ if (kind === 'panel' || kind === 'home' || kind === 'settings' || kind === 'know
   contextBridge.exposeInMainWorld('jjakkungBond', bond);
 }
 
-// 큰 창 친구 구역 (읽기만): 목록과 못 쓰는 까닭, 내 코드 복사. 신청과 선물은 설정 창에서 한다
-if (kind === 'home') {
-  const view: FriendsViewBridge = {
-    state: () => ipcRenderer.invoke(FRIENDS.view),
+// 서버 친구 (#110): 설정 창과 큰 창 친구 구역이 같은 다리를 쓴다
+if (kind === 'settings' || kind === 'home') {
+  // 서버 친구 (#110): 상태만 오간다. 토큰은 메인에만 있다
+  const friends: FriendsBridge = {
+    state: () => ipcRenderer.invoke(FRIENDS.state),
+    refresh: () => ipcRenderer.invoke(FRIENDS.refresh),
+    request: (text) => ipcRenderer.invoke(FRIENDS.request, text),
+    accept: (id) => ipcRenderer.invoke(FRIENDS.accept, id),
+    decline: (id) => ipcRenderer.invoke(FRIENDS.decline, id),
+    cancel: (id) => ipcRenderer.invoke(FRIENDS.cancel, id),
+    remove: (code) => ipcRenderer.invoke(FRIENDS.remove, code),
+    block: (code) => ipcRenderer.invoke(FRIENDS.block, code),
+    unblock: (code) => ipcRenderer.invoke(FRIENDS.unblock, code),
+    gift: (code, coins, passes) => ipcRenderer.invoke(FRIENDS.gift, code, coins, passes),
+    share: (code, on) => ipcRenderer.invoke(FRIENDS.share, code, on),
+    shareTitle: (code, on) => ipcRenderer.invoke(FRIENDS.shareTitle, code, on),
+    busy: (code) => ipcRenderer.invoke(FRIENDS.busy, code),
+    visit: (code, on) => ipcRenderer.invoke(FRIENDS.visit, code, on),
+    visitInfo: () => ipcRenderer.invoke(FRIENDS.visitInfo),
+    visitPause: (on) => ipcRenderer.invoke(FRIENDS.visitPause, on),
     copyCode: () => ipcRenderer.invoke(FRIENDS.copyCode),
     copyLink: () => ipcRenderer.invoke(FRIENDS.copyLink),
+    clearPrefill: () => ipcRenderer.send(FRIENDS.clearPrefill),
     onChanged: (listener) => {
       const h = (_e: unknown, s: FriendsState) => listener(s);
       ipcRenderer.on(FRIENDS.changed, h);
@@ -482,7 +464,7 @@ if (kind === 'home') {
       };
     },
   };
-  contextBridge.exposeInMainWorld('jjakkungFriendsView', view);
+  contextBridge.exposeInMainWorld('jjakkungFriends', friends);
 }
 
 // 쪽지함 (shared/mail.ts, main/daily-note.ts). 작은 패널의 덮개와 큰 창 쪽지함 구역, 오늘 탭의 새 쪽지 카드

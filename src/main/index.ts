@@ -1657,9 +1657,12 @@ ready
       awaySec: () => powerMonitor.getSystemIdleTime(),
       eventBetween: (from, to) => events.timedOverlapping(from, to).length > 0,
       wear: () => wear.friendLook(),
+      // 놀러 가기 스위치와 "오늘은 그만" 은 설정 창의 친구 칸과 큰 창 친구 구역이 부른다
       isSettings: (wc) => {
         const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === wc;
+        return (
+          (!!w && !w.isDestroyed() && w.webContents === wc) || (!!home?.contents && home.contents === wc)
+        );
       },
       log,
     });

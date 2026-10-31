@@ -156,20 +156,10 @@ export const FRIENDS = {
   copyCode: 'friends:copy-code',
   copyLink: 'friends:copy-link',
   clearPrefill: 'friends:clear-prefill',
-  /** 큰 창 친구 구역: 상태 읽기 (설정 창의 state 와 달리 읽기만 한다) */
-  view: 'friends:view',
   changed: 'friends:changed',
 } as const;
 
-/** 큰 창 친구 구역이 부르는 것 (preload 가 window.jjakkungFriendsView 로 연다). 목록 읽기와 내 코드 복사뿐, 신청, 수락, 선물은 설정 창에서 */
-export interface FriendsViewBridge {
-  state(): Promise<FriendsState | undefined>;
-  copyCode(): Promise<boolean>;
-  copyLink(): Promise<boolean>;
-  onChanged(listener: (s: FriendsState) => void): () => void;
-}
-
-/** 설정 창이 부르는 것 (preload 가 window.jjakkungFriends 로 연다) */
+/** 설정 창과 큰 창 친구 구역이 부르는 것 (preload 가 window.jjakkungFriends 로 연다) */
 export interface FriendsBridge {
   state(): Promise<FriendsState | undefined>;
   refresh(): Promise<FriendsState | undefined>;

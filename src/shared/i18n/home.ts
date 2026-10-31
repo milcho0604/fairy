@@ -23,8 +23,6 @@ export const ko = {
   'home.nav.friends': '친구',
   'home.openOnPet': '펫을 누르면 이 창으로 열기',
   'home.settings': '설정',
-  'home.friends.manage': '설정에서 관리',
-  'home.friends.manageHint': '친구 신청, 수락, 선물, 일정 공유는 설정 > 데이터와 계정의 친구 칸에서 해.',
   'home.friends.openSettings': '설정 열기',
   'home.friends.off.noServer': '이 판에는 서버 계정이 없어서 친구를 쓸 수 없어.',
   'home.friends.off.age':
@@ -35,16 +33,6 @@ export const ko = {
   'home.friends.off.featureOff':
     '친구 기능을 아직 열지 않았어. 열리면 이 구역에 친구가 보여. 설정 > 데이터와 계정에서 서버 계정 상태를 볼 수 있어.',
   'home.friends.loading': '친구 목록을 불러오는 중이야.',
-  'home.friends.problem': '친구 목록을 못 불러왔어. 잠시 뒤 다시 시도할게.',
-  'home.friends.emptyTitle': '아직 친구가 없어',
-  'home.friends.emptyBody':
-    '내 친구 코드나 초대 링크를 보내 봐. 상대가 설정의 친구 칸에 붙여 넣어 신청하면 친구가 돼.',
-  'home.friends.since': (v: { when: string }) => `${v.when}부터 친구`,
-  'home.friends.theyShare': '나에게 바쁜 시간을 보여 줘',
-  'home.friends.iShare': '내 바쁜 시간을 보여 주는 중',
-  'home.friends.visit': '펫 놀러 가기 켬',
-  'home.friends.incomingN': (v: { n: number }) => `받은 신청 ${v.n}건`,
-  'home.friends.outgoingN': (v: { n: number }) => `보낸 신청 ${v.n}건`,
   'home.keys': '구역 옮기기',
 };
 
@@ -69,9 +57,6 @@ export const en: Translation<typeof ko> = {
   'home.nav.friends': 'Friends',
   'home.openOnPet': 'Open this window when I click the fairy',
   'home.settings': 'Settings',
-  'home.friends.manage': 'Manage in Settings',
-  'home.friends.manageHint':
-    'Send or accept requests, give gifts, and share your calendar in the Friends box under Settings > Data and account.',
   'home.friends.openSettings': 'Open Settings',
   'home.friends.off.noServer': 'This build has no server account, so Friends is not available.',
   'home.friends.off.age':
@@ -83,15 +68,5 @@ export const en: Translation<typeof ko> = {
   'home.friends.off.featureOff':
     'Friends is not open yet. Once it opens, your friends will show up here. You can check your server account in Settings > Data and account.',
   'home.friends.loading': 'Loading your friends.',
-  'home.friends.problem': 'Could not load your friends. We will try again soon.',
-  'home.friends.emptyTitle': 'No friends yet',
-  'home.friends.emptyBody':
-    'Send your friend code or invite link. When they paste it into the Friends box in Settings and send a request, you become friends.',
-  'home.friends.since': (v: { when: string }) => `Friends since ${v.when}`,
-  'home.friends.theyShare': 'Shows you their busy times',
-  'home.friends.iShare': 'You show them your busy times',
-  'home.friends.visit': 'Pet visits on',
-  'home.friends.incomingN': (v: { n: number }) => `Requests for you (${v.n})`,
-  'home.friends.outgoingN': (v: { n: number }) => `Sent requests (${v.n})`,
   'home.keys': 'Switch sections',
 };

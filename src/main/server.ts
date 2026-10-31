@@ -8,6 +8,7 @@ import {
   app,
   type BrowserWindow,
   clipboard,
+  type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
   shell,
@@ -67,7 +68,7 @@ export function createServer(o: {
   shop: ItemStore;
   isSettings: (wc: WebContents) => boolean;
   target: () => BrowserWindow | undefined;
-  /** 큰 창 본문 화면 (친구 구역이 읽기만 한다). 없으면 undefined */
+  /** 큰 창 본문 화면 (친구 구역이 설정 창의 친구 칸과 같은 IPC 를 쓴다). 없으면 undefined */
   homeView?: () => WebContents | undefined;
   onWrite: (listener: (sql: string) => void) => void;
   /** 맞추기로 잔액이나 물건이 바뀌었다 */
@@ -375,59 +376,69 @@ export function createServer(o: {
   const amount = (v: unknown, max: number) =>
     typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : -1;
   const refused = { ok: false as const, error: 'invalid' };
+  /** 친구 IPC 는 설정 창과 큰 창 친구 구역이 보낸 것만 받는다 */
+  const friendsOk = (e: IpcMainInvokeEvent | IpcMainEvent) => o.isSettings(e.sender);
   ipcMain.handle(FRIENDS.state, (e) => {
-    if (!ok(e)) return undefined;
-    void friends.refresh();
-    return friends.state();
-  });
-  ipcMain.handle(FRIENDS.refresh, async (e) => {
-    if (!ok(e)) return undefined;
-    await friends.refresh();
-    return friends.state();
-  });
-  ipcMain.handle(FRIENDS.request, (e, text: unknown) => (ok(e) ? friends.request(text) : refused));
-  ipcMain.handle(FRIENDS.accept, (e, v: unknown) => (ok(e) && id(v) ? friends.accept(id(v)) : refused));
-  ipcMain.handle(FRIENDS.decline, (e, v: unknown) => (ok(e) && id(v) ? friends.decline(id(v)) : refused));
-  ipcMain.handle(FRIENDS.cancel, (e, v: unknown) => (ok(e) && id(v) ? friends.cancel(id(v)) : refused));
-  ipcMain.handle(FRIENDS.remove, (e, v: unknown) => (ok(e) && code(v) ? friends.remove(code(v)) : refused));
-  ipcMain.handle(FRIENDS.block, (e, v: unknown) => (ok(e) && code(v) ? friends.block(code(v)) : refused));
-  ipcMain.handle(FRIENDS.unblock, (e, v: unknown) => (ok(e) && code(v) ? friends.unblock(code(v)) : refused));
-  ipcMain.handle(FRIENDS.gift, (e, to: unknown, coins: unknown, passes: unknown) => {
-    const c = amount(coins, 500);
-    const p = amount(passes, 5);
-    if (!ok(e) || !code(to) || c < 0 || p < 0 || c + p === 0) return refused;
-    return friends.gift(code(to), c, p);
-  });
-  ipcMain.handle(FRIENDS.share, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
-  );
-  ipcMain.handle(FRIENDS.shareTitle, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
-  );
-  ipcMain.handle(FRIENDS.visit, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
-  );
-  ipcMain.handle(FRIENDS.busy, (e, to: unknown) => (ok(e) && code(to) ? friends.busy(code(to)) : refused));
-  ipcMain.handle(FRIENDS.view, (e) => {
-    if (!homeIsSender(e.sender)) return undefined;
-    // 큰 창 친구 구역이 보이는 동안 몇 초마다 다시 부른다: 열 때마다 받는다 (설정 창의 state 와 같다)
+    if (!friendsOk(e)) return undefined;
     if (!friendsOverride) void friends.refresh();
     return friendsNow();
   });
+  ipcMain.handle(FRIENDS.refresh, async (e) => {
+    if (!friendsOk(e)) return undefined;
+    if (!friendsOverride) await friends.refresh();
+    return friendsNow();
+  });
+  ipcMain.handle(FRIENDS.request, (e, text: unknown) => (friendsOk(e) ? friends.request(text) : refused));
+  ipcMain.handle(FRIENDS.accept, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.accept(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.decline, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.decline(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.cancel, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.cancel(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.remove, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.remove(code(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.block, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.block(code(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.unblock, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.unblock(code(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.gift, (e, to: unknown, coins: unknown, passes: unknown) => {
+    const c = amount(coins, 500);
+    const p = amount(passes, 5);
+    if (!friendsOk(e) || !code(to) || c < 0 || p < 0 || c + p === 0) return refused;
+    return friends.gift(code(to), c, p);
+  });
+  ipcMain.handle(FRIENDS.share, (e, to: unknown, on: unknown) =>
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
+  );
+  ipcMain.handle(FRIENDS.shareTitle, (e, to: unknown, on: unknown) =>
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
+  );
+  ipcMain.handle(FRIENDS.visit, (e, to: unknown, on: unknown) =>
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
+  );
+  ipcMain.handle(FRIENDS.busy, (e, to: unknown) =>
+    friendsOk(e) && code(to) ? friends.busy(code(to)) : refused,
+  );
   ipcMain.handle(FRIENDS.copyCode, (e) => {
-    const me = ok(e) || homeIsSender(e.sender) ? friends.state().list?.me.code : undefined;
+    const me = friendsOk(e) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(me);
     return true;
   });
   ipcMain.handle(FRIENDS.copyLink, (e) => {
-    const me = ok(e) || homeIsSender(e.sender) ? friends.state().list?.me.code : undefined;
+    const me = friendsOk(e) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(inviteLink(me));
     return true;
   });
   ipcMain.on(FRIENDS.clearPrefill, (e) => {
-    if (o.isSettings(e.sender)) friends.clearPrefill();
+    if (friendsOk(e)) friends.clearPrefill();
   });
 
   return {
