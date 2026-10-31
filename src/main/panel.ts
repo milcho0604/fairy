@@ -205,6 +205,8 @@ export interface PanelOptions {
    * tab 이 없으면 큰 창이 마지막으로 본 구역
    */
   promoteHome?: (tab?: PanelTab) => void;
+  /** 큰 창의 "작게 보기": 큰 창을 숨긴다 (작은 패널은 패널이 연다) */
+  hideHome?: () => void;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
@@ -1267,6 +1269,15 @@ export function createPanel(o: PanelOptions) {
     if (!isPanel(e) || !isPanelTab(tab)) return;
     expandAsked = true;
     o.promoteHome?.(tab);
+  });
+
+  // 작게 보기: 큰 창에서 이 구역 그대로 작은 패널로 돌아간다. 펫을 눌러도 패널이 뜨게 패널 보기도 바꾼다
+  ipcMain.on(PANEL.shrink, (e, tab: unknown) => {
+    if (!ours(e) || e.sender !== homeContents() || !isPanelTab(tab)) return;
+    o.setPanelView('compact');
+    o.hideHome?.();
+    closePanel();
+    openPanel(tab);
   });
 
   /**
