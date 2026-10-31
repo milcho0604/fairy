@@ -1159,6 +1159,8 @@ export const PANEL = {
   hiding: 'panel:hiding',
   /** 패널 → 메인: 지금 탭 그대로 큰 창으로 넘겨 줘 (패널 머리줄 "크게 보기", 크게 볼까요? 칩). 큰 창이 보인 뒤에 패널을 닫는다 */
   expand: 'panel:expand',
+  /** 큰 창 → 메인: 이 구역 그대로 작은 패널로 돌아가 (사이드바 "작게 보기"). 큰 창은 숨기고 펫 누르기도 작은 패널로 바꾼다 */
+  shrink: 'panel:shrink',
   /** 메인 → 패널: 쓰던 글을 보내 놓고 큰 창으로 넘겨 달라고 요청해 (트레이, 펫 메뉴의 "큰 창 열기"가 패널이 열려 있을 때) */
   expandNow: 'panel:expand-now',
   /** 패널 → 메인(동기): 마지막으로 "크게 볼까요?" 칩을 띄운 때. 패널을 닫았다 열어도 간격이 이어지게 메인이 든다 */
@@ -1516,6 +1518,8 @@ export interface PanelBridge {
   onHiding(listener: () => void): () => void;
   /** 지금 탭을 큰 창으로 넘긴다 (쓰던 글은 먼저 메인에 보낸 뒤에 부른다) */
   expand(tab: PanelTab): void;
+  /** 큰 창에서 이 구역 그대로 작은 패널로 돌아간다 (큰 창은 숨고 패널 보기도 작은 패널로 바뀐다) */
+  shrink(tab: PanelTab): void;
   /** 마지막 칩 시각(밀리초). 없으면 0 */
   expandHintAt(): number;
   /** 칩을 띄웠다고 메인에 적는다 */

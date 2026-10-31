@@ -92,6 +92,7 @@ import { focusWindow, stealFocus } from './focus.ts';
 import { hideHintDelivery, hideHintFor } from './hide-hint.ts';
 import { langArg } from './lang.ts';
 import { createHoverGuard } from './pet-hover.ts';
+import { markPetPress } from './pet-press.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 import { watchSystem } from './system-watch.ts';
@@ -652,6 +653,10 @@ export function createPetWindow({
   const onGesture = (e: IpcMainEvent, raw: unknown) => {
     if (!fromThisWindow(e) || !isGesture(raw)) return;
     const event = raw;
+    if (event.type === 'down') {
+      markPetPress();
+      return;
+    }
     log('pet', event.type);
     if (event.type === 'click') {
       actions.click(pet);

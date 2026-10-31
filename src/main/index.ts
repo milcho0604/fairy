@@ -1222,6 +1222,7 @@ ready
         return true;
       },
       promoteHome: (tab) => home?.promote(tab),
+      hideHome: (done) => (home ? home.hide(done) : done()),
       lookTogether: () => look.start(),
       missed: () => pet.missed(),
       diary: () => diary.entries(Date.now()),
