@@ -14,7 +14,7 @@
 //     열고 닫기를 빠르게 되풀이해도 오류 없이 끝난다. 아이콘이 실제로 뜨고 지는지는 scripts/dev/dock-probe.mjs 가 잰다
 //   전체 화면: 큰 창이 전체 화면이 되면 펫의 "모든 데스크톱, 전체 화면 위" 설정을 다시 걸고, 풀리면 원래대로 건다 (창 호출을 가로채 확인.
 //     진짜 전체 화면은 쓰는 사람의 화면에 새 데스크톱을 만들어 시험에서는 켜지 않는다)
-//   화면: 폭 760/1100/1440 x 밝음/어두움 찍기와 가로 넘침, 구역마다, 사이드바(구역, 채팅과 친구는 따로 창, 설정), 단축키(Cmd+1~, Cmd+, Cmd+W),
+//   화면: 폭 760/1100/1440 x 밝음/어두움 찍기와 가로 넘침, 구역마다, 사이드바(구역, 채팅은 창 안에, 친구는 본문 칸에, 설정은 따로 창), 단축키(Cmd+1~, Cmd+, Cmd+W),
 //     빠른 입력으로 넣은 할 일이 큰 창에 바로 보임, 사이드바 체크와 설정 칸이 같은 panelView 를 바꿈
 //   ko/en: 영어 화면에 한글 없음, "모드" 라는 낱말 없음
 //   오늘과 일정의 넓은 배치 (이슈 #162): 구간별(작은 패널 320/360/560, 큰 창 760/1100/1440) 찍기와 넘침, 오늘 첫 화면 순서(일정, 다음 할 일, 마감이 맨 위),
@@ -1446,8 +1446,8 @@ const body = async () => {
   h = await page('home');
   const navNames = await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
   check(
-    '사이드바 구역 순서 (친구는 꺼져 있으면 없음)',
-    navNames === tx('오늘|할 일|메모|일정|채팅|상점|기록|쪽지함', 'Today|To-dos|Notes|Events|Chat|Shop|Records|Mailbox'),
+    '사이드바 구역 순서 (친구는 늘 마지막에 보임)',
+    navNames === tx('오늘|할 일|메모|일정|채팅|상점|기록|쪽지함|친구', 'Today|To-dos|Notes|Events|Chat|Shop|Records|Mailbox|Friends'),
     navNames,
   );
   check('사이드바 머리: 이름, 코인, 배부름 줄', await h.ev(`!!document.querySelector('.home-head strong') && !!document.querySelector('.home-head .coins') && !!document.querySelector('.home-fullness .track')`));
@@ -1485,7 +1485,7 @@ const body = async () => {
   check('Cmd+7 은 기록', (await sectionNow(h)) === 'ptab-records');
   await h.ev(keyEvent({ ...mod, key: '8', code: 'Digit8' }));
   await sleep(300);
-  check('Cmd+8 은 친구가 꺼져 있으면 아무 일도 없다', (await sectionNow(h)) === 'ptab-records');
+  check('Cmd+8 은 친구 구역 (본문 칸에 열리고 설정 창은 안 뜬다)', (await sectionNow(h)) === 'ptab-friends' && !(await main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed()')));
 
   // 채팅은 큰 창 안(본문 칸 자리에 view, 이슈 #165, 자세한 시험은 home-chat.mjs), 설정은 따로 창, 큰 창은 그대로
   await h.click(`document.getElementById('ptab-chat')`);
@@ -1500,15 +1500,10 @@ const body = async () => {
   await main('__jj.settingsWindow.window?.close(); 1');
   await sleep(400);
 
-  // 친구: 서버 모드, 로그인, 기능 키가 켜졌을 때만 보인다 (메인의 friendsAvailable 을 손잡이로 켠다)
-  await main('__jj.debugFriendsOn(true); 1');
-  check('친구 기능이 켜지면 사이드바에 "친구" 가 생긴다 (여덟째)', await h.until(async () => (await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).at(-1)`)) === tx('친구', 'Friends'), 4000));
-  await h.ev(keyEvent({ ...mod, key: '8', code: 'Digit8' }));
-  check('Cmd+8 은 친구: 설정 창의 친구 칸을 연다 (큰 창은 그대로)', (await waitFor(async () => main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed()'))) && (await homeAlive()));
-  await main('__jj.settingsWindow.window?.close(); 1');
-  await sleep(400);
-  await main('__jj.debugFriendsOn(false); 1');
-  check('친구 기능이 꺼지면 다시 사라진다', await h.until(async () => !(await h.ev(`[...document.querySelectorAll('.home-nav button .name')].some((e) => e.textContent === ${JSON.stringify(tx('친구', 'Friends'))})`)), 4000));
+  // 친구: 구역은 늘 보이고 쓸 수 없으면 까닭을 보인다 (자세한 화면은 friends-list.mjs)
+  check('친구 구역 제목줄과 안내 (서버 없는 시험 판은 까닭을 보인다)', (await h.ev(`document.querySelector('.home-bar h2').textContent`)) === tx('친구', 'Friends') && (await h.until(async () => (await h.ev(`document.querySelector('.fp[data-state="off"]')?.textContent?.length > 0`)) === true, 4000)));
+  await h.click(`document.getElementById('ptab-records')`);
+  await sleep(300);
 
   // 빠른 입력으로 넣은 할 일이 큰 창에 바로 보인다
   await h.click(`document.getElementById('ptab-todo')`);
