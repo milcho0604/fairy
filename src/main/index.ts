@@ -257,22 +257,26 @@ app.on('web-contents-created', (_e, wc) => {
 
 // 잠금이 없으면 ready 를 기다리지 않는다 (곧 끝난다). 시작 일 전체를 if 로 감싸지 않으려고 약속으로 막는다
 // 시험 실행(JJ_NO_FOCUS)은 dock.show 를 부르지 않는다. JJ_DOCK_PROBE=1 이 함께 있을 때만 진짜로 부른다 (scripts/dev/dock-*.mjs)
+/** 끝내는 중 (before-quit 뒤). Dock 아이콘 누르기가 큰 창을 새로 열지 않게 */
+let appQuitting = false;
+/** 앱이 준비된 때. 맥은 처음 켤 때도 activate 를 보내니 그 직후는 Dock 누르기로 보지 않는다 */
+let readyAt = Number.POSITIVE_INFINITY;
+const DOCK_ACTIVATE_GRACE_MS = 4000;
 const dockTestRun = !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE;
 const ready = primary ? app.whenReady() : new Promise<void>(() => {});
 ready
   .then(() => {
     // 웹 권한은 복사하기 말고 모두 거절한다 (permissions.ts)
     denyPermissionsByDefault(session.defaultSession, log);
+    readyAt = Date.now();
     // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
     confineTestDisplay();
     // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
     // 설정 dockIcon 이 켜져 있으면 숨기지 않는다(아래 dock.pin 이 보인다). 시험 실행은 show 를 못 부르니 늘 숨긴다.
     // JJ_DOCK_PROBE_LSUI=1 (scripts/dev/dock-pinned.mjs): 설치본처럼 Dock 없는 앱으로 시작한 뒤 보이게 하는 길을 흉내 낸다
-    if (
-      process.platform === 'darwin' &&
-      (!settings.get().dockIcon || dockTestRun || process.env.JJ_DOCK_PROBE_LSUI)
-    )
-      app.dock?.hide();
+    if (process.platform === 'darwin') {
+      if (!settings.get().dockIcon || dockTestRun || process.env.JJ_DOCK_PROBE_LSUI) app.dock?.hide();
+    }
     // 윈도우, 리눅스는 테두리 있는 창(시작 안내, 설정, 채팅, 만들기, 아는 것)마다 기본 메뉴 막대(File Edit View Window)가 붙었다.
     // 앱 메뉴를 없앤다. 입력 칸의 Ctrl+C, V, X, A, Z 는 메뉴 없이도 된다. 맥은 기본 앱 메뉴(편집 ⌘C, ⌘V)가 있어야 해서 그대로 둔다
     else Menu.setApplicationMenu(null);
@@ -1250,7 +1254,10 @@ ready
       },
       log,
     });
-    app.on('before-quit', () => dock.quit());
+    app.on('before-quit', () => {
+      appQuitting = true;
+      dock.quit();
+    });
     // 설정 dockIcon: 시작부터 Dock 에 아이콘을 두고, 켜고 끌 때 바로 맞춘다 (끌 때 큰 창이 열려 있으면 닫힐 때까지 남는다)
     dock.pin(settings.get().dockIcon);
     settings.onChange((next, prev) => {
@@ -2013,7 +2020,16 @@ ready
       bringBack: (why) => {
         // Dock 아이콘을 눌렀다(맥 activate): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살린다
         // 큰 창을 앞으로 한 다음 숨은 펫, 집에 들어간 펫도 부른다
-        if (home && reopenTarget(why, home.look(), settings.get().dockIcon) === 'home') openHomeFromMenu();
+        // 시작 안내 중, 끝내는 중, 막 켜진 때(처음 켤 때의 activate)는 큰 창을 열지 않는다
+        const onboardingOpen = !!onboarding.window && !onboarding.window.isDestroyed();
+        if (
+          home &&
+          !appQuitting &&
+          !onboardingOpen &&
+          Date.now() - readyAt > DOCK_ACTIVATE_GRACE_MS &&
+          reopenTarget(why, home.look(), settings.get().dockIcon) === 'home'
+        )
+          openHomeFromMenu();
         log('pet', '다시 열기로 부름', why);
         pet.setHidden('user', false);
         friends.setHidden('user', false);
