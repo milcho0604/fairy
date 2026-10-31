@@ -119,6 +119,8 @@ export interface Settings {
   review: boolean;
   /** 펫이 안 보일 때(전체 화면, 숨김, 발표) 일정 알림을 운영체제 알림으로도 한 번 */
   osNotify: boolean;
+  /** 할 일 마감 임박 알림 (시각이 있으면 마감 전, 날짜만이면 마감 전날 저녁). 끄면 말없이 넘긴다 */
+  dueSoonAlert: boolean;
   /** 전역 단축키 (v2 단축키 바꾸기) */
   shortcuts: Record<ShortcutId, string>;
   /** 쉬운 키 묶음을 켜기 직전의 키. 끄면 이 값으로 돌린다 (없으면 기본 키) */
@@ -498,6 +500,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reviewMinute: 18 * 60,
   review: true,
   osNotify: true,
+  dueSoonAlert: true,
   shortcuts: { ...SHORTCUT_DEFAULTS },
   shortcutsKept: null,
   myMcp: false,
@@ -750,6 +753,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
         : base.reviewMinute,
     review: typeof r.review === 'boolean' ? r.review : r.chatter === 'quiet' ? false : base.review,
     osNotify: bool(r.osNotify, base.osNotify),
+    dueSoonAlert: bool(r.dueSoonAlert, base.dueSoonAlert),
     shortcuts: shortcutsOf(r.shortcuts, base.shortcuts),
     shortcutsKept:
       typeof r.shortcutsKept === 'object' && r.shortcutsKept !== null

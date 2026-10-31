@@ -466,6 +466,7 @@ const body = async () => {
   await sleep(500);
   await p.click(`document.querySelector('.focus-month summary')`);
   check('집중 달력이 열림', await p.until(() => p.ev(`!!document.querySelector('.fm-cell')`)));
+  await p.ev(`const b = document.querySelector('.fm-detail-toggle'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); 1`); // 분 숫자는 "자세히 보기"로 펼쳐야 보인다
   const cell = (day) => p.ev(`(() => { const c = document.querySelector('.fm-cell[data-day="${day}"]'); return c && { cls: c.className, m: c.querySelector('.fm-m')?.innerText ?? '', title: c.title, dis: c.disabled }; })()`);
   await p.until(async () => !!(await cell(seedDays[0]))?.m);
   for (let i = 0; i < seeds.length; i++) {
