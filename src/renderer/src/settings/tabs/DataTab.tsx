@@ -8,12 +8,11 @@ import { AdminBox } from '../AdminBox.tsx';
 import { CoinReset } from '../CoinReset.tsx';
 import { EventsBox } from '../EventsBox.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
-import { FriendsBox } from '../FriendsBox.tsx';
 import { exportFlash, type Flash, importFlash, storageFlash } from '../flash-of.ts';
 import { ServerAccountBox, useServerStatus } from '../ServerAccountBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
-/** 데이터 탭: 백업과 옮기기, 코인 초기화, 저장 공간 */
+/** 데이터와 계정 탭: 계정(로그인, 로그아웃), 백업과 옮기기, 코인 초기화, 저장 공간 */
 export function DataTab({ snap, setSnap, flash }: TabProps) {
   const [exported, setExported] = useState<string>();
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -25,6 +24,8 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
   };
   return (
     <>
+      {/* 계정(로그인, 로그아웃)을 맨 위에: 설정에서 가장 먼저 찾는 것 */}
+      <ServerAccountBox />
       <Section title={t('settings.backup')}>
         <small>{t('settings.backupHint')}</small>
         <div className="action-row">
@@ -94,9 +95,15 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         {isPersonalPet(snap.settings) && <small>{t('pet.share.personalHint')}</small>}
         <ExportedRow path={exported} />
       </Section>
-      <ServerAccountBox />
       <EventsBox />
-      <FriendsBox flash={flash} />
+      <Section title={t('settings.friendsMoved.title')}>
+        <div className="action-row">
+          <small className="grow">{t('settings.friendsMoved')}</small>
+          <button type="button" className="ghost" onClick={() => bridge.openHome('friends')}>
+            {t('settings.friendsMoved.open')}
+          </button>
+        </div>
+      </Section>
       <AdminBox />
       <ExportBox flash={flash} />
       {featureOn(server, 'coin_reset') && (

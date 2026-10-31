@@ -24,6 +24,9 @@ export const HOME_SECTIONS: readonly HomeSection[] = [
   { id: 'records', kind: 'tab', label: 'home.nav.records' },
   // 받은 펫 쪽지, 서버 쪽지, 공지를 다시 읽고 보관하고 지운다 (feat/mailbox). 단축키 번호는 기록 다음이라 1~7번은 그대로다
   { id: 'mail', kind: 'tab', label: 'home.nav.mail', noKey: true },
+  // 설정에서 꺼낸 페어리 꾸미기와 비서 기능 (ui/settings-slim). 번호 단축키는 주지 않아 아래 번호가 그대로다
+  { id: 'pet', kind: 'tab', label: 'home.nav.pet', noKey: true },
+  { id: 'assist', kind: 'tab', label: 'home.nav.assist', noKey: true },
   // 늘 보인다. 친구 기능을 쓸 수 없으면 본문에 까닭과 여는 길을 보인다 (home/FriendsPage.tsx)
   { id: 'friends', kind: 'tab', label: 'home.nav.friends' },
 ];

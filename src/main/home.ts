@@ -20,7 +20,7 @@ import {
   promoteAction,
 } from '../shared/home-policy.ts';
 import { t } from '../shared/i18n/index.ts';
-import { type ChatKeyEvent, type HomeChatRect, PANEL, type PanelTab } from '../shared/ipc.ts';
+import { type ChatKeyEvent, type HomeChatRect, isPanelTab, PANEL, type PanelTab } from '../shared/ipc.ts';
 import { devRendererUrl } from './dev-url.ts';
 import type { Dock } from './dock.ts';
 import { confineTestWindow, focusWindow } from './focus.ts';
@@ -449,6 +449,20 @@ export function createHome(o: HomeOptions) {
   });
 
   // 본문이 알려 주는 채팅 자리. 자리가 오면 채팅 view 를 그 자리에 얹고(따로 채팅 창은 닫는다), null 이면 감춘다
+  // 본문이 알려 주는 지금 구역
+  let section: PanelTab | 'chat' | undefined;
+  ipcMain.on(PANEL.homeSection, (e, raw: unknown) => {
+    if (!body || e.sender !== body.webContents) return;
+    section = raw === 'chat' || isPanelTab(raw) ? raw : undefined;
+  });
+  /** 큰 창이 보이는 중이면 지금 보는 구역 (숨김, 접음, 닫힘이면 없다) */
+  function visibleSection(): PanelTab | 'chat' | undefined {
+    const w = win;
+    if (!alive() || hiddenAt !== undefined || !w || w.isDestroyed() || !w.isVisible() || w.isMinimized())
+      return undefined;
+    return section;
+  }
+
   ipcMain.on(PANEL.homeChat, (e, raw: unknown) => {
     const w = win;
     if (!w || w.isDestroyed() || !body || e.sender !== body.webContents) return;
@@ -493,6 +507,7 @@ export function createHome(o: HomeOptions) {
       return chatPart?.view;
     },
     chatRect: () => chatRect,
+    visibleSection,
     /** 전체 화면인가 (펫의 "전체 화면이면 숨기" 판정에서 우리 창은 뺀다) */
     isFullScreen: () => alive() && !!win?.isFullScreen(),
   };

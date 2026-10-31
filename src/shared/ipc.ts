@@ -26,6 +26,7 @@ import type { GestureEvent } from './gesture.ts';
 import type { PanelView } from './home-policy.ts';
 import type { HouseStyle } from './house-art.ts';
 import type { HouseSprites } from './house-room.ts';
+import type { HubMethod } from './hub-policy.ts';
 import type { AgeStage } from './illustrate.ts';
 import type { IllustEngine, LocalDrawInfo } from './local-draw.ts';
 import type { LookMotion } from './look-motion.ts';
@@ -282,6 +283,8 @@ export const SETTINGS = {
   reset: 'settings:reset',
   setScale: 'settings:set-scale',
   openMaker: 'settings:open-maker',
+  /** 설정 창에서 큰 창의 페어리, 비서 구역을 연다 */
+  openHome: 'settings:open-home',
   /** 베타 기록 (P4-04) */
   stats: 'settings:stats',
   copyStats: 'settings:copy-stats',
@@ -467,6 +470,8 @@ export interface SettingsBridge {
   setScale(scale: number): void;
   /** 사진 펫 만들기 (target 을 주면 상태별 포즈) */
   openMaker(target?: MakerTarget): void;
+  /** 큰 창의 구역(페어리, 비서)을 연다 (설정에서 꺼낸 항목으로 가는 길) */
+  openHome(tab: 'pet' | 'assist' | 'friends'): void;
   stats(): Promise<BetaReport>;
   /** 베타 기록 글을 클립보드에 복사한다 */
   copyStats(): Promise<boolean>;
@@ -531,6 +536,9 @@ export interface SettingsBridge {
   onFocus(listener: (section: SettingsSection) => void): void;
   onPower(listener: (onBattery: boolean) => void): void;
 }
+
+/** 큰 창 페어리, 비서 구역이 받는 설정 다리: 허용표(hub-policy.ts)의 메서드와 변경 알림만 */
+export type HubBridge = Pick<SettingsBridge, HubMethod | 'onChanged' | 'onPower'>;
 
 /** 보낼 그림: 원본은 AI 로, 작은 그림은 대화 기록으로. */
 export interface OutgoingImage {
@@ -1147,6 +1155,8 @@ export const PANEL = {
   tab: 'panel:tab',
   /** 큰 창 → 메인: 본문 칸 안 채팅 자리의 위치와 크기(창 안 CSS 픽셀). 메인이 그 자리에 채팅 view 를 얹는다. null 이면 채팅 구역이 아니다 (#165) */
   homeChat: 'panel:home-chat',
+  /** 큰 창이 지금 보여 주는 구역 (메인이 알림을 조용히 할지 정한다) */
+  homeSection: 'panel:home-section',
   /** 메인 → 큰 창: 채팅 구역을 열어(true) 달라고, 또는 닫아(false) 달라고 (채팅 열기 요청이 큰 창으로 온 때) */
   chatSection: 'panel:chat-section',
   /** 메인 → 큰 창: 채팅 view 가 받은 창 단축키(닫기, 설정, 구역 고르기)를 그대로 넘긴다. view 가 포커스를 쥐면 큰 창 본문이 키를 못 받는다 */
@@ -1317,7 +1327,19 @@ export interface NoteHit {
 
 // records 는 큰 창 사이드바에만 있다 (이슈 #166). 작은 패널의 탭 줄(renderer panel/tabs.ts)에는 없다
 // mail(쪽지함)은 큰 창에서는 사이드바 구역이고, 작은 패널에서는 탭이 아니라 머리줄 봉투가 여는 덮개다 (feat/mailbox)
-export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop', 'records', 'mail', 'friends'] as const;
+// pet(페어리 꾸미기)과 assist(비서)도 큰 창 전용 구역이다 (설정에서 꺼낸 것, ui/settings-slim)
+export const PANEL_TABS = [
+  'today',
+  'todo',
+  'note',
+  'event',
+  'shop',
+  'records',
+  'mail',
+  'pet',
+  'assist',
+  'friends',
+] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 export const isPanelTab = (v: unknown): v is PanelTab => PANEL_TABS.includes(v as PanelTab);
 
@@ -1495,6 +1517,8 @@ export interface PanelBridge {
   onTab(listener: (tab: PanelTab) => void): void;
   /** 큰 창 본문 칸 안 채팅 자리를 메인에 알린다 (null 이면 채팅 구역이 아니다). 자리가 바뀔 때마다 부른다 */
   homeChat(rect: HomeChatRect | null): void;
+  /** 지금 보는 구역을 메인에 알린다 */
+  homeSection(section: PanelTab | 'chat'): void;
   /** 메인이 채팅 구역을 열고 닫아 달라고 한다 */
   onChatSection(listener: (on: boolean) => void): void;
   /** 채팅 view 가 받은 창 단축키가 넘어온다 */

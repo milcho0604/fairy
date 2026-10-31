@@ -1990,3 +1990,35 @@ textarea.rules {
   margin-bottom: 10px;
   color: var(--ink);
 }
+
+/* 로그아웃: 로그인 줄에서 맨 앞, 다른 보통 단추보다 눈에 띄게 (테두리와 글자가 강조색) */
+.ghost.logout {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ghost.logout:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+
+/* 설정 > 일반 맨 아래: 큰 창으로 옮긴 페어리, 비서 구역으로 가는 길 */
+.hub-sign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* 찾기에서 옮긴 항목이 나올 때 */
+.moved-hits {
+  margin: 0 0 16px;
+}
+
+.moved-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
+  type BaseWindow,
   type BrowserWindow,
   clipboard,
   type IpcMainEvent,
@@ -9,12 +10,14 @@ import {
   ipcMain,
   powerMonitor,
   shell,
+  type WebContents,
 } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { issueUrl } from '../shared/feedback.ts';
 import type { GalleryList } from '../shared/gallery.ts';
 import { helpSummary } from '../shared/help-pack.ts';
+import { HUB_METHODS, hubPatchOk } from '../shared/hub-policy.ts';
 import { getLang, t } from '../shared/i18n/index.ts';
 import {
   type CalSync,
@@ -55,6 +58,12 @@ export interface SettingsWindowOptions {
   scale: () => number;
   setScale: (scale: number) => void;
   openMaker: (target: MakerTarget) => void;
+  /** 큰 창의 페어리, 비서 구역 화면 (설정 창의 화면 조각을 쓰므로 같은 설정 다리를 받는다). 없으면 undefined */
+  hub: () => WebContents | undefined;
+  /** 큰 창 (파일 대화상자의 부모) */
+  hubWindow: () => BaseWindow | undefined;
+  /** 큰 창의 구역을 연다 (설정에서 꺼낸 항목으로 가는 길) */
+  openHome: (tab: 'pet' | 'assist' | 'friends') => void;
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (maker.ts remake) */
   remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake: () => void;
@@ -93,7 +102,7 @@ export interface SettingsWindowOptions {
     };
     exportPet: (win?: BrowserWindow) => Promise<string>;
     importPet: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
-    importFriend: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
+    importFriend: (win?: BaseWindow) => Promise<{ ok: boolean; message: string }>;
     importPetDrop: (name: string, bytes: Buffer) => Promise<{ ok: boolean; message: string }>;
     syncCalendar: () => Promise<CalSync>;
     calendarLast: () => CalSync;
@@ -107,7 +116,7 @@ export interface SettingsWindowOptions {
   gallery: {
     list: () => Promise<GalleryList>;
     adopt: (id: unknown, asFriend: boolean) => Promise<{ ok: boolean; message: string }>;
-    share: (meta: unknown, win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
+    share: (meta: unknown, win?: BaseWindow) => Promise<{ ok: boolean; message: string }>;
   };
 }
 
@@ -123,6 +132,9 @@ export function createSettingsWindow({
   scale,
   setScale,
   openMaker,
+  hub,
+  hubWindow,
+  openHome,
   remakeBody,
   cancelRemake,
   stats,
@@ -139,10 +151,42 @@ export function createSettingsWindow({
   let win: BrowserWindow | undefined;
   // 마지막으로 본 탭. 창은 닫으면 없어져서 메인이 앱이 켜져 있는 동안만 기억한다 (설정 파일에는 남기지 않는다)
   let lastTab: SettingsTab | undefined;
-  const fromSettings = (e: IpcMainEvent | IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
+  /** 설정 창이나 큰 창의 페어리, 비서 구역 화면이 보낸 것인가 */
+  const owns = (wc: WebContents) => {
+    if (win && !win.isDestroyed() && wc === win.webContents) return true;
+    const h = hub();
+    return !!h && !h.isDestroyed() && wc === h;
+  };
+  /** 두 화면 모두에게 (설정 창, 큰 창 구역) */
+  const sendAll = (channel: string, ...args: unknown[]) => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
+    const h = hub();
+    if (h && !h.isDestroyed()) h.send(channel, ...args);
+  };
+  /** 설정 창이 보낸 것만 (모든 채널의 기본) */
+  const fromSettings = (e: IpcMainEvent | IpcMainInvokeEvent) =>
+    !!win && !win.isDestroyed() && e.sender === win.webContents;
+  /** 큰 창 구역이 보낸 것 */
+  const fromHub = (e: IpcMainEvent | IpcMainInvokeEvent) => {
+    const h = hub();
+    return !!h && !h.isDestroyed() && e.sender === h;
+  };
+  /**
+   * 설정 창은 모든 채널, 큰 창 구역은 허용표(shared/hub-policy.ts HUB_METHODS)에 있는 채널만.
+   * 위험한 것(다시 켜기, 가져오기, 내보내기, 복원, 코인 초기화, 기록 지우기, 모델 지우기, 업데이트, 진단)은 큰 창에서 거절한다
+   */
+  const hubChannels: readonly string[] = HUB_METHODS.map((m) => SETTINGS[m]);
+  const allowed = (e: IpcMainEvent | IpcMainInvokeEvent, channel: string) =>
+    fromSettings(e) || (fromHub(e) && hubChannels.includes(channel));
+  /** 파일 대화상자의 부모: 부른 화면이 있는 창 */
+  const parentOf = (e: IpcMainEvent | IpcMainInvokeEvent): BaseWindow | undefined =>
+    fromHub(e) ? hubWindow() : win;
+  ipcMain.on(SETTINGS.openHome, (e, tab: unknown) => {
+    if (fromSettings(e) && (tab === 'pet' || tab === 'assist' || tab === 'friends')) openHome(tab);
+  });
 
   ipcMain.handle(SETTINGS.get, (e): SettingsSnapshot | undefined =>
-    fromSettings(e)
+    allowed(e, SETTINGS.get)
       ? {
           settings: settings.get(),
           scale: scale(),
@@ -168,7 +212,7 @@ export function createSettingsWindow({
   );
   const localReady = () => Object.fromEntries(v2.catalog().local.map((m) => [m.id, localModelReady(m)]));
   ipcMain.handle(SETTINGS.choosePet, (e, choice: unknown) => {
-    const c = fromSettings(e) ? parsePetChoice(choice) : undefined;
+    const c = allowed(e, SETTINGS.choosePet) ? parsePetChoice(choice) : undefined;
     if (!c) return library.view();
     if ('kind' in c) library.toDefault(c.kind);
     else if ('starter' in c) library.fromStarter(c.starter);
@@ -177,7 +221,7 @@ export function createSettingsWindow({
     return library.view();
   });
   ipcMain.handle(SETTINGS.removeSavedPet, (e, id: unknown) => {
-    if (fromSettings(e) && typeof id === 'string') library.remove(id);
+    if (allowed(e, SETTINGS.removeSavedPet) && typeof id === 'string') library.remove(id);
     return library.view();
   });
   ipcMain.handle(SETTINGS.deleteModel, async (e, id: unknown) => {
@@ -208,24 +252,26 @@ export function createSettingsWindow({
     return { result: coins.reset(scope, expect), state: coins.state() };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>
-    fromSettings(e) && isGait(gait) ? remakeBody(gait) : { ok: false, error: t('main.maker.reopen') },
+    allowed(e, SETTINGS.remakeBody) && isGait(gait)
+      ? remakeBody(gait)
+      : { ok: false, error: t('main.maker.reopen') },
   );
   ipcMain.on(SETTINGS.cancelRemake, (e) => {
-    if (fromSettings(e)) cancelRemake();
+    if (allowed(e, SETTINGS.cancelRemake)) cancelRemake();
   });
   ipcMain.on(SETTINGS.tab, (e, tab: unknown) => {
     if (fromSettings(e) && isSettingsTab(tab)) lastTab = tab;
   });
   ipcMain.handle(SETTINGS.set, (e, patch: Partial<Settings>) =>
-    fromSettings(e) ? settings.set(patch) : settings.get(),
+    allowed(e, SETTINGS.set) && (fromSettings(e) || hubPatchOk(patch)) ? settings.set(patch) : settings.get(),
   );
   ipcMain.handle(SETTINGS.reset, (e) => (fromSettings(e) ? settings.resetPreferences() : settings.get()));
   ipcMain.on(SETTINGS.setScale, (e, next: number) => {
-    if (fromSettings(e) && typeof next === 'number') setScale(next);
+    if (allowed(e, SETTINGS.setScale) && typeof next === 'number') setScale(next);
   });
   ipcMain.on(SETTINGS.openMaker, (e, target: unknown) => {
     const ok = target === 'happy' || target === 'sleepy' || target === 'hungry' || target === 'sprites';
-    if (fromSettings(e)) openMaker(ok ? target : 'main');
+    if (allowed(e, SETTINGS.openMaker)) openMaker(ok ? target : 'main');
   });
   ipcMain.handle(SETTINGS.stats, (e): BetaReport | undefined =>
     fromSettings(e) ? stats.report(Date.now()) : undefined,
@@ -327,7 +373,7 @@ export function createSettingsWindow({
     fromSettings(e) ? v2.importPet(win) : { ok: false, message: '' },
   );
   ipcMain.handle(SETTINGS.importFriend, (e) =>
-    fromSettings(e) ? v2.importFriend(win) : { ok: false, message: '' },
+    allowed(e, SETTINGS.importFriend) ? v2.importFriend(parentOf(e)) : { ok: false, message: '' },
   );
   // 끌어 놓은 파일: 이름은 확장자만 보고(읽개 고르기), 바이트는 메인이 상한과 형식을 다시 본다
   ipcMain.handle(SETTINGS.importPetDrop, (e, name: unknown, bytes: unknown) => {
@@ -340,16 +386,16 @@ export function createSettingsWindow({
     return v2.importPetDrop(name.slice(-64), buf);
   });
   ipcMain.handle(SETTINGS.galleryList, (e) =>
-    fromSettings(e) ? gallery.list() : { ok: false, reason: 'bad' },
+    allowed(e, SETTINGS.galleryList) ? gallery.list() : { ok: false, reason: 'bad' },
   );
   ipcMain.handle(SETTINGS.galleryAdopt, (e, id: unknown, asFriend: unknown) =>
-    fromSettings(e) ? gallery.adopt(id, asFriend === true) : { ok: false, message: '' },
+    allowed(e, SETTINGS.galleryAdopt) ? gallery.adopt(id, asFriend === true) : { ok: false, message: '' },
   );
   ipcMain.handle(SETTINGS.galleryShare, (e, meta: unknown) =>
-    fromSettings(e) ? gallery.share(meta, win) : { ok: false, message: '' },
+    allowed(e, SETTINGS.galleryShare) ? gallery.share(meta, parentOf(e)) : { ok: false, message: '' },
   );
   ipcMain.handle(SETTINGS.syncCalendar, (e) =>
-    fromSettings(e) ? v2.syncCalendar() : { text: '', ok: true },
+    allowed(e, SETTINGS.syncCalendar) ? v2.syncCalendar() : { text: '', ok: true },
   );
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));
   ipcMain.on(SETTINGS.relaunch, (e) => {
@@ -362,11 +408,11 @@ export function createSettingsWindow({
     if (fromSettings(e)) openOnboarding();
   });
   settings.onChange((next) => {
-    if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.changed, next);
+    sendAll(SETTINGS.changed, next);
   });
   // 전원을 꽂고 빼면 부스트가 쉬는지 표시를 바꾼다
   const sendPower = () => {
-    if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.power, powerMonitor.isOnBatteryPower());
+    sendAll(SETTINGS.power, powerMonitor.isOnBatteryPower());
   };
   powerMonitor.on('on-ac', sendPower);
   powerMonitor.on('on-battery', sendPower);
@@ -428,6 +474,7 @@ export function createSettingsWindow({
   return {
     open,
     sendRestore,
+    owns,
     get window() {
       return win;
     },

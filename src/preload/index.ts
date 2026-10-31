@@ -10,6 +10,7 @@ import type { Gaze } from '../shared/gaze.ts';
 import { GCAL, type GcalBridge, type GcalStatus } from '../shared/gcal.ts';
 import type { Point } from '../shared/geometry.ts';
 import type { HouseSprites } from '../shared/house-room.ts';
+import { HUB_METHODS } from '../shared/hub-policy.ts';
 import {
   type BubbleMessage,
   type CarryMessage,
@@ -19,6 +20,7 @@ import {
   FACE,
   type FaceBridge,
   type GestureEvent,
+  type HubBridge,
   IPC,
   LANGUAGE,
   type LanguageEventsBridge,
@@ -268,13 +270,15 @@ if (kind === 'notice') {
   contextBridge.exposeInMainWorld('jjakkungNotice', notice);
 }
 
-if (kind === 'settings') {
+// 설정 창과 큰 창(페어리, 비서 구역은 설정 창의 화면 조각을 쓴다)이 같은 설정 다리를 쓴다. 메인이 보낸 곳을 다시 본다
+if (kind === 'settings' || kind === 'home') {
   const bridge: SettingsBridge = {
     get: () => ipcRenderer.invoke(SETTINGS.get),
     set: (patch) => ipcRenderer.invoke(SETTINGS.set, patch),
     reset: () => ipcRenderer.invoke(SETTINGS.reset),
     setScale: (scale: number) => ipcRenderer.send(SETTINGS.setScale, scale),
     openMaker: (target) => ipcRenderer.send(SETTINGS.openMaker, target),
+    openHome: (tab) => ipcRenderer.send(SETTINGS.openHome, tab),
     stats: () => ipcRenderer.invoke(SETTINGS.stats),
     copyStats: () => ipcRenderer.invoke(SETTINGS.copyStats),
     diagnostics: () => ipcRenderer.invoke(SETTINGS.diagnostics),
@@ -328,7 +332,13 @@ if (kind === 'settings') {
       ipcRenderer.on(SETTINGS.power, (_e, onBattery: boolean) => listener(onBattery === true));
     },
   };
-  contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
+  if (kind === 'settings') contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
+  else {
+    // 큰 창은 페어리, 비서 구역이 쓰는 메서드만 (허용표는 shared/hub-policy.ts, 메인도 같은 표로 다시 거른다)
+    const hubBridge = { onChanged: bridge.onChanged, onPower: bridge.onPower } as Record<string, unknown>;
+    for (const m of HUB_METHODS) hubBridge[m] = bridge[m];
+    contextBridge.exposeInMainWorld('jjakkungHub', hubBridge as unknown as HubBridge);
+  }
   // 구글 캘린더에 쓰기 (6단계): 상태만 오간다. 토큰은 메인에만 있다
   const gcal: GcalBridge = {
     status: () => ipcRenderer.invoke(GCAL.status),
@@ -350,56 +360,72 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungGcal', gcal);
-  // 페어리 서버 계정 (이슈 #99): 상태만 오간다. 토큰은 메인에만 있다
-  const server: ServerBridge = {
-    status: () => ipcRenderer.invoke(SERVER.status),
-    setAge: (age, nickname) => ipcRenderer.invoke(SERVER.setAge, age, nickname),
-    setNickname: (nickname) => ipcRenderer.invoke(SERVER.setNickname, nickname),
-    copyCode: () => ipcRenderer.invoke(SERVER.copyCode),
-    claim: (eventId) => ipcRenderer.invoke(SERVER.claim, eventId),
-    coupon: (code) => ipcRenderer.invoke(SERVER.coupon, code),
-    // 운영자 칸 (#101): 메인이 운영자 계정인지 다시 보고, 서버도 요청마다 본다. 세션 토큰은 화면에 오지 않는다
-    adminOverview: (q, log) => ipcRenderer.invoke(SERVER.adminOverview, q, log),
-    adminOpenWeb: (place) => ipcRenderer.invoke(SERVER.adminOpenWeb, place),
-    turnOn: () => ipcRenderer.invoke(SERVER.turnOn),
-    updateNow: () => ipcRenderer.invoke(SERVER.updateNow),
-    syncNow: () => ipcRenderer.invoke(SERVER.syncNow),
-    login: (service) => ipcRenderer.invoke(SERVER.login, service),
-    cancelLogin: () => ipcRenderer.send(SERVER.cancelLogin),
-    logout: () => ipcRenderer.invoke(SERVER.logout),
-    merge: (yes) => ipcRenderer.invoke(SERVER.merge, yes),
-    remove: () => ipcRenderer.invoke(SERVER.remove),
-    onChanged: (listener) => {
-      const h = (_e: unknown, s: ServerStatus) => listener(s);
-      ipcRenderer.on(SERVER.changed, h);
-      return () => {
-        ipcRenderer.removeListener(SERVER.changed, h);
-      };
-    },
-    // 서버 백업 (#102)
-    backupList: () => ipcRenderer.invoke(SERVER.backupList),
-    backupAgree: (yes) => ipcRenderer.invoke(SERVER.backupAgree, yes),
-    backupUpload: () => ipcRenderer.invoke(SERVER.backupUpload),
-    backupDownload: (id) => ipcRenderer.invoke(SERVER.backupDownload, id),
-    backupDelete: (id) => ipcRenderer.invoke(SERVER.backupDelete, id),
-    calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
-  };
-  contextBridge.exposeInMainWorld('jjakkungServer', server);
-  // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다
-  const siteEvents: EventsBridge = {
-    list: () => ipcRenderer.invoke(EVENTS.list),
-    onChanged: (listener) => {
-      const h = (_e: unknown, l: EventList) => listener(l);
-      ipcRenderer.on(EVENTS.changed, h);
-      return () => {
-        ipcRenderer.removeListener(EVENTS.changed, h);
-      };
-    },
-  };
-  contextBridge.exposeInMainWorld('jjakkungEvents', siteEvents);
-  // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
-  const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
-  contextBridge.exposeInMainWorld('jjakkungExport', exporter);
+  // 서버 계정, 친구, 이벤트, 내보내기는 설정 창만. 큰 창에는 캘린더 칸의 "다른 기기에서 연결했어" 안내에 필요한 셋만
+  if (kind === 'home') {
+    contextBridge.exposeInMainWorld('jjakkungServer', {
+      status: () => ipcRenderer.invoke(SERVER.status),
+      calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
+      onChanged: (listener: (s: ServerStatus) => void) => {
+        const h = (_e: unknown, st: ServerStatus) => listener(st);
+        ipcRenderer.on(SERVER.changed, h);
+        return () => {
+          ipcRenderer.removeListener(SERVER.changed, h);
+        };
+      },
+    });
+  }
+  if (kind === 'settings') {
+    // 페어리 서버 계정 (이슈 #99): 상태만 오간다. 토큰은 메인에만 있다
+    const server: ServerBridge = {
+      status: () => ipcRenderer.invoke(SERVER.status),
+      setAge: (age, nickname) => ipcRenderer.invoke(SERVER.setAge, age, nickname),
+      setNickname: (nickname) => ipcRenderer.invoke(SERVER.setNickname, nickname),
+      copyCode: () => ipcRenderer.invoke(SERVER.copyCode),
+      claim: (eventId) => ipcRenderer.invoke(SERVER.claim, eventId),
+      coupon: (code) => ipcRenderer.invoke(SERVER.coupon, code),
+      // 운영자 칸 (#101): 메인이 운영자 계정인지 다시 보고, 서버도 요청마다 본다. 세션 토큰은 화면에 오지 않는다
+      adminOverview: (q, log) => ipcRenderer.invoke(SERVER.adminOverview, q, log),
+      adminOpenWeb: (place) => ipcRenderer.invoke(SERVER.adminOpenWeb, place),
+      turnOn: () => ipcRenderer.invoke(SERVER.turnOn),
+      updateNow: () => ipcRenderer.invoke(SERVER.updateNow),
+      syncNow: () => ipcRenderer.invoke(SERVER.syncNow),
+      login: (service) => ipcRenderer.invoke(SERVER.login, service),
+      cancelLogin: () => ipcRenderer.send(SERVER.cancelLogin),
+      logout: () => ipcRenderer.invoke(SERVER.logout),
+      merge: (yes) => ipcRenderer.invoke(SERVER.merge, yes),
+      remove: () => ipcRenderer.invoke(SERVER.remove),
+      onChanged: (listener) => {
+        const h = (_e: unknown, s: ServerStatus) => listener(s);
+        ipcRenderer.on(SERVER.changed, h);
+        return () => {
+          ipcRenderer.removeListener(SERVER.changed, h);
+        };
+      },
+      // 서버 백업 (#102)
+      backupList: () => ipcRenderer.invoke(SERVER.backupList),
+      backupAgree: (yes) => ipcRenderer.invoke(SERVER.backupAgree, yes),
+      backupUpload: () => ipcRenderer.invoke(SERVER.backupUpload),
+      backupDownload: (id) => ipcRenderer.invoke(SERVER.backupDownload, id),
+      backupDelete: (id) => ipcRenderer.invoke(SERVER.backupDelete, id),
+      calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
+    };
+    contextBridge.exposeInMainWorld('jjakkungServer', server);
+    // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다
+    const siteEvents: EventsBridge = {
+      list: () => ipcRenderer.invoke(EVENTS.list),
+      onChanged: (listener) => {
+        const h = (_e: unknown, l: EventList) => listener(l);
+        ipcRenderer.on(EVENTS.changed, h);
+        return () => {
+          ipcRenderer.removeListener(EVENTS.changed, h);
+        };
+      },
+    };
+    contextBridge.exposeInMainWorld('jjakkungEvents', siteEvents);
+    // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
+    const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
+    contextBridge.exposeInMainWorld('jjakkungExport', exporter);
+  }
   // 펫 대사 고치기 (#125)
   const lines: LinesBridge = {
     state: (lang) => ipcRenderer.invoke(LINES.state, lang),
@@ -573,6 +599,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
       ipcRenderer.on(PANEL.tab, (_e, tab: PanelTab) => listener(tab));
     },
     homeChat: (rect) => ipcRenderer.send(PANEL.homeChat, rect),
+    homeSection: (section) => ipcRenderer.send(PANEL.homeSection, section),
     onChatSection: (listener) => {
       ipcRenderer.on(PANEL.chatSection, (_e, on: boolean) => listener(on));
     },

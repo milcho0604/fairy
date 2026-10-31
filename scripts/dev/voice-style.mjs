@@ -93,10 +93,10 @@ const personaCat = tx('느긋한 고양이', 'Laid-back cat');
 
 async function openPet(a, persona) {
   if (persona) await a.main(`__jj.settings.set({ persona: ${JSON.stringify(persona)} }); 1`);
-  await a.main('__jj.settingsWindow.open(); 1');
+  await a.main("__jj.home.open('pet'); 1");
   await sleep(2200);
-  const st = await a.page('settings');
-  await st.ev(`document.getElementById('tab-pet').click()`);
+  const st = await a.page('home');
+  await st.ev(`document.getElementById('ptab-pet').click()`);
   await sleep(500);
   return st;
 }
@@ -105,9 +105,9 @@ async function openPet(a, persona) {
 if (SHOTS_ONLY) {
   const a = await launch({ petName: tx('콩', 'Mochi'), chatter: 'normal', persona: 'custom' });
   const st = await openPet(a);
-  await a.main('__jj.settingsWindow.window.setSize(480, 900); 1');
+  await a.main('__jj.home.window.setSize(760, 900); 1');
   await sleep(500);
-  await st.ev(`document.getElementById('pet-speech').scrollIntoView()`);
+  await st.ev(`document.getElementById('hub-pet-voice').scrollIntoView()`);
   await sleep(300);
   for (const dark of [false, true]) {
     await st.dark(dark);
@@ -121,7 +121,7 @@ if (SHOTS_ONLY) {
 {
   const a = await launch({ petName: tx('콩', 'Mochi'), chatter: 'normal', persona: 'cat', eveningNotes: false });
   const st = await openPet(a);
-  const speech = `document.getElementById('pet-speech')`;
+  const speech = `document.getElementById('hub-pet-voice')`;
   // 프리셋: 복사 단추
   const copy = tx('이 말투를 내 말투로 복사해서 고치기', 'Copy this style to My style and edit it');
   check('프리셋에는 복사 단추가 있다', (await st.ev(`[...${speech}.querySelectorAll('button')].some((b) => b.textContent.trim() === ${JSON.stringify(copy)})`)) === true);
@@ -189,12 +189,16 @@ if (SHOTS_ONLY) {
 
   // 저녁 쪽지 설정
   const evLabel = tx('저녁 쪽지', 'Evening notes');
-  await st.ev(`document.getElementById('pet-notifications').scrollIntoView()`);
+  // 저녁 쪽지는 비서 구역 (하루 회고와 쪽지)으로 옮겼다
+  await st.ev(`document.getElementById('ptab-assist').click()`);
+  await sleep(400);
+  await st.ev(`document.getElementById('hub-assist-review').scrollIntoView()`);
   const evOn = () => st.ev(`document.querySelector('[role=switch][aria-label=${JSON.stringify(evLabel)}]')?.getAttribute('aria-checked')`);
   check('저녁 쪽지는 기본 꺼짐', (await evOn()) === 'false', await evOn());
   await st.ev(`document.querySelector('[role=switch][aria-label=${JSON.stringify(evLabel)}]').click()`);
   await sleep(500);
   check('저녁 쪽지를 켜면 저장된다', (await a.main('__jj.settings.get().eveningNotes')) === true);
+  await st.ev(`document.getElementById('ptab-pet').click()`);
 
   // 편지: 주간 편지와 저녁 쪽지 만들기
   const wk = await a.main(`(async () => { await __jj.dailyNotes.debugWeek(); return JSON.stringify(__jj.dailyNotes.state.box[0]); })()`);
@@ -234,13 +238,13 @@ if (SHOTS_ONLY) {
   await sleep(400);
 
   // 넘침과 그림
-  await st.ev(`document.getElementById('pet-speech').scrollIntoView()`);
+  await st.ev(`document.getElementById('hub-pet-voice').scrollIntoView()`);
   for (const [w, h] of [[480, 900], [360, 900]]) {
-    await a.main(`__jj.settingsWindow.window.setSize(${w}, ${h}); 1`);
+    await a.main(`__jj.home.window.setSize(Math.max(760, ${w}), ${h}); 1`);
     await sleep(500);
-    const over = await st.ev(`[...document.querySelectorAll('#pet-speech *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > innerWidth + 1; }).map((e) => e.tagName + '.' + e.className).slice(0, 4).join(',')`);
+    const over = await st.ev(`[...document.querySelectorAll('#hub-pet-voice *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > innerWidth + 1; }).map((e) => e.tagName + '.' + e.className).slice(0, 4).join(',')`);
     check(`폭 ${await st.ev('innerWidth')} 말투 칸 가로 넘침 없음`, over === '', over);
-    await st.ev(`document.querySelector('#pet-speech .speech-editor').scrollIntoView()`);
+    await st.ev(`document.querySelector('#hub-pet-voice .speech-editor').scrollIntoView()`);
     for (const dark of [false, true]) {
       await st.dark(dark);
       await sleep(150);

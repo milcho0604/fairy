@@ -16,9 +16,10 @@ import {
   toAccelerator,
 } from '../../../../shared/shortcut.ts';
 import { applyLangPreference } from '../../lang.ts';
+import { NotifyBox } from '../NotifyBox.tsx';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
 
-/** 편의 탭: 단축키, 다른 앱에서 부르기, 배터리 절약, 접근성, 언어, 시작 */
+/** 일반 탭: 알림과 소리, 언어, 시작, 움직임 줄이기, 배터리 절약, 접근성, 패널, 단축키, 다른 앱에서 부르기 */
 export function EaseTab({ snap, update, flash }: TabProps) {
   const s = snap.settings;
   const mac = isMac(snap);
@@ -48,6 +49,131 @@ export function EaseTab({ snap, update, flash }: TabProps) {
   };
   return (
     <>
+      <NotifyBox snap={snap} update={update} />
+      <Section title={t('settings.lang')}>
+        <fieldset className="segmented" aria-label={t('settings.langAria')}>
+          {(['auto', 'ko', 'en'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              aria-pressed={s.lang === l}
+              className={s.lang === l ? 'on' : ''}
+              onClick={async () => {
+                if (s.lang === l) return;
+                const next = await update({ lang: l });
+                applyLangPreference(next.lang);
+              }}
+            >
+              {t(`settings.lang.${l}`)}
+            </button>
+          ))}
+        </fieldset>
+        <small className="below">{t('settings.langHint')}</small>
+        {/* 어두운 모드는 따로 고르지 않고 운영체제를 따른다. 찾기에서 "다크", "theme" 로도 나오게 낱말을 숨겨 둔다 */}
+        <p className="theme-note">
+          {t('settings.themeNote')}
+          <span hidden>{t('settings.themeKeywords')}</span>
+        </p>
+      </Section>
+      <Section title={t('settings.start')}>
+        <Toggle
+          label={t('settings.launchAtLogin')}
+          hint={snap.packaged ? t('settings.launchPackaged') : t('settings.launchDev')}
+          on={s.launchAtLogin}
+          disabled={!snap.packaged}
+          onChange={(v) => update({ launchAtLogin: v })}
+        />
+        {/* 시작 안내는 업데이트가 아니라 시작 칸에 (예전엔 업데이트 칸 안에 있었다) */}
+        <div className="action-row">
+          <button type="button" className="ghost" onClick={() => bridge.openOnboarding()}>
+            {t('settings.onboardingAgain')}
+          </button>
+        </div>
+      </Section>
+      <Section title={t('settings.motion')}>
+        <fieldset className="segmented" aria-label={t('settings.motionAria')}>
+          {MOTION_CHOICES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={s.reduceMotion === m}
+              className={s.reduceMotion === m ? 'on' : ''}
+              onClick={() => s.reduceMotion !== m && update({ reduceMotion: m })}
+            >
+              {t(`settings.motion.${m}`)}
+            </button>
+          ))}
+        </fieldset>
+        <small className="below">{t('settings.motionHint')}</small>
+      </Section>
+      <Section title={t('settings.power')}>
+        <fieldset className="segmented" aria-label={t('settings.saverAria')}>
+          {SAVER_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={s.batterySaver === m}
+              className={s.batterySaver === m ? 'on' : ''}
+              onClick={() => s.batterySaver !== m && update({ batterySaver: m })}
+            >
+              {t(`settings.saver.${m}`)}
+            </button>
+          ))}
+        </fieldset>
+        <small className="below">
+          {(s.batterySaver === 'always' || (s.batterySaver === 'auto' && snap.onBattery)) && (
+            <>{t('settings.saverNow')} </>
+          )}
+          {t('settings.saverHint')}
+        </small>
+      </Section>
+      <Section title={t('settings.access')}>
+        <Toggle
+          label={t('settings.readAloud')}
+          hint={t('settings.readAloudHint')}
+          on={s.readAloud}
+          onChange={(v) => update({ readAloud: v })}
+        />
+        {mac && (
+          <Toggle
+            label={t('settings.trayTitle')}
+            hint={t('settings.trayTitleHint')}
+            on={s.trayTitle}
+            onChange={(v) => update({ trayTitle: v })}
+          />
+        )}
+        {s.shortcuts.pet !== NO_SHORTCUT && (
+          <small className="below">
+            {t('settings.petKeysHint', { keys: acceleratorLabel(s.shortcuts.pet, mac).join('+') })}
+          </small>
+        )}
+      </Section>
+      <Section title={t('settings.panelSection')}>
+        <Toggle
+          label={t('settings.panelPin')}
+          hint={t('settings.panelPinHint')}
+          on={s.panelPin}
+          onChange={(v) => update({ panelPin: v })}
+        />
+        {/* 패널 보기 (큰 창 설계 #159): 펫 클릭과 패널 단축키가 여는 것 */}
+        <div className="field">
+          <span>{t('settings.panelView')}</span>
+          <fieldset className="segmented" aria-label={t('settings.panelViewAria')}>
+            {(['compact', 'window'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={s.panelView === v}
+                className={s.panelView === v ? 'on' : ''}
+                onClick={() => update({ panelView: v })}
+              >
+                {t(`settings.panelView.${v}`)}
+              </button>
+            ))}
+          </fieldset>
+          <small className="below">{t('settings.panelViewHint')}</small>
+        </div>
+      </Section>
       <Section title={t('settings.shortcuts')}>
         <Toggle
           label={t('settings.shortcutEasy')}
@@ -99,58 +225,6 @@ export function EaseTab({ snap, update, flash }: TabProps) {
           </dd>
         </dl>
       </Section>
-      <Section title={t('settings.panelSection')}>
-        <Toggle
-          label={t('settings.panelPin')}
-          hint={t('settings.panelPinHint')}
-          on={s.panelPin}
-          onChange={(v) => update({ panelPin: v })}
-        />
-        {/* 패널 보기 (큰 창 설계 #159): 펫 클릭과 패널 단축키가 여는 것 */}
-        <div className="field">
-          <span>{t('settings.panelView')}</span>
-          <fieldset className="segmented" aria-label={t('settings.panelViewAria')}>
-            {(['compact', 'window'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={s.panelView === v}
-                className={s.panelView === v ? 'on' : ''}
-                onClick={() => update({ panelView: v })}
-              >
-                {t(`settings.panelView.${v}`)}
-              </button>
-            ))}
-          </fieldset>
-          <small className="below">{t('settings.panelViewHint')}</small>
-        </div>
-      </Section>
-      <Section title={t('settings.lang')}>
-        <fieldset className="segmented" aria-label={t('settings.langAria')}>
-          {(['auto', 'ko', 'en'] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              aria-pressed={s.lang === l}
-              className={s.lang === l ? 'on' : ''}
-              onClick={async () => {
-                if (s.lang === l) return;
-                const next = await update({ lang: l });
-                applyLangPreference(next.lang);
-              }}
-            >
-              {t(`settings.lang.${l}`)}
-            </button>
-          ))}
-        </fieldset>
-        <small className="below">{t('settings.langHint')}</small>
-        {/* 어두운 모드는 따로 고르지 않고 운영체제를 따른다. 찾기에서 "다크", "theme" 로도 나오게 낱말을 숨겨 둔다 */}
-        <p className="theme-note">
-          {t('settings.themeNote')}
-          <span hidden>{t('settings.themeKeywords')}</span>
-        </p>
-      </Section>
-
       <Section title={t('settings.integrations')}>
         <Toggle
           label={t('settings.urlScheme')}
@@ -164,83 +238,15 @@ export function EaseTab({ snap, update, flash }: TabProps) {
           </small>
         )}
       </Section>
-
-      <Section title={t('settings.motion')}>
-        <fieldset className="segmented" aria-label={t('settings.motionAria')}>
-          {MOTION_CHOICES.map((m) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={s.reduceMotion === m}
-              className={s.reduceMotion === m ? 'on' : ''}
-              onClick={() => s.reduceMotion !== m && update({ reduceMotion: m })}
-            >
-              {t(`settings.motion.${m}`)}
-            </button>
-          ))}
-        </fieldset>
-        <small className="below">{t('settings.motionHint')}</small>
-      </Section>
-
-      <Section title={t('settings.power')}>
-        <fieldset className="segmented" aria-label={t('settings.saverAria')}>
-          {SAVER_MODES.map((m) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={s.batterySaver === m}
-              className={s.batterySaver === m ? 'on' : ''}
-              onClick={() => s.batterySaver !== m && update({ batterySaver: m })}
-            >
-              {t(`settings.saver.${m}`)}
-            </button>
-          ))}
-        </fieldset>
-        <small className="below">
-          {(s.batterySaver === 'always' || (s.batterySaver === 'auto' && snap.onBattery)) && (
-            <>{t('settings.saverNow')} </>
-          )}
-          {t('settings.saverHint')}
-        </small>
-      </Section>
-
-      <Section title={t('settings.access')}>
-        <Toggle
-          label={t('settings.readAloud')}
-          hint={t('settings.readAloudHint')}
-          on={s.readAloud}
-          onChange={(v) => update({ readAloud: v })}
-        />
-        {mac && (
-          <Toggle
-            label={t('settings.trayTitle')}
-            hint={t('settings.trayTitleHint')}
-            on={s.trayTitle}
-            onChange={(v) => update({ trayTitle: v })}
-          />
-        )}
-        {s.shortcuts.pet !== NO_SHORTCUT && (
-          <small className="below">
-            {t('settings.petKeysHint', { keys: acceleratorLabel(s.shortcuts.pet, mac).join('+') })}
-          </small>
-        )}
-      </Section>
-
-      <Section title={t('settings.start')}>
-        <Toggle
-          label={t('settings.launchAtLogin')}
-          hint={snap.packaged ? t('settings.launchPackaged') : t('settings.launchDev')}
-          on={s.launchAtLogin}
-          disabled={!snap.packaged}
-          onChange={(v) => update({ launchAtLogin: v })}
-        />
-        {/* 시작 안내는 업데이트가 아니라 시작 칸에 (예전엔 업데이트 칸 안에 있었다) */}
-        <div className="action-row">
-          <button type="button" className="ghost" onClick={() => bridge.openOnboarding()}>
-            {t('settings.onboardingAgain')}
-          </button>
-        </div>
-      </Section>
+      <p className="hub-sign">
+        <span>{t('settings.hubSign')}</span>
+        <button type="button" className="link" onClick={() => bridge.openHome('pet')}>
+          {t('settings.hubOpenPet')}
+        </button>
+        <button type="button" className="link" onClick={() => bridge.openHome('assist')}>
+          {t('settings.hubOpenAssist')}
+        </button>
+      </p>
     </>
   );
 }

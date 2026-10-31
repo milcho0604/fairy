@@ -546,16 +546,16 @@ const body = async () => {
   await setTrash(false);
 
   // ===================== 3. 대사 고치기 =====================
-  await main('__jj.settingsWindow.open(); 1');
+  await main("__jj.home.open('pet'); 1");
   await sleep(1800);
-  let st = await page('settings');
-  await st.click(`document.querySelector('#tab-pet')`);
+  let st = await page('home');
+  await st.click(`document.querySelector('#ptab-pet')`);
   await sleep(400);
   const openEditor = async (s) => {
     await s.click(`[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === ${JSON.stringify(tx('대사 고치기', 'Edit lines'))})`);
     return s.until(() => s.ev(`document.querySelectorAll('.lines-group').length > 5`));
   };
-  check('설정 > 펫 > 대사 고치기 단추로 시트 열림', await openEditor(st));
+  check('큰 창 > 페어리 > 대사 고치기 단추로 시트 열림', await openEditor(st));
   const ta = (k) => `document.querySelector('.lines-row[data-key="${k}"] textarea')`;
   const openGroup = (g) => st.ev(`(() => { const d = document.querySelector('.lines-group[data-group="${g}"]'); if (d && !d.open) d.querySelector('summary').click(); return 1; })()`);
   const edit = async (k, text) => {
@@ -613,9 +613,9 @@ const body = async () => {
   await st.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, 4000).catch(() => {});
   await st.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, 4000).catch(() => {});
   await sleep(500);
-  const winAlive = await main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed() && __jj.settingsWindow.window.isVisible()');
-  check('Esc 는 시트만 닫고 설정 창은 남음', winAlive && !(await st.ev(`!!document.querySelector('.lines-sheet')`)), `창 ${winAlive}`);
-  if (!winAlive) { await main('__jj.settingsWindow.open(); 1'); await sleep(1800); st = await page('settings'); await st.click(`document.querySelector('#tab-pet')`); await sleep(300); }
+  const winAlive = await main('!!__jj.home.window && !__jj.home.window.isDestroyed() && __jj.home.window.isVisible()');
+  check('Esc 는 시트만 닫고 큰 창은 남음', winAlive && !(await st.ev(`!!document.querySelector('.lines-sheet')`)), `창 ${winAlive}`);
+  if (!winAlive) { await main("__jj.home.open('pet'); 1"); await sleep(1800); st = await page('home'); await st.click(`document.querySelector('#ptab-pet')`); await sleep(300); }
   const escSaved = await ov('pet.full');
   check('쓰던 칸에서 Esc 로 닫으면 쓰던 글을 저장하거나 버린다고 알림', escSaved === esc, `저장됨: ${escSaved}`);
   if (!(await st.ev(`!!document.querySelector('.lines-sheet')`))) await openEditor(st);
@@ -627,11 +627,11 @@ const body = async () => {
   await st.shots('q-lines');
   await textAudit(st, '.lines-sheet', '대사 시트', { allowHangul: ['한국어', '{name:은}'] });
   // 좁은 폭 360
-  await main('__jj.settingsWindow.window.setSize(360, 700); 1');
+  await main('__jj.home.window.setSize(360, 700); 1');
   await sleep(600);
   await textAudit(st, '.lines-sheet', '대사 시트 360 폭', { allowHangul: ['한국어', '{name:은}'] });
   await st.shot('q-lines-360');
-  await main('__jj.settingsWindow.window.setSize(520, 760); 1');
+  await main('__jj.home.window.setSize(520, 760); 1');
   // 다른 언어 칸 따로
   await st.click(`[...document.querySelectorAll('.lines-bar .segmented button')].find((b) => b.innerText === ${JSON.stringify(ko ? 'English' : '한국어')})`);
   await st.until(() => st.ev(`document.querySelectorAll('.lines-group').length > 5`));
@@ -640,7 +640,7 @@ const body = async () => {
   await st.click(`[...document.querySelectorAll('.lines-bar .segmented button')].find((b) => b.innerText === ${JSON.stringify(ko ? '한국어' : 'English')})`);
   await st.until(() => st.ev(`document.querySelectorAll('.lines-group').length > 5`));
   // 말풍선: 패널 밥 주기 (화면 단추)
-  await main('__jj.settingsWindow.window.close(); 1');
+  await main('__jj.home.window.close(); 1');
   await sleep(400);
   p = await page('panel');
   if (!(await main('__jj.panel.window?.isVisible()'))) await openPanelByPetClick();
@@ -664,10 +664,10 @@ const body = async () => {
   await sleep(1500);
   check('다시 켜면 고친 대사가 그대로 쓰임', (await main(`__jj.lines.line('pet.fed')`)) === mine);
   check('다시 켤 때 31일 지난 것은 정리, 29일은 남음', sql(`select group_concat(title) from todo where title like 'old%'`) === 'old29');
-  await main('__jj.settingsWindow.open(); 1');
+  await main("__jj.home.open('pet'); 1");
   await sleep(1800);
-  st = await page('settings');
-  await st.click(`document.querySelector('#tab-pet')`);
+  st = await page('home');
+  await st.click(`document.querySelector('#ptab-pet')`);
   await sleep(300);
   await openEditor(st);
   check('다시 켠 뒤 시트에 고친 대사 2개', (await st.ev(`document.querySelector('.lines-count small')?.innerText ?? ''`)).includes('2'));
@@ -683,7 +683,7 @@ const body = async () => {
   await st.click(`[...document.querySelectorAll('.lines-confirm button')][0]`);
   check('전부 기본값으로', await st.until(async () => (await main(`Object.keys(__jj.lines.overrides().${LANG}).length`)) === 0));
   // 다시 켜기 뒤 휴지통 (29일 남은 것) 화면 확인
-  await main('__jj.settingsWindow.window.close(); 1');
+  await main('__jj.home.window.close(); 1');
   await openPanelByPetClick();
   p = await page('panel');
   await main("__jj.panel.window.removeAllListeners('blur'); 1");

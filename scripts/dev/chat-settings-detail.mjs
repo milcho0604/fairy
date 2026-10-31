@@ -154,7 +154,7 @@ try {
   // ---- 설정
   await main('__jj.settingsWindow.open(); 1');
   const s = await page('settings');
-  for (let i = 0; i < 60 && !(await s.ev("!!document.querySelector('#tab-pet')")); i++) await sleep(150);
+  for (let i = 0; i < 60 && !(await s.ev("!!document.querySelector('#tab-data')")); i++) await sleep(150);
   await main('__jj.settingsWindow.window.setMinimumSize(320,520); 1');
   for (const dark of [false, true]) {
     await s.dark(dark);
@@ -165,10 +165,8 @@ try {
       const tab = async (id) => { await s.ev(`document.querySelector('#tab-${id}').click()`); await sleep(250); };
       const rows = JSON.parse(await s.ev(`JSON.stringify(new Set([...document.querySelectorAll('.tabs [role=tab]')].map((b) => b.offsetTop)).size)`));
       if (w < 640) check(`${tag} 탭 한 줄`, rows === 1, `rows=${rows}`);
-      await tab('pet');
-      await s.shot(`${TAG}-${tag}-pet`);
-      const jump = JSON.parse(await s.ev(`JSON.stringify((() => { const j = document.querySelector('.settings-jump'); return j ? { fade: getComputedStyle(j).maskImage !== 'none', scroll: j.scrollWidth > j.clientWidth } : null; })())`));
-      if (w < 640 && jump?.scroll) check(`${tag} 칩 줄 끝 흐림`, jump.fade);
+      await tab('ease');
+      await s.shot(`${TAG}-${tag}-ease`);
       await tab('data');
       const bk = JSON.parse(await s.ev(`JSON.stringify([...document.querySelectorAll('.action-row')].map((r) => [...r.querySelectorAll('button')].map((b) => Math.round(b.getBoundingClientRect().height * 10) / 10)))`));
       await s.shot(`${TAG}-${tag}-data`);
@@ -178,8 +176,8 @@ try {
       const chips = JSON.parse(await s.ev(`JSON.stringify([...document.querySelectorAll('.ai-chips li.cap')].map((l) => getComputedStyle(l, '::before').content))`));
       await s.shot(`${TAG}-${tag}-ai`);
       if (TAG === 'after' && chips.length) check(`${tag} 칩에 V, X`, chips.every((x) => x !== 'none' && x !== 'normal'), JSON.stringify([...new Set(chips)]));
-      await tab('assist');
-      await s.shot(`${TAG}-${tag}-assist`);
+      await tab('about');
+      await s.shot(`${TAG}-${tag}-about`);
     }
   }
   // ---- 만들기
