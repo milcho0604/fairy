@@ -268,7 +268,9 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
       <ul className="notes scroll" ref={listRef}>
         {list.length === 0 && (
           <li className="empty">
-            {q && s.notes.length > 0 ? t('panel.note.notFound') : t('panel.note.empty.list')}
+            {q && s.notes.length > 0
+              ? t('panel.note.notFound')
+              : t(split ? 'panel.note.empty.split' : 'panel.note.empty.list')}
             {q && (
               <button type="button" className="ghost note-make" onClick={() => void makeFromQuery()}>
                 {t('panel.note.makeFrom')}
