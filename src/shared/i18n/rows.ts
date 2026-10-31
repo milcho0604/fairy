@@ -26,6 +26,9 @@ export const ko = {
   // 마감 고르기
   'rows.due.nextMon': '다음 주 월요일',
   'rows.due.pick': '날짜 고르기',
+  'rows.due.time': '시각 넣기',
+  'rows.due.timeChange': (v: { time: string }) => `시각 바꾸기 (${v.time})`,
+  'rows.due.timeClear': '시각 지우기',
   'rows.due.menu': (v: { title: string }) => `"${v.title}" 마감 고르기`,
   // 알림
   'rows.toast.next': (v: { when: string }) => `다음은 ${v.when}.`,
@@ -86,6 +89,9 @@ export const en: Translation<typeof ko> = {
   'rows.pinnedNoMove': 'Unpin this to-do to change its order',
   'rows.due.nextMon': 'Next Monday',
   'rows.due.pick': 'Pick a date',
+  'rows.due.time': 'Add a time',
+  'rows.due.timeChange': (v: { time: string }) => `Change time (${v.time})`,
+  'rows.due.timeClear': 'Remove time',
   'rows.due.menu': (v: { title: string }) => `Pick a due date for "${v.title}"`,
   'rows.toast.next': (v: { when: string }) => `Next one: ${v.when}.`,
   'rows.toast.focusStopped': (v: { n: number }) => `Stopped. ${v.n} min of focus saved`,

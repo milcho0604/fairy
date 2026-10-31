@@ -380,6 +380,12 @@ p.empty {
   background: color-mix(in srgb, var(--error) 12%, transparent);
 }
 
+/* 마감 1시간 안: 지남(빨강)과 구별되는 주황 */
+.due.soon {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+
 /* 칩은 단추 하나다 (누르면 showPicker 로 달력). 날짜 칸은 달력이 칩 자리에 뜨게 칩 뒤에 숨겨 둔다 */
 .due-btn {
   padding: 0;

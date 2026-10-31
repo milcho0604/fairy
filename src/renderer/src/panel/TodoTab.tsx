@@ -1,5 +1,6 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { canDeferToTomorrow, dueChoices } from '../../../shared/due-choices.ts';
+import { dueUrgency } from '../../../shared/due-soon.ts';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
@@ -644,6 +645,16 @@ export function TodoRow({
   const [title, setTitle] = useState(todo.title);
   const dateRef = useRef<HTMLInputElement>(null);
   const dueRef = useRef<HTMLElement>(null);
+  const timeRef = useRef<HTMLInputElement>(null);
+  // 임박(1시간 안)과 지남을 시각으로 가른다. 시각 마감이 있을 때만 30초마다 다시 본다
+  const [nowMs, setNowMs] = useState(Date.now());
+  useEffect(() => {
+    if (todo.dueMin === null) return;
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [todo.dueMin]);
+  const urgency = dueUrgency(todo, nowMs);
   const moreRef = useRef<HTMLButtonElement>(null);
   // 미리 알림 고르기 (8판). 마감일이 있을 때만 (마감일이 없으면 알릴 때가 없다)
   const [reminding, setReminding] = useState(false);
@@ -679,6 +690,15 @@ export function TodoRow({
       ? due.text
       : `${due.text} ${timeLabel(todo.dueMin)}`
     : t('panel.todo.due');
+  const pickTime = () => {
+    const el = timeRef.current;
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus();
+    }
+  };
   const pickDate = () => {
     const el = dateRef.current;
     if (!el) return;
@@ -700,6 +720,27 @@ export function TodoRow({
       onSelect: () => bridge.update(todo.id, { due: c.day }),
     })),
     { key: 'pick', label: t('rows.due.pick'), sepBefore: true, onSelect: pickDate },
+    ...(todo.due
+      ? [
+          {
+            key: 'time',
+            label:
+              todo.dueMin === null
+                ? t('rows.due.time')
+                : t('rows.due.timeChange', { time: timeLabel(todo.dueMin) }),
+            onSelect: pickTime,
+          },
+          ...(todo.dueMin !== null
+            ? [
+                {
+                  key: 'timeClear',
+                  label: t('rows.due.timeClear'),
+                  onSelect: () => bridge.update(todo.id, { dueMin: null }),
+                },
+              ]
+            : []),
+        ]
+      : []),
     ...(todo.due && !todo.repeat
       ? [
           {
@@ -715,7 +756,10 @@ export function TodoRow({
     if (anchor) dueMenu.openFrom(anchor);
   };
   const dueChip = (
-    <span ref={dueRef} className={`due ${due?.overdue ? 'overdue' : ''} ${todo.due ? '' : 'none'}`}>
+    <span
+      ref={dueRef}
+      className={`due ${due?.overdue || urgency === 'overdue' ? 'overdue' : urgency === 'soon' ? 'soon' : ''} ${todo.due ? '' : 'none'}`}
+    >
       <button
         type="button"
         className="due-btn"
@@ -1048,6 +1092,19 @@ export function TodoRow({
             aria-hidden="true"
             value={todo.due ?? ''}
             onChange={(e) => bridge.update(todo.id, { due: e.target.value || null })}
+          />
+          {/* 시각 고르기가 뜰 자리 (보이지 않는다) */}
+          <input
+            ref={timeRef}
+            className="due-pick"
+            type="time"
+            tabIndex={-1}
+            aria-hidden="true"
+            value={timeValue(todo.dueMin)}
+            onChange={(e) => {
+              const m = minuteToSend(e.target.value);
+              if (m !== undefined && m !== todo.dueMin) bridge.update(todo.id, { dueMin: m });
+            }}
           />
         </span>
         {compact ? dueMenu.menu : null}
