@@ -105,11 +105,15 @@ export function NoteDraft({
         if (dead.current) return;
         if (!note || !same(latest.current, m.saved) || composing.current) continue;
         const el = lastField.current === 'title' ? titleRef.current : bodyRef.current;
-        settle(note, {
-          field: lastField.current,
-          start: el?.selectionStart ?? latest.current[lastField.current].length,
-          end: el?.selectionEnd ?? latest.current[lastField.current].length,
-        });
+        // 저장소는 제목을 trim 해 돌려준다. 끝 공백을 이어 칠 수 있게 쓰던 글을 그대로 넘긴다
+        settle(
+          { ...note, title: latest.current.title },
+          {
+            field: lastField.current,
+            start: el?.selectionStart ?? latest.current[lastField.current].length,
+            end: el?.selectionEnd ?? latest.current[lastField.current].length,
+          },
+        );
         return;
       }
     } finally {
