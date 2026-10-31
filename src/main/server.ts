@@ -215,6 +215,18 @@ export function createServer(o: {
     return !!v && !v.isDestroyed() && v === wc;
   };
 
+  /** 앱 페이지(파일, 개발 서버)의 맨 위 틀에서 온 요청인가 */
+  const appFrame = (e: IpcMainInvokeEvent | IpcMainEvent): boolean => {
+    const f = e.senderFrame;
+    if (!f || f !== e.sender.mainFrame) return false;
+    try {
+      const u = new URL(f.url);
+      return u.protocol === 'file:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    } catch {
+      return false;
+    }
+  };
+
   function sendFriends(s: FriendsState) {
     const w = o.target();
     if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, friendsOverride ?? s);
@@ -376,8 +388,12 @@ export function createServer(o: {
   const amount = (v: unknown, max: number) =>
     typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : -1;
   const refused = { ok: false as const, error: 'invalid' };
-  /** 친구 IPC 는 설정 창과 큰 창 친구 구역이 보낸 것만 받는다 */
-  const friendsOk = (e: IpcMainInvokeEvent | IpcMainEvent) => o.isSettings(e.sender);
+  /**
+   * 친구 IPC 는 설정 창이나 큰 창 본문의 앱 페이지(맨 위 틀)가 보낸 것만 받는다. 하위 틀이나 밖의 주소에서 온 것은 받지 않는다.
+   * createServer 의 isSettings 는 넓히지 않는다 (나이, 로그인, 탈퇴 IPC 가 같이 열린다)
+   */
+  const friendsOk = (e: IpcMainInvokeEvent | IpcMainEvent) =>
+    (o.isSettings(e.sender) || homeIsSender(e.sender)) && appFrame(e);
   ipcMain.handle(FRIENDS.state, (e) => {
     if (!friendsOk(e)) return undefined;
     if (!friendsOverride) void friends.refresh();

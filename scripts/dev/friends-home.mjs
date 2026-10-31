@@ -447,6 +447,29 @@ async function openPetNote(h, F) {
   return pet;
 }
 
+// ================= 빌드가 새것인가 =================
+// 앱은 out/ 의 빌드를 띄운다. 낡은 빌드로 시험하지 않게, 시험 전에 `npm run build` 를 돌렸는지(out 이 소스보다 새것인지) 로그로 남기고 아니면 멈춘다
+{
+  const { statSync, readdirSync } = await import('node:fs');
+  const newest = (dir, pick) => {
+    let m = 0;
+    for (const f of readdirSync(dir, { withFileTypes: true })) {
+      const q = join(dir, f.name);
+      if (f.isDirectory()) m = Math.max(m, newest(q, pick));
+      else if (pick(f.name)) m = Math.max(m, statSync(q).mtimeMs);
+    }
+    return m;
+  };
+  const src = Math.max(newest(join(root, 'src'), (n) => /\.(ts|tsx|css)$/.test(n) && !n.endsWith('.test.ts')), 0);
+  const out = newest(join(root, 'out'), (n) => /\.(js|cjs|css)$/.test(n));
+  const fresh = out >= src;
+  console.log(`빌드 확인: out ${new Date(out).toISOString()} / 소스 ${new Date(src).toISOString()} -> ${fresh ? '새 빌드' : '낡은 빌드'}`);
+  if (!fresh) {
+    console.log('FAIL out/ 이 소스보다 낡았다: npm run build 를 먼저 돌려 줘');
+    process.exit(1);
+  }
+}
+
 // ================= 큰 창 도우미 =================
 const watchFlashHome = (p) =>
   p.ev(`(() => { window.__qaFlash = []; const grab = () => { const x = document.querySelector('.fp-flash')?.textContent?.trim(); if (x && window.__qaFlash.at(-1) !== x) window.__qaFlash.push(x); }; new MutationObserver(grab).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()`);
@@ -495,6 +518,8 @@ const flashHome = async (p, needle, ms = 12_000) => {
   await soft(until(`결과 글 ${needle}`, async () => (got = JSON.parse(await p.ev('JSON.stringify(window.__qaFlash ?? [])'))).some((x) => x.includes(needle)), ms));
   return got.find((x) => x.includes(needle)) ?? `없음: ${got.join(' / ')}`;
 };
+/** 친구 줄만 (받은 신청, 보낸 신청 줄은 뺀다) */
+const friendLi = (p, name) => p.ev(`[...document.querySelectorAll('.friends-list > li.friends-friend')].some((x) => x.querySelector('.friends-name')?.textContent === ${JSON.stringify(name)})`);
 const homeLi = (p, name) => p.ev(`[...document.querySelectorAll('.friends-list > li')].some((x) => x.querySelector('.friends-name')?.textContent === ${JSON.stringify(name)})`);
 
 // ================= 흐름 =================
@@ -506,6 +531,7 @@ async function flow() {
     const hb = await openHome(b);
     {
       const F = '못 쓸 때';
+      check(F, '가입 전에도 큰 창 본문의 state() 가 객체 (available false)', (await ha.ev(`window.jjakkungFriends.state().then((x) => (x ? x.available === false : 'undefined'))`)) === true);
       check(F, '가입 전: 친구 구역이 보이고 까닭은 age', (await fp(ha)) === 'off' && (await reasonOf(ha)) === 'age', `${await fp(ha)} ${await reasonOf(ha)}`);
       check(F, '"설정 열기" 단추가 앱 단추(.ghost)다', await ha.ev(`document.querySelector('.fp-off button')?.classList.contains('ghost') === true && getComputedStyle(document.querySelector('.fp-off button')).borderTopWidth === '1px'`));
       await homeShots(a, ha, 'off-age');
@@ -531,6 +557,11 @@ async function flow() {
       await clickSync(b, pb);
       for (const [h, p, who] of [[a, ha, 'A'], [b, hb, 'B']])
         check(F, `${who} 큰 창 친구 구역에 내 코드가 보인다`, (await soft(until('칸', () => p.ev(`!!document.querySelector('.fp .friends-box .friends-code')`), 20_000))) === true);
+      // 흉내(debugFriendsView) 없이 큰 창 본문에서 실제 IPC 를 부른다
+      const st = await ha.ev(`window.jjakkungFriends.state().then((x) => (x === undefined ? 'undefined' : JSON.stringify({ t: typeof x, available: x.available, code: x.list?.me?.code ?? null })))`);
+      check(F, '큰 창 본문의 jjakkungFriends.state() 가 실제 객체 (undefined 가 아니다)', typeof st === 'string' && st !== 'undefined' && JSON.parse(st).t === 'object' && JSON.parse(st).available === true && JSON.parse(st).code === A.code, st);
+      check(F, '큰 창 본문의 copyCode() 가 실제로 true', (await ha.ev(`window.jjakkungFriends.copyCode()`)) === true);
+      check(F, '실제 IPC 로 A 가 자기 코드를 신청하면 서버가 막는다 (거부가 아니라 서버 답)', (await ha.ev(`window.jjakkungFriends.request(${JSON.stringify(A.code)}).then((x) => x.ok === false ? x.error : 'ok')`)) === 'self');
       check(F, '친구가 0명이면 안내 글', (await ha.ev(`document.querySelector('.fp .friends-box')?.innerText ?? ''`)).includes(t('friends.none')));
       check(F, '읽기 전용 안내와 "설정에서 관리" 단추가 없다', !(await ha.ev(`document.querySelector('.fp')?.innerText ?? ''`)).includes(LANG === 'ko' ? '설정에서 관리' : 'Manage in Settings') && (await ha.ev(`!document.querySelector('.fp-manage')`)));
       check(F, '놀러 가기 스위치는 운영자가 안 열었으니 없다', await ha.ev(`!document.querySelector('.friends-visit')`));
@@ -575,8 +606,11 @@ async function flow() {
       check(F, '친구가 됐어 안내', f === t('friends.accepted'), f);
       check(F, 'DB: 친구 두 줄, 대기 신청 없음', sql(`SELECT count(*) FROM friend`) === '2' && sql(`SELECT count(*) FROM friend_request WHERE status <> 'declined'`) === '0');
       await a.main('__jj.server.friends.refresh().then(() => 1)');
-      await soft(until('A 친구 줄', () => homeLi(ha, NICKS[1]), 10_000));
-      check(F, 'A 큰 창 친구 목록에도 B', await homeLi(ha, NICKS[1]));
+      await soft(until('A 친구 줄', () => friendLi(ha, NICKS[1]), 10_000));
+      check(F, 'A 큰 창 친구 목록에도 B', await friendLi(ha, NICKS[1]));
+      // 설정 창과 큰 창을 동시에 열어 둔 채: B 큰 창에서 수락한 것이 B 설정 창에도, A 큰 창과 A 설정 창에도 보인다
+      check(F, '동시에 열린 B 설정 창 친구 칸에도 A (큰 창에서 수락한 것이 갱신됨)', (await soft(until('B 설정', () => friendLi(pb, NICKS[0]), 10_000))) === true);
+      check(F, '동시에 열린 A 설정 창 친구 칸에도 B', (await soft(until('A 설정', () => friendLi(pa, NICKS[1]), 10_000))) === true);
     }
     // --- 스위치: 바쁜 시간, 일정 제목 ---
     {
@@ -604,6 +638,7 @@ async function flow() {
       const f = await flashHome(ha, t('friends.removed'));
       check(F, '끊음 안내', f === t('friends.removed'), f);
       check(F, 'DB: 친구 없음', sql(`SELECT count(*) FROM friend`) === '0');
+      check(F, 'A 설정 창 친구 칸에서도 B 가 사라진다 (큰 창에서 끊은 것이 갱신됨)', (await soft(until('A 설정', async () => !(await friendLi(pa, NICKS[1])), 10_000))) === true);
     }
     // --- 보낸 신청 거두기 ---
     {
@@ -615,6 +650,23 @@ async function flow() {
       check(F, 'A 큰 창 보낸 신청 줄에서 "거두기"', await rowPressWait(ha, NICKS[1], t('friends.cancel')));
       await soft(until('거둠', async () => sql(`SELECT count(*) FROM friend_request WHERE from_account = ${A.id}`) === '0', 8000));
       check(F, 'DB: A 가 보낸 신청 없음', sql(`SELECT count(*) FROM friend_request WHERE from_account = ${A.id}`) === '0');
+    }
+    // --- 설정 창에서 수락하고 끊기: 큰 창에도 바로 반영 ---
+    {
+      const F = '두 창';
+      await a.main('__jj.server.friends.refresh().then(() => 1)');
+      await typeInto(ha, '.fp .friends-input', B.code);
+      await press(ha, '.fp .friends-box', t('friends.send'));
+      await b.main('__jj.server.friends.refresh().then(() => 1)');
+      await soft(until('B 설정 받은 신청', () => homeLi(pb, NICKS[0]), 10_000));
+      check(F, 'B 설정 창에서 "받기"', await rowPressWait(pb, NICKS[0], t('friends.accept')));
+      check(F, 'B 큰 창 친구 구역에도 A (설정 창에서 수락한 것이 갱신됨)', (await soft(until('B 큰 창', () => friendLi(hb, NICKS[0]), 10_000))) === true);
+      check(F, 'DB: 친구 두 줄', sql(`SELECT count(*) FROM friend`) === '2');
+      await a.main('__jj.server.friends.refresh().then(() => 1)');
+      check(F, 'A 큰 창에도 B', (await soft(until('A 큰 창', () => friendLi(ha, NICKS[1]), 10_000))) === true);
+      check(F, 'A 설정 창에서 "끊기" 두 번', (await rowPressWait(pa, NICKS[1], t('friends.remove'))) && (await rowPressWait(pa, NICKS[1], t('friends.removeSure'))));
+      check(F, 'A 큰 창에서도 B 가 사라진다 (설정 창에서 끊은 것이 갱신됨)', (await soft(until('A 큰 창', async () => !(await friendLi(ha, NICKS[1])), 10_000))) === true);
+      check(F, 'DB: 친구 없음', sql(`SELECT count(*) FROM friend`) === '0');
     }
     // --- 여러 명과 놀러 가기 스위치 (모양만 흉내 낸 상태) ---
     {
