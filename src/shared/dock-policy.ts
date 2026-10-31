@@ -1,4 +1,5 @@
-// 맥 Dock 아이콘 정함 (큰 창 설계 #159, #161). 큰 창이 열려 있는 동안만 Dock 과 Cmd+Tab 에 보이고, 닫거나 숨기면 다시 숨긴다.
+// 맥 Dock 아이콘 정함 (큰 창 설계 #159, #161). 큰 창이 열려 있는 동안 Dock 과 Cmd+Tab 에 보이고, 닫거나 숨기면 다시 숨긴다.
+// 설정 dockIcon 이 켜져 있으면(pin) 큰 창과 상관없이 늘 보인다. 끄면(unpin) 큰 창이 열려 있는 동안은 남고 닫힐 때 숨는다.
 //
 // 왜 정해 두나: app.dock.show() 는 앱 종류를 Dock 없는 앱(UIElement)에서 Dock 있는 보통 앱(Foreground)으로 바꾼다.
 // 보통 앱은 앞으로 올 때 맥이 그 앱 창이 있는 데스크톱(Space)으로 화면을 넘기므로(active-space.ts) 큰 창이 떠 있는 동안
@@ -25,8 +26,12 @@ export interface DockEnv {
 }
 
 export interface DockState {
-  /** 큰 창이 열려 있어 Dock 에 보여야 한다 */
+  /** Dock 에 보여야 한다: 큰 창이 열려 있거나(home) 설정으로 늘 두는 중(pinned) */
   want: boolean;
+  /** 큰 창이 열려 있다 */
+  home: boolean;
+  /** 설정 dockIcon: 큰 창과 상관없이 늘 둔다 */
+  pinned: boolean;
   /** 우리가 show 를 불러 보이는 중이라고 믿는다 */
   shown: boolean;
   /** 마지막 dock 호출(show, hide) 시각. 없으면 -Infinity */
@@ -41,7 +46,7 @@ export interface DockState {
   triedShow: number;
 }
 
-export type DockEvent = 'open' | 'close' | 'tick' | 'seen-visible' | 'quit';
+export type DockEvent = 'open' | 'close' | 'pin' | 'unpin' | 'tick' | 'seen-visible' | 'quit';
 
 export type DockEffect =
   | { do: 'show' }
@@ -57,6 +62,8 @@ export interface DockResult {
 export function initialDock(): DockState {
   return {
     want: false,
+    home: false,
+    pinned: false,
     shown: false,
     lastCallAt: Number.NEGATIVE_INFINITY,
     pendingHide: false,
@@ -83,18 +90,24 @@ export function dockStep(s: DockState, ev: DockEvent, now: number, env: DockEnv)
   if (s.quitting) return { state: s, effects: [] };
   const mac = env.platform === 'darwin';
 
-  if (ev === 'open') {
-    const next = { ...s, want: true, pendingHide: false, retries: 0 };
-    if (!mac) return { state: next, effects: [] };
-    // 시험 실행: 부르려 했다는 기록만
-    if (env.test) return { state: { ...next, triedShow: s.triedShow + 1 }, effects: [] };
-    // 이미 보이는 동안은 다시 부르지 않는다 (기다리던 hide 는 위에서 취소됐다)
-    if (s.shown) return { state: next, effects: [] };
-    return { state: { ...next, shown: true, lastCallAt: now }, effects: [{ do: 'show' }] };
-  }
-
-  if (ev === 'close') {
-    const next = { ...s, want: false };
+  if (ev === 'open' || ev === 'close' || ev === 'pin' || ev === 'unpin') {
+    const home = ev === 'open' ? true : ev === 'close' ? false : s.home;
+    const pinned = ev === 'pin' ? true : ev === 'unpin' ? false : s.pinned;
+    const want = home || pinned;
+    const next = { ...s, home, pinned, want, retries: want ? 0 : s.retries };
+    if (want) {
+      const base = { ...next, pendingHide: false };
+      if (!mac) return { state: base, effects: [] };
+      // 시험 실행: 부르려 했다는 기록만 (이미 원하던 중에 다시 불러도 센다: 열 때마다 한 번)
+      if (env.test)
+        return {
+          state: { ...base, triedShow: s.triedShow + (ev === 'open' || ev === 'pin' ? 1 : 0) },
+          effects: [],
+        };
+      // 이미 보이는 동안은 다시 부르지 않는다 (기다리던 hide 는 위에서 취소됐다)
+      if (s.shown) return { state: base, effects: [] };
+      return { state: { ...base, shown: true, lastCallAt: now }, effects: [{ do: 'show' }] };
+    }
     if (!mac || env.test || !s.shown) return { state: { ...next, pendingHide: false }, effects: [] };
     return hideOrWait(next, now);
   }

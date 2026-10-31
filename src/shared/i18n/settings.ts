@@ -325,6 +325,9 @@ export const ko = {
   // 시작
   'settings.start': '시작',
   'settings.launchAtLogin': '컴퓨터를 켜면 같이 켜기',
+  'settings.dockIcon': 'Dock 에 아이콘 두기',
+  'settings.dockIconHint':
+    '켜면 Dock 에 늘 보이고, 아이콘을 누르면 큰 창이 열려. 끄면 큰 창이 열린 동안만 보여.',
   'settings.launchPackaged': '로그인하면 페어리가 저절로 떠.',
   'settings.launchDev': '설치한 앱에서만 바꿀 수 있어. 지금은 개발 중 실행이야.',
 
@@ -824,6 +827,9 @@ export const en: Translation<typeof ko> = {
 
   'settings.start': 'Startup',
   'settings.launchAtLogin': 'Open at login',
+  'settings.dockIcon': 'Keep an icon in the Dock',
+  'settings.dockIconHint':
+    'On: always in the Dock, and clicking it opens the large window. Off: only while the large window is open.',
   'settings.launchPackaged': 'Fairy shows up when you log in.',
   'settings.launchDev': 'Only works in the installed app. This is a dev build.',
 

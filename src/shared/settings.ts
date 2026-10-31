@@ -68,6 +68,8 @@ export interface Settings {
   aiPetTools: boolean;
   /** 컴퓨터를 켜면 같이 켜기 (설치한 앱에서만 동작) */
   launchAtLogin: boolean;
+  /** 맥 Dock 에 아이콘을 늘 둔다. 끄면 큰 창이 열린 동안만 (main/dock.ts). 맥이 아니면 쓰이지 않는다 */
+  dockIcon: boolean;
   /** 숨기기 전 안내를 보여 준 횟수 (P1-10) */
   hideHints: number;
   /** 사진 펫 그림 파일 이름 (사용자 데이터 폴더의 pets/ 안). 없으면 기본 펫. gif, webp 면 움직이는 그림 (v1) */
@@ -486,6 +488,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aiKnowsTodos: false,
   aiPetTools: false,
   launchAtLogin: false,
+  dockIcon: true,
   hideHints: 0,
   petKind: 'kong',
   pet3d: true,
@@ -720,6 +723,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     aiKnowsTodos: bool(r.aiKnowsTodos, base.aiKnowsTodos),
     aiPetTools: bool(r.aiPetTools, base.aiPetTools),
     launchAtLogin: bool(r.launchAtLogin, base.launchAtLogin),
+    dockIcon: bool(r.dockIcon, base.dockIcon),
     hideHints:
       typeof r.hideHints === 'number' && Number.isFinite(r.hideHints)
         ? Math.max(0, Math.floor(r.hideHints))

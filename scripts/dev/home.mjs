@@ -63,7 +63,7 @@ mkdirSync(data, { recursive: true });
 mkdirSync(homeDir, { recursive: true });
 writeFileSync(
   join(data, 'settings.json'),
-  JSON.stringify({ onboarded: true, osNotify: false, lang: LANG, petName: tx('콩', 'Mochi'), wander: false }),
+  JSON.stringify({ onboarded: true, osNotify: false, lang: LANG, petName: tx('콩', 'Mochi'), wander: false, dockIcon: false }),
 );
 writeFileSync(join(data, 'day-plan.json'), JSON.stringify({ prefs: { auto: false, fromMinute: 480 } }));
 const app = spawn(electronPath, [`--inspect=${INSPECT}`, '.', `--remote-debugging-port=${PAGE}`], {
@@ -1232,6 +1232,13 @@ const body = async () => {
   let st = await dockStats();
   check('처음: 큰 창 없음, 패널 없음', !(await homeAlive()) && !(await panelAlive()));
   check('처음: Dock 은 안 불렀다 (show 0, hide 0, 부르려 한 횟수 0)', st.shows === 0 && st.hides === 0 && st.triedShow === 0, JSON.stringify(st));
+  // 설정 dockIcon: 켜면 Dock 을 "부르려 했다"만 늘고(시험 실행이라 show 0), 끄면 원하는 상태가 꺼진다
+  await main('__jj.settings.set({ dockIcon: true }); 1');
+  st = await dockStats();
+  check('dockIcon 켬: 부르려 한 횟수 1, show 0, 원하는 상태 켜짐', st.triedShow === 1 && st.shows === 0 && st.want === true && st.pinned === true, JSON.stringify(st));
+  await main('__jj.settings.set({ dockIcon: false }); 1');
+  st = await dockStats();
+  check('dockIcon 끔: 원하는 상태 꺼짐, hide 0', st.want === false && st.hides === 0 && st.pinned === false, JSON.stringify(st));
   check('처음: 설정 panelView 는 compact', (await main('__jj.settings.get().panelView')) === 'compact');
   check('처음: 큰 창 열기 단축키는 비어 있다', (await main('__jj.settings.get().shortcuts.home')) === '');
 

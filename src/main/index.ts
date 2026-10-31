@@ -256,6 +256,8 @@ app.on('web-contents-created', (_e, wc) => {
 });
 
 // 잠금이 없으면 ready 를 기다리지 않는다 (곧 끝난다). 시작 일 전체를 if 로 감싸지 않으려고 약속으로 막는다
+// 시험 실행(JJ_NO_FOCUS)은 dock.show 를 부르지 않는다. JJ_DOCK_PROBE=1 이 함께 있을 때만 진짜로 부른다 (scripts/dev/dock-*.mjs)
+const dockTestRun = !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE;
 const ready = primary ? app.whenReady() : new Promise<void>(() => {});
 ready
   .then(() => {
@@ -264,7 +266,13 @@ ready
     // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
     confineTestDisplay();
     // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
-    if (process.platform === 'darwin') app.dock?.hide();
+    // 설정 dockIcon 이 켜져 있으면 숨기지 않는다(아래 dock.pin 이 보인다). 시험 실행은 show 를 못 부르니 늘 숨긴다.
+    // JJ_DOCK_PROBE_LSUI=1 (scripts/dev/dock-pinned.mjs): 설치본처럼 Dock 없는 앱으로 시작한 뒤 보이게 하는 길을 흉내 낸다
+    if (
+      process.platform === 'darwin' &&
+      (!settings.get().dockIcon || dockTestRun || process.env.JJ_DOCK_PROBE_LSUI)
+    )
+      app.dock?.hide();
     // 윈도우, 리눅스는 테두리 있는 창(시작 안내, 설정, 채팅, 만들기, 아는 것)마다 기본 메뉴 막대(File Edit View Window)가 붙었다.
     // 앱 메뉴를 없앤다. 입력 칸의 Ctrl+C, V, X, A, Z 는 메뉴 없이도 된다. 맥은 기본 앱 메뉴(편집 ⌘C, ⌘V)가 있어야 해서 그대로 둔다
     else Menu.setApplicationMenu(null);
@@ -1234,7 +1242,7 @@ ready
     // 큰 창이 열린 동안만 Dock 에 보인다. 시험 실행(JJ_NO_FOCUS)은 dock.show 를 부르지 않는다
     // JJ_DOCK_PROBE=1 (scripts/dev/dock-probe.mjs 만): 시험 실행에서도 진짜로 부른다. 사용자의 Dock 에 아이콘이 뜬다
     const dock = createDock({
-      test: !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE,
+      test: dockTestRun,
       // 앱 종류가 바뀐 뒤에도 펫이 모든 데스크톱과 (큰 창이 전체 화면이면) 그 위에 남도록 다시 건다
       reassert: () => {
         reassertSpaces();
@@ -1243,6 +1251,11 @@ ready
       log,
     });
     app.on('before-quit', () => dock.quit());
+    // 설정 dockIcon: 시작부터 Dock 에 아이콘을 두고, 켜고 끌 때 바로 맞춘다 (끌 때 큰 창이 열려 있으면 닫힐 때까지 남는다)
+    dock.pin(settings.get().dockIcon);
+    settings.onChange((next, prev) => {
+      if (next.dockIcon !== prev.dockIcon) dock.pin(next.dockIcon);
+    });
     home = createHome({
       registerSurface: (win, hidden) => panel.registerHome(win, hidden),
       chat,
@@ -1264,6 +1277,19 @@ ready
     });
     // 큰 창이 보이는 중이면 채팅 열기 요청은 그 안의 채팅 구역이 받는다 (채팅 면은 한 번에 하나, 이슈 #165)
     chat.setHost({ open: () => home?.openChat() ?? false });
+    // Dock 아이콘 우클릭 메뉴 (맥). 끝내기는 맥이 기본으로 붙여 주고 Cmd+Q 와 같은 길(before-quit)을 탄다
+    const buildDockMenu = () =>
+      Menu.buildFromTemplate([
+        { label: t('dock.panel'), click: () => panel.openTab() },
+        { label: t('dock.home'), click: () => openHomeFromMenu() },
+        { label: t('dock.settings'), click: () => settingsWindow.open() },
+      ]);
+    if (process.platform === 'darwin') {
+      app.dock?.setMenu(buildDockMenu());
+      settings.onChange((next, prev) => {
+        if (next.lang !== prev.lang) app.dock?.setMenu(buildDockMenu());
+      });
+    }
     /** 패널 밖(펫 우클릭)에서 밥 주기 */
     function feedPet() {
       const r = store.feed(Date.now());
@@ -1987,7 +2013,7 @@ ready
       bringBack: (why) => {
         // Dock 아이콘을 눌렀다(맥 activate): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살린다
         // 큰 창을 앞으로 한 다음 숨은 펫, 집에 들어간 펫도 부른다
-        if (home && reopenTarget(why, home.look()) === 'home') home.open();
+        if (home && reopenTarget(why, home.look(), settings.get().dockIcon) === 'home') openHomeFromMenu();
         log('pet', '다시 열기로 부름', why);
         pet.setHidden('user', false);
         friends.setHidden('user', false);
