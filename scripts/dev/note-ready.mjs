@@ -230,7 +230,7 @@ const run = async () => {
   // 한 글자 쓰기
   await c.send('Input.insertText', { text: 'a' });
   check('한 글자 쓰면 메모 1건이 생긴다', await waitFor(async () => (await count()) === n0 + 1), String(await count()));
-  await sleep(500);
+  check('조용해지면 편집기로 넘어간다', await waitFor(() => shown(realEditor), 4000));
   check('편집기로 넘어가고 첫 줄 목록 맨 위에 나타난다', (await shown(realEditor)) && (await ev(`document.querySelector('li.note-row .note-title')?.textContent`)) === 'a');
   check('커서가 본문에 이어지고 쓴 글이 그대로다', (await bodyFocused()) && (await ev(`document.querySelector('${realEditor} textarea').value`)) === 'a');
   await c.send('Input.insertText', { text: 'bc' });
@@ -281,7 +281,7 @@ const run = async () => {
   await click('.note-list-pane .add.row .primary');
   await ev(`document.querySelector('.note-draft .note-title-input').focus(); 1`);
   await c.send('Input.insertText', { text: tx('제목글', 'Heading') });
-  check('제목 칸에서 쓰면 메모가 생기고 제목 칸에 커서가 이어진다', (await waitFor(async () => (await count()) === n0 + 1)) && (await sleep(500), await titleFocused()), await focusOn());
+  check('제목 칸에서 쓰면 메모가 생기고 제목 칸에 커서가 이어진다', (await waitFor(async () => (await count()) === n0 + 1)) && (await waitFor(() => shown(realEditor), 4000)) && (await titleFocused()), await focusOn());
   n0 = await count();
 
   // 조합 중에는 만들지 않는다
@@ -291,6 +291,50 @@ const run = async () => {
   check('한글 조합 중에는 메모를 만들지 않는다', (await count()) === n0 && (await shown('.note-draft')));
   await c.send('Input.insertText', { text: '한' });
   check('조합이 끝나면 만든다', await waitFor(async () => (await count()) === n0 + 1));
+  n0 = await count();
+
+
+  // ---- 빈 칸에서 편집기로 넘어가는 사이의 경주 (칸을 갈아 끼우지 않는다) ----
+  const bodies = () => main('__jj.notes.list().map((n) => n.body)');
+  const burst = async (text) => {
+    const ps = [];
+    for (const ch of text) ps.push(c.send('Input.insertText', { text: ch }));
+    await Promise.all(ps);
+  };
+  // 1) 만드는 중에 "새 메모"를 눌러도 그 뒤 글이 사라지지 않는다
+  for (let r = 0; r < 3; r++) {
+    await click('.note-list-pane .add.row .primary');
+    const pos = await ev(`(() => { const r = document.querySelector('.note-list-pane .add.row .primary').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    const typing = c.send('Input.insertText', { text: `a${r}` });
+    const clicks = ['mouseMoved', 'mousePressed', 'mouseReleased'].map((type) => c.send('Input.dispatchMouseEvent', { type, x: pos.x, y: pos.y, button: type === 'mouseMoved' ? 'none' : 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 }));
+    await Promise.all([typing, ...clicks]);
+    await sleep(600);
+    for (const ch of `bcdef${r}`) {
+      await c.send('Input.insertText', { text: ch });
+      await sleep(30);
+    }
+    await sleep(1500);
+    const all = (await bodies()).join('|');
+    check(`(경주 ${r + 1}) 만드는 중 "새 메모"를 눌러도 뒤에 쓴 글이 저장된다`, all.includes(`bcdef${r}`) && all.includes(`a${r}`), all.slice(0, 80));
+  }
+  // 2) 첫 글자 직후 곧바로 들어온 글자가 사라지지 않는다
+  for (let r = 0; r < 3; r++) {
+    await click('.note-list-pane .add.row .primary');
+    await burst(`k${r}_abcdefghij`);
+    const ok = await waitFor(async () => (await bodies()).includes(`k${r}_abcdefghij`), 4000);
+    check(`(경주 ${r + 4}) 한꺼번에 들어온 글자가 하나도 안 사라진다`, ok, (await bodies()).filter((b) => b.startsWith(`k${r}`)).join('|'));
+  }
+  // 3) 한글 확정 직후 다음 음절 조합이 이어져도 끊기지 않는다
+  await click('.note-list-pane .add.row .primary');
+  await c.send('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 });
+  await Promise.all([
+    c.send('Input.insertText', { text: '한' }),
+    c.send('Input.imeSetComposition', { text: 'ㄱ', selectionStart: 1, selectionEnd: 1 }),
+  ]);
+  await sleep(900);
+  await c.send('Input.insertText', { text: '글' });
+  check('(경주 7) 한글 조합이 칸 교체로 끊기지 않는다 (한글)', await waitFor(async () => (await bodies()).includes('한글'), 4000), (await bodies()).slice(-3).join('|'));
+  await sleep(1500);
   n0 = await count();
 
   // ---- 구역을 고르지 않고 열린 경우(펫 메뉴, 트레이로 큰 창을 연다)와 앞에 없는 창은 안 가져간다 ----

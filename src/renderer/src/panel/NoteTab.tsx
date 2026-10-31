@@ -9,7 +9,7 @@ import { useLanguage } from '../language-context.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
-import { type DraftField, NoteDraft } from './NoteDraft.tsx';
+import { type DraftSel, type DraftText, NoteDraft } from './NoteDraft.tsx';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
 import { draftKeepOf, NoteSaver, openFromKept, SaveGate } from './note-save.ts';
 import { onOpenNote, requestNoteFocus, takePendingNote } from './open-target.ts';
@@ -130,39 +130,40 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
       return true;
     }, NEW_NOTE_HOLD_MS),
   );
-  /** 넓은 칸의 빈 새 메모 칸에서 첫 글이 생겼다: 그 글로 메모를 만들어 편집기를 연다 (글자가 더 늘었으면 그것까지) */
-  const [enterField, setEnterField] = useState<{ id: number; field: DraftField }>();
-  const createFromDraft = useCallback(
-    async (read: () => { title: string; body: string }, field: DraftField) => {
-      const turn = ++openTurn.current;
-      const first = read();
-      const n = await bridge.noteAdd(first).catch(() => undefined);
-      if (!n || 'ok' in n) {
-        setNewError((n && 'error' in n && n.error) || t('panel.retry'));
-        return false;
-      }
-      setNewError('');
-      let made: Note = n;
-      const last = read();
-      if (last.title !== first.title || last.body !== first.body) {
-        await bridge.noteUpdate(n.id, last);
-        made = (await bridge.noteGet(n.id)) ?? n;
-      }
-      // 그새 다른 메모를 눌렀으면 만든 메모는 목록에 남기고 그 메모를 열지 않는다
-      if (turn !== openTurn.current) return true;
-      setEnterField({ id: made.id, field });
-      setOpen(made);
-      return true;
-    },
-    [],
-  );
+  /** 넓은 칸의 빈 새 메모 칸: 첫 글로 메모를 만들고, 그 뒤 고침을 저장하다가 조용해지면 그 메모의 편집기로 넘긴다 (NoteDraft) */
+  const [enterAt, setEnterAt] = useState<{ id: number } & DraftSel>();
+  const draftAdd = useCallback(async (first: DraftText) => {
+    const n = await bridge.noteAdd(first).catch(() => undefined);
+    if (!n || 'ok' in n) {
+      setNewError((n && 'error' in n && n.error) || t('panel.retry'));
+      return undefined;
+    }
+    setNewError('');
+    return n;
+  }, []);
+  const draftSave = useCallback(async (id: number, text: DraftText) => {
+    const r = await bridge.noteUpdate(id, text).catch(() => undefined);
+    return !!r?.ok;
+  }, []);
+  const draftGet = useCallback((id: number) => bridge.noteGet(id), []);
+  const draftSettle = useCallback((n: Note, sel: DraftSel) => {
+    openTurn.current++;
+    setEnterAt({ id: n.id, ...sel });
+    setOpen(n);
+  }, []);
+  /** 빈 새 메모 칸을 새로 그린다 (앞 칸에서 만든 메모는 목록에 남는다) */
+  const [draftKey, setDraftKey] = useState(0);
   /** 나란히 보기의 "새 메모": 메모를 미리 만들지 않고 빈 새 메모 칸으로 돌아가 커서를 준다 */
   const startDraft = () => {
     openTurn.current++;
     setResume(undefined);
     setOpen(undefined);
-    requestNoteFocus();
+    setDraftKey((k) => k + 1);
   };
+  // 새로 그린 칸이 자리 잡은 뒤에 커서 신호를 보낸다 (그리기 전에 보내면 사라질 앞 칸이 가져간다)
+  useEffect(() => {
+    if (draftKey > 0) requestNoteFocus();
+  }, [draftKey]);
   useEffect(() => {
     if (s.newNoteRequest && bridge.noteNewTake(s.newNoteRequest)) {
       setResume(undefined);
@@ -185,7 +186,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     <NoteEditor
       key={open.id}
       note={open}
-      focusAt={enterField?.id === open.id ? enterField.field : undefined}
+      focusAt={enterAt?.id === open.id ? enterAt : undefined}
       changedAt={s.notes.find((n) => n.id === open.id)?.updatedAt}
       onBack={() => {
         setResume(undefined);
@@ -297,7 +298,9 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     <div className={`note-layout${split ? ' split' : ''}`}>
       {listShown ? <div className="note-list-pane">{listEl}</div> : null}
       {editor}
-      {split && !open && !resume ? <NoteDraft onCreate={createFromDraft} /> : null}
+      {split && !open && !resume ? (
+        <NoteDraft key={draftKey} add={draftAdd} save={draftSave} get={draftGet} settle={draftSettle} />
+      ) : null}
     </div>
   );
 }
@@ -367,7 +370,7 @@ function NoteEditor({
 }: {
   note: Note;
   /** 빈 새 메모 칸에서 막 넘어왔다: 글을 쓰던 칸의 끝에 커서를 둔다 */
-  focusAt?: 'title' | 'body';
+  focusAt?: { field: 'title' | 'body'; start: number; end: number };
   /** 목록에 온 이 메모의 고친 시각. 연 뒤 다른 곳(append_note 등)이 고치면 커진다 */
   changedAt?: number;
   onBack: () => void;
@@ -686,9 +689,10 @@ function NoteEditor({
       }
       if (bodyRef.current) bodyRef.current.scrollTop = kept.scroll;
     } else if (focusAt) {
-      const el = focusAt === 'title' ? titleRef.current : bodyRef.current;
+      const el = focusAt.field === 'title' ? titleRef.current : bodyRef.current;
       el?.focus();
-      el?.setSelectionRange(el.value.length, el.value.length);
+      const len = el?.value.length ?? 0;
+      el?.setSelectionRange(Math.min(focusAt.start, len), Math.min(focusAt.end, len));
     } else if (!note.title && !note.body) bodyRef.current?.focus();
     // 글 없이 자리만 있던 보관 글은 읽었으니 지운다 (저장하지 못한 글은 저장되거나 고를 때까지 둔다)
     if (!draft) dropKept();
