@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   type CalItem,
   calendarDays,
@@ -31,11 +31,21 @@ const bridge = window.jjakkungPanel;
 const MODE_KEY = 'jj.cal.mode';
 const WEEK_START_KEY = 'jj.cal.weekStart';
 /** 칸에 그리는 줄 수. 넘으면 앞의 (줄 수 - 1)개와 "+N" */
-const MONTH_LINES = 2;
 const WEEK_LINES = 4;
 /** 넓은 칸(큰 창)은 칸이 커서 줄이 더 들어간다 */
-const WIDE_MONTH_LINES = 4;
 const WIDE_WEEK_LINES = 10;
+/** 월 보기 칸은 정사각형이라 줄 수를 칸 높이에서 센다 (상한). 한 줄과 +N 이 들어갈 2줄이 안 되면 점 하나 */
+const MONTH_MAX_LINES = 4;
+const MONTH_FALLBACK_LINES = 2;
+/** CSS 와 맞춘 칸 안쪽 치수(px): 테두리 2, 위아래 여백, 숫자 칸, 숫자와 줄 사이 1, 줄 높이와 줄 사이 */
+function monthSlots(cellH: number, wide: boolean): number {
+  const pad = wide ? 5 : 3;
+  const num = wide ? 24 : 20;
+  const line = wide ? 15 : 12;
+  const gap = wide ? 2 : 1;
+  const room = cellH - 2 - pad - num - 1;
+  return Math.max(0, Math.min(MONTH_MAX_LINES, Math.floor((room + gap) / (line + gap))));
+}
 
 type Mode = 'month' | 'week';
 
@@ -111,6 +121,20 @@ export function CalendarView({
   );
   const [events, setEvents] = useState<CalEvent[]>([]);
   const gridRef = useRef<HTMLTableElement>(null);
+  /** 월 보기 칸 높이 (정사각형이라 폭이 바뀌면 같이 바뀐다). 0 은 아직 못 잼 */
+  const [cellH, setCellH] = useState(0);
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const measure = () => {
+      const b = grid.querySelector<HTMLElement>('.cal-cell button');
+      setCellH(b ? Math.round(b.getBoundingClientRect().height) : 0);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(grid);
+    return () => ro.disconnect();
+  }, []);
   /** 키보드로 날을 옮겼다: 새 칸에 포커스를 옮긴다 (마우스로 고를 때는 그대로) */
   const focusNext = useRef(false);
   const setMode = (next: Mode) => {
@@ -211,13 +235,19 @@ export function CalendarView({
         });
   const short = t('cal.weekdays').split(' ');
   const full = t('cal.weekdaysFull').split(' ');
-  const lines =
-    mode === 'month' ? (wide ? WIDE_MONTH_LINES : MONTH_LINES) : wide ? WIDE_WEEK_LINES : WEEK_LINES;
+  const monthLines = cellH > 0 ? monthSlots(cellH, wide) : MONTH_FALLBACK_LINES;
+  const dots = mode === 'month' && monthLines < 2;
+  const lines = mode === 'month' ? monthLines : wide ? WIDE_WEEK_LINES : WEEK_LINES;
   const month = monthOf(day);
   const listDays = mode === 'month' ? [day] : (weeks[0] ?? []);
 
   return (
-    <div className={`cal ${mode}`} data-from={from} data-to={to} data-items={inView.length}>
+    <div
+      className={`cal ${mode}${dots ? ' dots' : ''}`}
+      data-from={from}
+      data-to={to}
+      data-items={inView.length}
+    >
       <div className="cal-bar">
         <button
           type="button"

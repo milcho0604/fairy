@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useRef } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
-import { CoinIcon, GearIcon } from '../panel/icons.tsx';
+import { CoinIcon, GearIcon, ShrinkIcon } from '../panel/icons.tsx';
 import { useMailUnread } from '../panel/mail-state.ts';
 import { requestNoteFocus } from '../panel/open-target.ts';
 import { HOME_SECTIONS, type HomeSection, sectionShortcut, visibleSections } from './sections.ts';
@@ -76,6 +76,15 @@ export function HomeShell({
             {s.balance}
           </span>
         </div>
+        <button
+          type="button"
+          className="ghost home-shrink"
+          title={t('home.shrinkTitle')}
+          onClick={() => bridge.shrink(tab)}
+        >
+          <ShrinkIcon />
+          <span>{t('home.shrink')}</span>
+        </button>
         <div className="home-fullness">
           <span className="label">{t('panel.fullness')}</span>
           <span className={`track ${s.fullness < s.hungryBelow ? 'low' : ''}`} aria-hidden="true">

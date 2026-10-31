@@ -22,7 +22,9 @@ export const ko = {
   'home.nav.records': '기록',
   'home.nav.friends': '친구',
   'home.opensWindow': '따로 창으로 열려',
-  'home.openOnPet': '펫을 누르면 이 창으로 열기',
+  'home.openOnPet': '펫을 누르면 큰 창으로 열기',
+  'home.shrink': '작게 보기',
+  'home.shrinkTitle': '작게 보기: 지금 보던 구역 그대로 작은 패널로 돌아가요. 펫을 눌러도 작은 패널이 떠요',
   'home.settings': '설정',
   'home.keys': '구역 옮기기',
 };
@@ -47,7 +49,10 @@ export const en: Translation<typeof ko> = {
   'home.nav.records': 'Records',
   'home.nav.friends': 'Friends',
   'home.opensWindow': 'Opens in its own window',
-  'home.openOnPet': 'Open this window when I click the fairy',
+  'home.openOnPet': 'Open the large window when I click the fairy',
+  'home.shrink': 'Small view',
+  'home.shrinkTitle':
+    'Small view: go back to the small panel on this section. Clicking the fairy opens the small panel too',
   'home.settings': 'Settings',
   'home.keys': 'Switch sections',
 };

@@ -416,6 +416,8 @@ const body = async () => {
   p = await page('panel');
   await p.click(`document.querySelector('.focus-month summary')`);
   check('집중 달력이 열림', await p.until(() => p.ev(`!!document.querySelector('.fm-cell')`)));
+  // 칸 아래 분 숫자는 기본 숨김이라 "자세히 보기"로 펼친 뒤 본다
+  await p.ev(`const b = document.querySelector('.fm-detail-toggle'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); 1`);
   const cellInfo = (day) =>
     p.ev(
       `(() => { const c = document.querySelector('.fm-cell[data-day="${day}"]'); return c ? { cls: c.className, text: c.innerText.replace(/\\s+/g, ' ').trim(), title: c.title, label: c.getAttribute('aria-label') } : null; })()`,
@@ -622,6 +624,7 @@ const body = async () => {
 
   // --- 위 1~2번과 같은 선택자로 같은 동작 (회귀) ---
   const cell = (day) => hw.ev(`(() => { const c = document.querySelector('.fm-cell[data-day="${day}"]'); return c ? { cls: c.className, text: c.innerText.replace(/\s+/g, ' ').trim(), title: c.title } : null; })()`);
+  await hw.ev(`const b = document.querySelector('.fm-detail-toggle'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); 1`);
   await hw.until(async () => (await cell(todayStr2))?.cls.includes('lv3'));
   const hc = await cell(todayStr2);
   check('큰 창 잔디: 오늘 칸 75분은 3단계, 숫자 75, 툴팁', !!hc?.cls.includes('lv3') && hc.text.includes('75') && !!hc.title, JSON.stringify(hc));

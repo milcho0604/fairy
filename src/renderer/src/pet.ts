@@ -1474,6 +1474,7 @@ function cancelPeekPress(status: 'released' | 'cancelled' = 'cancelled'): boolea
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !hitTest(e.clientX, e.clientY)) return;
   petClicks.press();
+  bridge.gesture({ type: 'down' });
   canvas.setPointerCapture(e.pointerId);
   gesture.down(e.button, e.clientX, e.clientY);
   pressAt = { x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY, px: petBox.x, py: petBox.y };

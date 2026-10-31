@@ -7,6 +7,7 @@ import {
   type WebContents,
   WebContentsView,
 } from 'electron';
+import { FrontMemo } from '../shared/front-memo.ts';
 import {
   HOME_KEEP_MS,
   HOME_MIN,
@@ -24,6 +25,7 @@ import { devRendererUrl } from './dev-url.ts';
 import type { Dock } from './dock.ts';
 import { confineTestWindow, focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
+import { lastPetPress } from './pet-press.ts';
 import { reviveOnCrash } from './revive.ts';
 import type { SurfaceWin } from './surface.ts';
 import { openRememberedBase } from './window-bounds.ts';
@@ -117,6 +119,9 @@ export function createHome(o: HomeOptions) {
     });
     chat.setVisible(true);
   }
+
+  /** 큰 창이 뒤로 갔다 포커스를 되찾은 때 (펫을 누르며 앱이 깨어난 것을 맨 앞이었던 것과 구별한다) */
+  let front: FrontMemo | undefined;
 
   function bring(w: BaseWindow) {
     // 전체 화면 창은 모든 데스크톱 표시를 켰다 끌 수 없다 (자기 데스크톱이 있다). 그대로 앞으로
@@ -254,6 +259,10 @@ export function createHome(o: HomeOptions) {
     chatPart = undefined;
     layout();
     w.on('resize', layout);
+    front = new FrontMemo(lastPetPress);
+    const memo = front;
+    w.on('focus', () => memo.gained());
+    w.on('blur', () => memo.lost());
     // 면으로 알린다. 큰 창은 webContents 가 본문 view 의 것이다
     const face: SurfaceWin = {
       webContents: b.webContents,
@@ -324,6 +333,7 @@ export function createHome(o: HomeOptions) {
     const w = win;
     if (!w || w.isDestroyed()) return;
     reviveBody?.();
+    front?.reset();
     const wasHidden = hiddenAt !== undefined;
     hiddenAt = undefined;
     hideSeq++;
@@ -337,18 +347,24 @@ export function createHome(o: HomeOptions) {
     if (ready) reveal(w);
   }
 
-  function hide() {
+  /** 숨긴다. 전체 화면이면 풀린 뒤에 숨겨지니, 숨겨진 다음에 할 일은 done 으로 */
+  function hide(done?: () => void) {
     const w = win;
-    if (!w || w.isDestroyed()) return;
+    if (!w || w.isDestroyed()) {
+      done?.();
+      return;
+    }
     const seq = ++hideSeq;
     const go = () => {
       if (w.isDestroyed() || seq !== hideSeq) return;
       // 숨겨도 창은 안 닫혀 beforeunload 가 없다: 쓰던 글(메모 편집기)이 바로 저장되게 알린다
       bodyContents()?.send(PANEL.hiding);
       w.hide();
+      front?.reset();
       hiddenAt = Date.now();
       startKeep();
       o.dock.close();
+      done?.();
     };
     // 전체 화면인 채로 숨기면 빈 데스크톱이 남는다. 풀리기를 기다렸다 숨긴다
     if (w.isFullScreen()) {
@@ -371,6 +387,7 @@ export function createHome(o: HomeOptions) {
       hidden: hiddenAt !== undefined,
       minimized: !!w && !w.isDestroyed() && w.isMinimized(),
       focused: !!w && !w.isDestroyed() && w.isFocused(),
+      freshFocus: front?.wokenByPet() ?? false,
     });
     o.log('home', 'toggle', action);
     if (action === 'create') create(tab);

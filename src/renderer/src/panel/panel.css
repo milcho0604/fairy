@@ -370,6 +370,7 @@ p.empty {
 }
 
 .todo:hover .due.none,
+.todo:focus-within .due.none,
 .due.none:focus-within,
 .due.none:has(.due-btn:focus-visible) {
   opacity: 0.8;
@@ -378,6 +379,35 @@ p.empty {
 .due.overdue {
   color: var(--error);
   background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
+/* 마감 1시간 안: 보통 칩(베이지)과 확 다르게 경고색을 꽉 채우고 글자는 굵게 (흰 글자 5.77, 어두운 모드 어두운 글자 8 이상) */
+.due.soon {
+  color: var(--ok-ink);
+  background: var(--warn);
+  font-weight: 700;
+}
+
+.due.overdue {
+  /* 밝은 모드는 옅은 붉은 띠 위라 글자를 한 단계 어둡게 (4.5 이상 여유) */
+  color: color-mix(in srgb, var(--error) 80%, #000);
+  font-weight: 700;
+}
+
+@media (prefers-color-scheme: dark) {
+  .due.overdue {
+    color: var(--error);
+  }
+}
+
+.due-menu .menu-note,
+.row-menu .menu-note {
+  max-width: 230px;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 /* 칩은 단추 하나다 (누르면 showPicker 로 달력). 날짜 칸은 달력이 칩 자리에 뜨게 칩 뒤에 숨겨 둔다 */
