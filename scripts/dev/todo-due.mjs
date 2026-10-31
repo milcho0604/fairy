@@ -234,7 +234,8 @@ const at = (deltaMin) =>
     return JSON.stringify({ due: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()), min: d.getHours() * 60 + d.getMinutes() }); })()`).then(JSON.parse);
 
 try {
-  await main('1');
+  // 메인이 __jj 손잡이를 만들 때까지 기다린다 (처음 켤 때 느리면 아직 없다)
+  await waitFor(() => main("typeof __jj === 'object'").catch(() => false), 30_000);
   await main(`__jj.settings.set({ panelView: 'compact' }); 1`);
   const NOW = await main('Date.now()');
   const soon = await at(30);
@@ -266,12 +267,41 @@ try {
   const cPast = await chipOf(tx('지난 회의록', 'Past notes'));
   const cLater = await chipOf(tx('나중 일', 'Later task'));
   const cDate = await chipOf(tx('날짜만 일', 'Date only'));
+  const lbl = (ko1, en1) => tx(ko1, en1);
+  check('임박 칩 앞에 글자(곧)', !!cSoon?.text.startsWith(lbl('곧', 'Soon')), cSoon?.text);
+  check('지난 칩에 글자(지남)', !!cPast?.text.includes(lbl('지남', 'Overdue')), cPast?.text);
   check('임박(1시간 안)은 soon 색', !!cSoon?.cls.includes('soon') && !cSoon.cls.includes('overdue'), cSoon?.cls);
   check('지난 시각은 overdue 색', !!cPast?.cls.includes('overdue'), cPast?.cls);
   check('5시간 뒤는 색 없음', !!cLater && !cLater.cls.includes('soon') && !cLater.cls.includes('overdue'), cLater?.cls);
   check('날짜만 오늘은 색 없음', !!cDate && !cDate.cls.includes('soon') && !cDate.cls.includes('overdue'), cDate?.cls);
   check('줄에 시각이 보임', !!cSoon && !!cLater && shows(cSoon.text, soon.min) && shows(cLater.text, later.min), `${cSoon?.text} / ${cLater?.text}`);
   check('날짜만 줄에는 시각이 없음', !!cDate && !/\d{2}:\d{2}/.test(cDate.text), cDate?.text);
+  // 명암비: 칩 글자색과 칩 바탕(바탕이 반투명이면 줄 바탕 위에 올려 섞는다)
+  const contrast = (title) =>
+    pp.ev(`(() => {
+      const c = ${rowOf(title)}.querySelector('.due');
+      const parse = (v) => v.match(/[\\d.]+/g).map(Number);
+      const lum = ([r, g, b]) => { const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      let bg = [255, 255, 255];
+      for (let e = c.parentElement; e; e = e.parentElement) { const v = parse(getComputedStyle(e).backgroundColor); if ((v[3] ?? 1) > 0) { bg = v.slice(0, 3); break; } }
+      const own = parse(getComputedStyle(c).backgroundColor); const a = own[3] ?? 1;
+      const fill = own.slice(0, 3).map((x, i) => x * a + bg[i] * (1 - a));
+      const fg = parse(getComputedStyle(c).color).slice(0, 3);
+      const [l1, l2] = [lum(fg), lum(fill)].sort((x, y) => y - x);
+      return (l1 + 0.05) / (l2 + 0.05);
+    })()`);
+  const base = (title) => pp.ev(`getComputedStyle(${rowOf(title)}.querySelector('.due')).backgroundColor`);
+  for (const dark of [false, true]) {
+    await pp.dark(dark);
+    await sleep(250);
+    const cs = await contrast(tx('임박 보고서', 'Soon report'));
+    const co = await contrast(tx('지난 회의록', 'Past notes'));
+    check(`명암비 ${dark ? '어두움' : '밝음'}: 임박 4.5 이상`, cs >= 4.5, cs.toFixed(2));
+    check(`명암비 ${dark ? '어두움' : '밝음'}: 지남 4.5 이상`, co >= 4.5, co.toFixed(2));
+    const bs = await base(tx('임박 보고서', 'Soon report'));
+    const bl = await base(tx('나중 일', 'Later task'));
+    check(`임박 칩 바탕이 보통 칩과 다름 (${dark ? '어두움' : '밝음'})`, bs !== bl, `${bs} / ${bl}`);
+  }
   await pp.dark(false);
   await pp.shot('due-colors');
   await pp.dark(true);
@@ -313,6 +343,41 @@ try {
   const cAfter = await chipOf(tx('날짜만 일', 'Date only'));
   check('넣은 시각이 줄에 보임', !!cAfter && shows(cAfter.text, 16 * 60 + 45), cAfter?.text);
 
+  // 마감 없는 줄: 평소엔 안 보이고 마우스를 올리면 흐린 "+ 마감", 누르면 같은 메뉴(시각 넣기, 알림 글 포함)
+  await add(tx('마감 없는 일', 'No due task'), { reminds: [] });
+  await main('__jj.panel.refresh(); 1');
+  await sleep(600);
+  const noneOpacity = () => pp.ev(`getComputedStyle(${rowOf(tx('마감 없는 일', 'No due task'))}.querySelector('.due.none')).opacity`).then(Number);
+  const noneText = await pp.ev(`${rowOf(tx('마감 없는 일', 'No due task'))}.querySelector('.due.none')?.textContent`);
+  check('마감 없는 줄 칩 글자는 "+ 마감"', noneText === tx('+ 마감', '+ Due'), noneText);
+  await pp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5, button: 'none', buttons: 0 });
+  await sleep(300);
+  const before = await noneOpacity();
+  const pos = await pp.ev(`(() => { const r = ${rowOf(tx('마감 없는 일', 'No due task'))}.getBoundingClientRect(); return { x: r.x + 120, y: r.y + r.height / 2 }; })()`);
+  await pp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pos.x, y: pos.y, button: 'none', buttons: 0 });
+  await sleep(400);
+  const after = await noneOpacity();
+  check('마감 없는 줄: 평소 안 보이고 올리면 보임', before === 0 && after > 0.3 && after < 1, `${before} -> ${after}`);
+  await pp.shot('due-none-hover');
+  const labelsNone = await openMenu(tx('마감 없는 일', 'No due task'));
+  check('마감 없는 줄 칩 메뉴: 오늘, 날짜 고르기, 시각 넣기', labelsNone.includes(tx('시각 넣기', 'Add a time')) && labelsNone.includes(tx('날짜 고르기', 'Pick a date')), JSON.stringify(labelsNone));
+  const noteNone = await pp.ev(`document.querySelector('.menu-note')?.textContent ?? ''`);
+  check('메뉴 맨 아래에 알림 때 안내', noteNone.includes(tx('하루 전', 'a day before')) && noteNone.includes(tx('전날 저녁 8시', '8 pm')), noteNone);
+  await pp.shot('due-menu-none');
+  await closeMenu();
+  await openMenu(tx('임박 보고서', 'Soon report'));
+  const noteTimed = await pp.ev(`document.querySelector('.menu-note')?.textContent ?? ''`);
+  check('마감 있는 줄 메뉴 맨 아래에 그 할 일의 알림 글', noteTimed.startsWith(tx('알림:', 'Alerts:')), noteTimed);
+  await closeMenu();
+  // 날짜 없는 줄에서 시각 넣기를 고르면 오늘 날짜가 같이 잡힌다
+  await pp.click(`${rowOf(tx('마감 없는 일', 'No due task'))}.querySelector('.due-btn')`);
+  await sleep(300);
+  await pp.click(`[...document.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent.trim() === ${JSON.stringify(tx('시각 넣기', 'Add a time'))})`);
+  await sleep(500);
+  const gotDue = JSON.parse(await main(`JSON.stringify(__jj.store.list(Date.now()).open.find((t) => t.title === ${JSON.stringify(tx('마감 없는 일', 'No due task'))}))`));
+  check('마감 없는 줄에서 시각 넣기: 오늘 날짜가 잡힘', !!gotDue?.due);
+  await closeMenu();
+
   for (const w of [320, 560]) {
     await main(`__jj.panel.window.setBounds({ ...__jj.panel.window.getBounds(), width: ${w}, height: 680 }); 1`);
     await sleep(500);
@@ -320,6 +385,31 @@ try {
     check(`폭 ${w}: 가로 넘침 없음`, over === false);
     await pp.shot(`due-w${w}`);
   }
+  // 큰 창(줄 메뉴 "..."): 마감 없는 줄에는 "마감 넣기", 칩도 보인다
+  await main(`__jj.panel.window.close(); 1`);
+  await sleep(500);
+  await main(`__jj.settings.set({ panelView: 'window' }); 1`);
+  await add(tx('큰 창 마감 없음', 'Wide no due'), { reminds: [] });
+  await main("__jj.home.open('todo'); 1");
+  await waitFor(() => main('!!__jj.home.window && !__jj.home.window.isDestroyed()'), 20_000);
+  await sleep(1200);
+  await main('__jj.home.window.setBounds({ x: 20, y: 30, width: 760, height: 780 }); 1');
+  await sleep(800);
+  const hh = await page('home');
+  const hRow = `[...document.querySelectorAll('li.todo[data-id]')].find((l) => l.textContent.includes(${JSON.stringify(tx('큰 창 마감 없음', 'Wide no due'))}))`;
+  await hh.click(`${hRow}.querySelector('.row-more')`);
+  await sleep(300);
+  const moreLabels = JSON.parse(await hh.ev(`JSON.stringify([...document.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim()))`));
+  check('큰 창 "..." 메뉴에 마감 넣기', moreLabels.includes(tx('마감 넣기', 'Add due date')), JSON.stringify(moreLabels));
+  await hh.shot('due-wide-more');
+  await hh.clickAt(6, 6);
+  await sleep(300);
+  const wideChip = await hh.ev(`${hRow}.querySelector('.due.none')?.textContent ?? null`);
+  check('큰 창: 마감 없는 줄에도 "+ 마감" 칩', wideChip === tx('+ 마감', '+ Due'), String(wideChip));
+  await hh.shot('due-wide');
+  await main('__jj.home.window.close(); 1');
+  await sleep(400);
+
 } catch (e) {
   check(`예외 없이 끝남: ${e.message}`, false);
 } finally {
