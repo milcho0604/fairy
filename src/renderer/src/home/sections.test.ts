@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { HOME_SECTIONS, homeKeyAction, sectionForKey, sectionShortcut, visibleSections } from './sections.ts';
+import { HOME_SECTIONS, homeKeyAction, sectionForKey, sectionShortcut } from './sections.ts';
 
 const key = (
   code: string,
@@ -23,19 +23,12 @@ test('구역 순서: 오늘, 할 일, 메모, 일정, 채팅, 상점, 기록, �
   );
 });
 
-test('친구는 기능이 켜졌을 때만 보인다', () => {
-  assert.equal(visibleSections(false).length, 10);
-  assert.equal(visibleSections(true).length, 11);
+test('친구는 늘 보이고 본문 칸의 구역이다 (따로 창이 아니다)', () => {
+  const f = HOME_SECTIONS.find((s) => s.id === 'friends');
+  assert.equal(f?.kind, 'tab');
   assert.equal(
-    visibleSections(false).some((s) => s.id === 'friends'),
+    HOME_SECTIONS.some((s) => (s.kind as string) === 'window'),
     false,
-  );
-});
-
-test('따로 창을 여는 구역은 친구뿐, 채팅은 창 안에 품는다', () => {
-  assert.deepEqual(
-    HOME_SECTIONS.filter((s) => s.kind === 'window').map((s) => s.id),
-    ['friends'],
   );
   assert.deepEqual(
     HOME_SECTIONS.filter((s) => s.kind === 'chat').map((s) => s.id),
@@ -43,32 +36,31 @@ test('따로 창을 여는 구역은 친구뿐, 채팅은 창 안에 품는다',
   );
 });
 
-test('Cmd+1~7 (친구 꺼짐), Cmd+8 은 친구가 켜졌을 때만', () => {
-  assert.equal(sectionForKey(key('Digit1', '1', { metaKey: true }), true, false)?.id, 'today');
-  assert.equal(sectionForKey(key('Digit3', '3', { metaKey: true }), true, false)?.id, 'note');
-  assert.equal(sectionForKey(key('Digit5', '5', { metaKey: true }), true, false)?.id, 'chat');
-  assert.equal(sectionForKey(key('Digit6', '6', { metaKey: true }), true, false)?.id, 'shop');
-  assert.equal(sectionForKey(key('Digit7', '7', { metaKey: true }), true, false)?.id, 'records');
-  assert.equal(sectionForKey(key('Digit8', '8', { metaKey: true }), true, false), undefined);
-  assert.equal(sectionForKey(key('Digit8', '8', { metaKey: true }), true, true)?.id, 'friends');
+test('Cmd+1~8: 친구는 늘 8번, 그 위로 더 없다', () => {
+  assert.equal(sectionForKey(key('Digit1', '1', { metaKey: true }), true)?.id, 'today');
+  assert.equal(sectionForKey(key('Digit3', '3', { metaKey: true }), true)?.id, 'note');
+  assert.equal(sectionForKey(key('Digit5', '5', { metaKey: true }), true)?.id, 'chat');
+  assert.equal(sectionForKey(key('Digit6', '6', { metaKey: true }), true)?.id, 'shop');
+  assert.equal(sectionForKey(key('Digit7', '7', { metaKey: true }), true)?.id, 'records');
+  assert.equal(sectionForKey(key('Digit8', '8', { metaKey: true }), true)?.id, 'friends');
+  assert.equal(sectionForKey(key('Digit9', '9', { metaKey: true }), true), undefined);
 });
 
 test('윈도우는 Ctrl, 맥에서 Ctrl 이나 Shift, Option 이 섞이면 아니다', () => {
-  assert.equal(sectionForKey(key('Digit2', '2', { ctrlKey: true }), false, false)?.id, 'todo');
-  assert.equal(sectionForKey(key('Digit2', '2', { ctrlKey: true }), true, false), undefined);
-  assert.equal(sectionForKey(key('Digit2', '2', { metaKey: true, shiftKey: true }), true, false), undefined);
-  assert.equal(sectionForKey(key('Digit2', '2'), true, false), undefined);
+  assert.equal(sectionForKey(key('Digit2', '2', { ctrlKey: true }), false)?.id, 'todo');
+  assert.equal(sectionForKey(key('Digit2', '2', { ctrlKey: true }), true), undefined);
+  assert.equal(sectionForKey(key('Digit2', '2', { metaKey: true, shiftKey: true }), true), undefined);
+  assert.equal(sectionForKey(key('Digit2', '2'), true), undefined);
 });
 
 test('한글 입력 중에도 code 로 읽는다', () => {
-  assert.equal(sectionForKey(key('Digit4', 'ㅋ', { metaKey: true }), true, false)?.id, 'event');
+  assert.equal(sectionForKey(key('Digit4', 'ㅋ', { metaKey: true }), true)?.id, 'event');
 });
 
-test('구역 풀이 단축키는 보이는 순서를 따른다', () => {
-  assert.equal(sectionShortcut('shop', false, 'Cmd'), 'Cmd+6');
-  assert.equal(sectionShortcut('friends', false, 'Cmd'), undefined);
-  assert.equal(sectionShortcut('records', false, 'Cmd'), 'Cmd+7');
-  assert.equal(sectionShortcut('friends', true, 'Ctrl'), 'Ctrl+8');
+test('구역 풀이 단축키는 구역 순서를 따른다', () => {
+  assert.equal(sectionShortcut('shop', 'Cmd'), 'Cmd+6');
+  assert.equal(sectionShortcut('records', 'Cmd'), 'Cmd+7');
+  assert.equal(sectionShortcut('friends', 'Ctrl'), 'Ctrl+8');
 });
 
 test('Cmd+, 설정, Cmd+W 닫기, Cmd+F 찾기', () => {
@@ -81,17 +73,15 @@ test('Cmd+, 설정, Cmd+W 닫기, Cmd+F 찾기', () => {
 });
 
 test('쪽지함은 번호 단축키가 없어서 기존 번호(친구 8번 포함)가 그대로다', () => {
-  assert.equal(sectionShortcut('mail', false, 'Cmd'), undefined);
-  assert.equal(sectionShortcut('mail', true, 'Cmd'), undefined);
-  assert.equal(sectionForKey(key('Digit8', '8', { metaKey: true }), true, true)?.id, 'friends');
-  assert.equal(sectionForKey(key('Digit9', '9', { metaKey: true }), true, true), undefined);
+  assert.equal(sectionShortcut('mail', 'Cmd'), undefined);
+  assert.equal(sectionForKey(key('Digit8', '8', { metaKey: true }), true)?.id, 'friends');
   assert.equal(HOME_SECTIONS.find((s) => s.id === 'mail')?.kind, 'tab');
 });
 
 test('페어리와 비서 구역은 번호 단축키가 없고 친구 8번도 그대로다', () => {
   for (const id of ['pet', 'assist'] as const) {
     assert.equal(HOME_SECTIONS.find((s) => s.id === id)?.kind, 'tab');
-    assert.equal(sectionShortcut(id, true, 'Cmd'), undefined);
+    assert.equal(sectionShortcut(id, 'Cmd'), undefined);
   }
-  assert.equal(sectionShortcut('friends', true, 'Cmd'), 'Cmd+8');
+  assert.equal(sectionShortcut('friends', 'Cmd'), 'Cmd+8');
 });

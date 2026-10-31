@@ -14,6 +14,7 @@ import {
   undoable,
 } from '../../../shared/toast-keep.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
+import { FriendsPage } from '../home/FriendsPage.tsx';
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
 import { HubHost } from '../hub/HubHost.tsx';
@@ -53,9 +54,10 @@ const MAC = navigator.userAgent.includes('Mac');
 /** 탭 풀이와 설정 단축키 칸에 보이는 수식키 */
 const MOD = MAC ? 'Cmd' : 'Ctrl';
 
-/** 이 면에서 열 수 있는 탭인가: 작은 패널은 탭 줄에 있는 것만, 큰 창은 기록, 쪽지함, 페어리, 비서 구역도 (#166, 쪽지함은 작은 패널에서는 머리줄 봉투가 여는 덮개) */
+/** 이 면에서 열 수 있는 탭인가: 작은 패널은 탭 줄에 있는 것만, 큰 창은 기록, 쪽지함, 친구, 페어리, 비서 구역도 (#166, 쪽지함은 작은 패널에서는 머리줄 봉투가 여는 덮개) */
 const usable = (kind: SurfaceKind, v: unknown): v is PanelTab =>
-  isTab(v) || (kind === 'home' && (v === 'records' || v === 'mail' || v === 'pet' || v === 'assist'));
+  isTab(v) ||
+  (kind === 'home' && (v === 'records' || v === 'mail' || v === 'friends' || v === 'pet' || v === 'assist'));
 
 /** 마지막에 본 탭 (창은 열 때마다 새로 만들어서 브라우저 저장소에 둔다). 못 읽으면 오늘. */
 function savedTab(kind: SurfaceKind): PanelTab {
@@ -187,9 +189,6 @@ function PanelShell({ kind }: { kind: SurfaceKind }) {
   };
   const expandRef = useRef(expand);
   expandRef.current = expand;
-  /** 큰 창 단축키가 보는 최신 값 (키 듣개는 한 번만 달린다) */
-  const friendsOnRef = useRef(false);
-  friendsOnRef.current = s?.friendsOn ?? false;
 
   useEffect(() => {
     bridge.snapshot().then(setS);
@@ -214,10 +213,9 @@ function PanelShell({ kind }: { kind: SurfaceKind }) {
         else focusFind();
         return true;
       }
-      const sec = sectionForKey(e, MAC, friendsOnRef.current);
+      const sec = sectionForKey(e, MAC);
       if (!sec) return false;
       if (sec.id === 'chat') bridge.openChat();
-      else if (sec.id === 'friends') bridge.openFriends();
       else {
         setChatOn(false);
         setTabState(sec.id);
@@ -551,6 +549,7 @@ function PanelShell({ kind }: { kind: SurfaceKind }) {
         {tab === 'records' && kind === 'home' && <RecordsTab s={s} />}
         {tab === 'mail' && kind === 'home' && <MailPage />}
         {kind === 'home' && <HubHost tab={tab} />}
+        {tab === 'friends' && kind === 'home' && <FriendsPage />}
         {tab === 'event' && (
           <EventTab
             s={s}

@@ -63,7 +63,7 @@ export interface SettingsWindowOptions {
   /** 큰 창 (파일 대화상자의 부모) */
   hubWindow: () => BaseWindow | undefined;
   /** 큰 창의 구역을 연다 (설정에서 꺼낸 항목으로 가는 길) */
-  openHome: (tab: 'pet' | 'assist') => void;
+  openHome: (tab: 'pet' | 'assist' | 'friends') => void;
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (maker.ts remake) */
   remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake: () => void;
@@ -182,7 +182,7 @@ export function createSettingsWindow({
   const parentOf = (e: IpcMainEvent | IpcMainInvokeEvent): BaseWindow | undefined =>
     fromHub(e) ? hubWindow() : win;
   ipcMain.on(SETTINGS.openHome, (e, tab: unknown) => {
-    if (fromSettings(e) && (tab === 'pet' || tab === 'assist')) openHome(tab);
+    if (fromSettings(e) && (tab === 'pet' || tab === 'assist' || tab === 'friends')) openHome(tab);
   });
 
   ipcMain.handle(SETTINGS.get, (e): SettingsSnapshot | undefined =>

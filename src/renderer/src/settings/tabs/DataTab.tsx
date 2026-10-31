@@ -8,7 +8,6 @@ import { AdminBox } from '../AdminBox.tsx';
 import { CoinReset } from '../CoinReset.tsx';
 import { EventsBox } from '../EventsBox.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
-import { FriendsBox } from '../FriendsBox.tsx';
 import { exportFlash, type Flash, importFlash, storageFlash } from '../flash-of.ts';
 import { ServerAccountBox, useServerStatus } from '../ServerAccountBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
@@ -97,7 +96,14 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         <ExportedRow path={exported} />
       </Section>
       <EventsBox />
-      <FriendsBox flash={flash} />
+      <Section title={t('settings.friendsMoved.title')}>
+        <div className="action-row">
+          <small className="grow">{t('settings.friendsMoved')}</small>
+          <button type="button" className="ghost" onClick={() => bridge.openHome('friends')}>
+            {t('settings.friendsMoved.open')}
+          </button>
+        </div>
+      </Section>
       <AdminBox />
       <ExportBox flash={flash} />
       {featureOn(server, 'coin_reset') && (

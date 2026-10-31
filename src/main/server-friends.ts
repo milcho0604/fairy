@@ -15,6 +15,7 @@ import {
   type FriendsList,
   type FriendsState,
   friendCodeFrom,
+  friendsOffReason,
   type TitledBlock,
   type VisitorCard,
 } from '../shared/server-friends.ts';
@@ -162,6 +163,7 @@ export function createServerFriends(d: ServerFriendsDeps) {
     const on = available();
     return {
       available: on,
+      off: on ? null : friendsOffReason(s, !!d.core()?.allowed()),
       list: on ? list : null,
       problem: on ? problem : null,
       gifts: on && s?.features?.friend_gifts === true,
