@@ -50,6 +50,8 @@ export interface HomeSeen {
   minimized: boolean;
   /** 키보드 포커스가 큰 창에 있다 (펫 창은 포커스를 받지 않아 펫을 눌러도 그대로다) */
   focused: boolean;
+  /** 뒤에 있다가 방금 포커스를 되찾았다 (펫을 누르며 앱이 깨어난 것이라 맨 앞이었던 것이 아니다, front-memo.ts) */
+  freshFocus?: boolean;
 }
 
 /**
@@ -59,7 +61,7 @@ export interface HomeSeen {
 export function homeClickAction(h: HomeSeen): 'create' | 'show' | 'raise' | 'hide' {
   if (!h.alive) return 'create';
   if (h.hidden || h.minimized) return 'show';
-  return h.focused ? 'hide' : 'raise';
+  return h.focused && !h.freshFocus ? 'hide' : 'raise';
 }
 
 /**

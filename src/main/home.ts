@@ -7,6 +7,7 @@ import {
   type WebContents,
   WebContentsView,
 } from 'electron';
+import { FrontMemo } from '../shared/front-memo.ts';
 import {
   HOME_KEEP_MS,
   HOME_MIN,
@@ -117,6 +118,9 @@ export function createHome(o: HomeOptions) {
     });
     chat.setVisible(true);
   }
+
+  /** 큰 창이 뒤로 갔다 포커스를 되찾은 때 (펫을 누르며 앱이 깨어난 것을 맨 앞이었던 것과 구별한다) */
+  let front: FrontMemo | undefined;
 
   function bring(w: BaseWindow) {
     // 전체 화면 창은 모든 데스크톱 표시를 켰다 끌 수 없다 (자기 데스크톱이 있다). 그대로 앞으로
@@ -254,6 +258,10 @@ export function createHome(o: HomeOptions) {
     chatPart = undefined;
     layout();
     w.on('resize', layout);
+    front = new FrontMemo();
+    const memo = front;
+    w.on('focus', () => memo.gained());
+    w.on('blur', () => memo.lost());
     // 면으로 알린다. 큰 창은 webContents 가 본문 view 의 것이다
     const face: SurfaceWin = {
       webContents: b.webContents,
@@ -371,6 +379,7 @@ export function createHome(o: HomeOptions) {
       hidden: hiddenAt !== undefined,
       minimized: !!w && !w.isDestroyed() && w.isMinimized(),
       focused: !!w && !w.isDestroyed() && w.isFocused(),
+      freshFocus: front?.fresh() ?? false,
     });
     o.log('home', 'toggle', action);
     if (action === 'create') create(tab);

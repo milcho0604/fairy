@@ -28,6 +28,7 @@ import {
 import { findAll } from '../shared/find-all.ts';
 import { type FocusState, focusReward, isFocusMinutes } from '../shared/focus.ts';
 import { isMonth, monthOf } from '../shared/focus-month.ts';
+import { FrontMemo } from '../shared/front-memo.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { fitSavedBounds } from '../shared/geometry.ts';
 import { isPanelView, type PanelView } from '../shared/home-policy.ts';
@@ -232,6 +233,8 @@ export function createPanel(o: PanelOptions) {
   const senders = new Set<Electron.WebContents>();
   /** 화면이 죽은 창을 다시 열 때 되살리는 함수 (revive.ts) */
   const revivers = new WeakMap<BrowserWindow, () => void>();
+  /** 창마다 뒤로 갔다 포커스를 되찾은 때를 적어 둔다 (펫을 누르며 앱이 깨어난 것을 맨 앞이었던 것과 구별, front-memo.ts) */
+  const fronts = new WeakMap<BrowserWindow, FrontMemo>();
   const relocating = new WeakSet<BrowserWindow>();
   const ours = (e: IpcMainEvent | IpcMainInvokeEvent) => senders.has(e.sender);
   const homeContents = () => (home && !home.isDestroyed() ? home.webContents : undefined);
@@ -1317,6 +1320,10 @@ export function createPanel(o: PanelOptions) {
     if (devUrl) win.loadURL(`${devUrl}/${kind}.html${tab ? `#${tab}` : ''}`);
     else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`), { hash: tab });
     win.once('ready-to-show', () => focusWindow(win));
+    const front = new FrontMemo();
+    fronts.set(win, front);
+    win.on('focus', () => front.gained());
+    win.on('blur', () => front.lost());
     // 다른 곳을 누르면 닫힌다 (팝오버처럼). 머리를 잡고 끄는 것은 이 창을 누른 것이라 닫히지 않는다.
     win.on('blur', () => {
       // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)
@@ -1407,12 +1414,23 @@ export function createPanel(o: PanelOptions) {
       }
     }
     if (panel && !panel.isDestroyed()) {
+      // 뒤에 있던 패널(고정 핀)은 앞으로만 나온다. 맨 앞일 때 다시 눌러야 닫힌다
+      if (panelAtBack(panel)) {
+        revivers.get(panel)?.();
+        focusWindow(panel);
+        return;
+      }
       closePanel();
       return;
     }
     const tab = nextTab;
     nextTab = undefined;
     openPanel(tab);
+  }
+
+  function panelAtBack(w: BrowserWindow): boolean {
+    if (process.env.JJ_NO_FOCUS) return false; // 시험 창은 포커스를 일부러 막는다
+    return !w.isFocused() || !!fronts.get(w)?.fresh();
   }
 
   /** 펫이 있는 화면의 작업 영역 */
