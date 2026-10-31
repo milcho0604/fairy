@@ -140,6 +140,22 @@ export function ExpandIcon() {
   );
 }
 
+/** 작게 보기: 모서리 두 곳이 안쪽으로 (크게 보기의 짝) */
+export function ShrinkIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M13 6H10V3M10 6L14.5 1.5M3 10h3v3M6 10L1.5 14.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function PinIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
