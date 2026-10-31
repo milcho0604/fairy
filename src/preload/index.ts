@@ -52,7 +52,12 @@ import type { MoveAsk } from '../shared/moves.ts';
 import { NOTES, type NoteBridge } from '../shared/note-ipc.ts';
 import { NOTICE, type NoticeBridge, type NoticeView } from '../shared/notice-ipc.ts';
 import { SERVER, type ServerBridge, type ServerStatus } from '../shared/server-account.ts';
-import { FRIENDS, type FriendsBridge, type FriendsState } from '../shared/server-friends.ts';
+import {
+  FRIENDS,
+  type FriendsBridge,
+  type FriendsState,
+  type FriendsViewBridge,
+} from '../shared/server-friends.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
 import type { TogetherLook } from '../shared/together.ts';
@@ -461,6 +466,23 @@ if (kind === 'panel' || kind === 'home' || kind === 'settings' || kind === 'know
     growGet: () => ipcRenderer.invoke(BOND.growGet),
   };
   contextBridge.exposeInMainWorld('jjakkungBond', bond);
+}
+
+// 큰 창 친구 구역 (읽기만): 목록과 못 쓰는 까닭, 내 코드 복사. 신청과 선물은 설정 창에서 한다
+if (kind === 'home') {
+  const view: FriendsViewBridge = {
+    state: () => ipcRenderer.invoke(FRIENDS.view),
+    copyCode: () => ipcRenderer.invoke(FRIENDS.copyCode),
+    copyLink: () => ipcRenderer.invoke(FRIENDS.copyLink),
+    onChanged: (listener) => {
+      const h = (_e: unknown, s: FriendsState) => listener(s);
+      ipcRenderer.on(FRIENDS.changed, h);
+      return () => {
+        ipcRenderer.removeListener(FRIENDS.changed, h);
+      };
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungFriendsView', view);
 }
 
 // 쪽지함 (shared/mail.ts, main/daily-note.ts). 작은 패널의 덮개와 큰 창 쪽지함 구역, 오늘 탭의 새 쪽지 카드

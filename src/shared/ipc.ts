@@ -1315,7 +1315,7 @@ export interface NoteHit {
 
 // records 는 큰 창 사이드바에만 있다 (이슈 #166). 작은 패널의 탭 줄(renderer panel/tabs.ts)에는 없다
 // mail(쪽지함)은 큰 창에서는 사이드바 구역이고, 작은 패널에서는 탭이 아니라 머리줄 봉투가 여는 덮개다 (feat/mailbox)
-export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop', 'records', 'mail'] as const;
+export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop', 'records', 'mail', 'friends'] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 export const isPanelTab = (v: unknown): v is PanelTab => PANEL_TABS.includes(v as PanelTab);
 

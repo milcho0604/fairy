@@ -67,6 +67,8 @@ export function createServer(o: {
   shop: ItemStore;
   isSettings: (wc: WebContents) => boolean;
   target: () => BrowserWindow | undefined;
+  /** 큰 창 본문 화면 (친구 구역이 읽기만 한다). 없으면 undefined */
+  homeView?: () => WebContents | undefined;
   onWrite: (listener: (sql: string) => void) => void;
   /** 맞추기로 잔액이나 물건이 바뀌었다 */
   onCoins: () => void;
@@ -204,9 +206,19 @@ export function createServer(o: {
   });
   let friendsWas = false;
 
+  /** 시험 손잡이: 큰 창 친구 구역이 보는 상태를 대신 정한다 (서버 없이 목록 모양을 보려고). null 이면 실제 상태 */
+  let friendsOverride: FriendsState | null = null;
+  const friendsNow = (): FriendsState => friendsOverride ?? friends.state();
+  const homeIsSender = (wc: WebContents) => {
+    const v = o.homeView?.();
+    return !!v && !v.isDestroyed() && v === wc;
+  };
+
   function sendFriends(s: FriendsState) {
     const w = o.target();
-    if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, s);
+    if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, friendsOverride ?? s);
+    const v = o.homeView?.();
+    if (v && !v.isDestroyed()) v.send(FRIENDS.changed, friendsOverride ?? s);
   }
 
   function send(s: ServerStatus) {
@@ -396,14 +408,20 @@ export function createServer(o: {
     ok(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
   );
   ipcMain.handle(FRIENDS.busy, (e, to: unknown) => (ok(e) && code(to) ? friends.busy(code(to)) : refused));
+  ipcMain.handle(FRIENDS.view, (e) => {
+    if (!homeIsSender(e.sender)) return undefined;
+    // 큰 창 친구 구역이 보이는 동안 몇 초마다 다시 부른다: 열 때마다 받는다 (설정 창의 state 와 같다)
+    if (!friendsOverride) void friends.refresh();
+    return friendsNow();
+  });
   ipcMain.handle(FRIENDS.copyCode, (e) => {
-    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    const me = ok(e) || homeIsSender(e.sender) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(me);
     return true;
   });
   ipcMain.handle(FRIENDS.copyLink, (e) => {
-    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    const me = ok(e) || homeIsSender(e.sender) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(inviteLink(me));
     return true;
@@ -432,6 +450,16 @@ export function createServer(o: {
      * 시험용 (JJ_TEST_SECRETS=memory 일 때만, #115): 이 기기의 구글 일정 연결 상태를 흉내 낸다 (undefined 면 진짜 상태로).
      * 진짜 구글은 부르지 않는다 (scripts/dev/calendar-link.mjs)
      */
+    /**
+     * 시험용 (JJ_TEST_SECRETS=memory 일 때만): 큰 창과 설정 창 친구 칸이 보는 상태를 대신 정한다. null 이면 진짜 상태로
+     * (서버 없이 0명, 여러 명, 못 쓰는 까닭을 본다, scripts/dev/friends-list.mjs)
+     */
+    debugFriendsView(next: FriendsState | null): boolean {
+      if (!memory) return false;
+      friendsOverride = next;
+      sendFriends(friends.state());
+      return true;
+    },
     async debugCalendarLinked(linked: boolean | undefined): Promise<boolean> {
       if (!memory) return false;
       calendarOverride = linked;

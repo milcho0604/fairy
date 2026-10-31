@@ -1602,6 +1602,7 @@ ready
         return !!w && !w.isDestroyed() && w.webContents === wc;
       },
       target: () => settingsWindow.window,
+      homeView: () => home?.contents,
       onWrite,
       onCoins: () => {
         panel.refresh();

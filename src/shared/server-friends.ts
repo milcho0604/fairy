@@ -1,6 +1,7 @@
 // 서버 친구 (이슈 #110 1부): 친구 맺기, 선물, 일정 공유 1차(바쁜 시간대)와 2차(친구별 일정 제목). 설정 창과 메인이 같이 쓰는 모양만 둔다.
 // 토큰과 네트워크는 메인(main/server-friends.ts)에만 있다. 펫끼리 같이 걷는 "친구"(settings/Friends.tsx, main/friends.ts)와는 다른 것이다.
 import { normalizeDeviceCode } from './account-profile.ts';
+import type { ServerStatus } from './server-account.ts';
 import { SITE_URL } from './update-policy.ts';
 
 export interface FriendPerson {
@@ -55,6 +56,24 @@ export interface FriendsList {
   today: { coins: number; passes: number };
 }
 
+/**
+ * 친구 기능을 못 쓰는 까닭 (큰 창 친구 구역이 빈 목록 대신 보인다). 위에서부터 먼저 걸리는 것:
+ * 서버 주소 없는 판, 나이를 안 알려 줬거나 만 14세 미만, 서버 계정 꺼짐, 로그인 안 함, 운영자가 친구 기능을 아직 안 열었다
+ */
+export type FriendsOff = 'noServer' | 'age' | 'serverOff' | 'signedOut' | 'featureOff';
+
+export function friendsOffReason(
+  s: Pick<ServerStatus, 'enabled' | 'age' | 'on' | 'signedIn' | 'features'> | undefined,
+  allowed: boolean,
+): FriendsOff | null {
+  if (!s?.enabled) return 'noServer';
+  if (s.age === null || s.age === 'under14') return 'age';
+  if (!s.on || !allowed) return 'serverOff';
+  if (!s.signedIn) return 'signedOut';
+  if (s.features?.friends !== true) return 'featureOff';
+  return null;
+}
+
 /** 설정 칸이 그리는 것 */
 export interface FriendsState {
   /**
@@ -62,6 +81,8 @@ export interface FriendsState {
    * 아니면 칸을 통째로 숨긴다
    */
   available: boolean;
+  /** 못 쓰는 까닭. 쓸 수 있으면 null */
+  off: FriendsOff | null;
   /** 서버에서 받은 목록. 아직 못 받았으면 null */
   list: FriendsList | null;
   /** 마지막으로 받기에 실패한 까닭 (offline 등). 되면 null */
@@ -135,8 +156,18 @@ export const FRIENDS = {
   copyCode: 'friends:copy-code',
   copyLink: 'friends:copy-link',
   clearPrefill: 'friends:clear-prefill',
+  /** 큰 창 친구 구역: 상태 읽기 (설정 창의 state 와 달리 읽기만 한다) */
+  view: 'friends:view',
   changed: 'friends:changed',
 } as const;
+
+/** 큰 창 친구 구역이 부르는 것 (preload 가 window.jjakkungFriendsView 로 연다). 목록 읽기와 내 코드 복사뿐, 신청, 수락, 선물은 설정 창에서 */
+export interface FriendsViewBridge {
+  state(): Promise<FriendsState | undefined>;
+  copyCode(): Promise<boolean>;
+  copyLink(): Promise<boolean>;
+  onChanged(listener: (s: FriendsState) => void): () => void;
+}
 
 /** 설정 창이 부르는 것 (preload 가 window.jjakkungFriends 로 연다) */
 export interface FriendsBridge {
