@@ -557,7 +557,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },
     noteGet: (id: number) => ipcRenderer.invoke(PANEL.noteGet, id),
-    noteAdd: (text?: string) => ipcRenderer.invoke(PANEL.noteAdd, text),
+    noteAdd: (text?: string | { title: string; body: string }) => ipcRenderer.invoke(PANEL.noteAdd, text),
     noteUpdate: (id, patch, base) => ipcRenderer.invoke(PANEL.noteUpdate, id, patch, base),
     noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),

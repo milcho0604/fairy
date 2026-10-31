@@ -1423,8 +1423,8 @@ export interface PanelBridge {
   toastsSet(list: KeptToast[]): void;
   onState(listener: (state: PanelState) => void): void;
   noteGet(id: number): Promise<Note | undefined>;
-  /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기) */
-  noteAdd(text?: string): Promise<Note | { ok: false; error?: string }>;
+  /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기). 제목과 본문을 함께 주면 둘 다 그대로 쓴다 (큰 창의 빈 새 메모 칸) */
+  noteAdd(text?: string | { title: string; body: string }): Promise<Note | { ok: false; error?: string }>;
   /**
    * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
    */
