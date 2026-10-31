@@ -4,6 +4,7 @@ import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { CoinIcon, GearIcon, ShrinkIcon } from '../panel/icons.tsx';
 import { useMailUnread } from '../panel/mail-state.ts';
+import { requestNoteFocus } from '../panel/open-target.ts';
 import { HOME_SECTIONS, type HomeSection, sectionShortcut } from './sections.ts';
 
 const bridge = window.jjakkungPanel;
@@ -52,7 +53,10 @@ export function HomeShell({
   const pick = (sec: HomeSection) => {
     // 채팅 열기는 메인을 거친다 (대화권 잠금을 보고, 따로 뜬 채팅 창을 닫는다)
     if (sec.id === 'chat') bridge.openChat();
-    else setTab(sec.id);
+    else {
+      if (sec.id === 'note') requestNoteFocus();
+      setTab(sec.id);
+    }
   };
   const full = s.fullness >= 100;
   return (
