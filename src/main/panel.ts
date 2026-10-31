@@ -551,9 +551,22 @@ export function createPanel(o: PanelOptions) {
     // 디스크가 가득 차면 저장이 던진다: 오류 글로 답해 화면이 안내하게 한다 (saving)
     saving((e, text: unknown) => {
       if (!ours(e)) return undefined;
+      // 큰 창의 빈 새 메모 칸은 제목과 본문을 그대로 보낸다 (쓰던 공백을 지우지 않는다)
+      const typed =
+        typeof text === 'object' && text !== null ? (text as { title?: unknown; body?: unknown }) : undefined;
       // 찾기 칸에 적은 글로 만들 때는 그 글이 본문 첫 줄 (제목은 첫 줄에서 저절로)
       const body = typeof text === 'string' ? text.trim() : '';
-      const n = o.notes.add(body ? { body } : {}, Date.now());
+      const n = o.notes.add(
+        typed
+          ? {
+              ...(typeof typed.title === 'string' ? { title: typed.title } : {}),
+              ...(typeof typed.body === 'string' ? { body: typed.body } : {}),
+            }
+          : body
+            ? { body }
+            : {},
+        Date.now(),
+      );
       freshNotes.add(n.id);
       push();
       return n;

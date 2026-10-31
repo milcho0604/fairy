@@ -2286,8 +2286,7 @@ li:is(.todo, .event) .tools .extra .due.none {
 }
 
 .todo-tags,
-.todo-detail,
-.note-pane-empty {
+.todo-detail {
   display: none;
 }
 
@@ -2503,17 +2502,6 @@ li:is(.todo, .event) .tools .extra .due.none {
 .note-layout.split .note-ai {
   margin-right: auto;
   margin-left: 0;
-}
-
-.note-layout.split .note-pane-empty {
-  flex: 1 1 0;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  padding: 24px;
-  font-size: 12.5px;
-  color: var(--muted);
-  text-align: center;
 }
 
 .panel .notes li.note-row.current > button:first-child {

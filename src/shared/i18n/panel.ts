@@ -168,7 +168,6 @@ export const ko = {
   'panel.note.staleTake': '저장된 글로 바꾸기',
   'panel.list.more': (v: { n: number }) => `더 보기 (${v.n}개 남음)`,
   'panel.note.back': '메모',
-  'panel.note.pickOne': '왼쪽에서 메모를 고르거나 "새 메모"를 눌러.',
   'panel.note.toTodos': '할 일로 쪼개기',
   'panel.note.summary': '요약',
   'panel.note.toTodosHint': (v: { ai: string }) =>
@@ -431,7 +430,6 @@ export const en: Translation<typeof ko> = {
   'panel.note.staleTake': 'Use the saved text',
   'panel.list.more': (v: { n: number }) => `Show more (${v.n} left)`,
   'panel.note.back': 'Notes',
-  'panel.note.pickOne': 'Pick a note on the left, or press "New note".',
   'panel.note.toTodos': 'Make to-dos',
   'panel.note.summary': 'Summarize',
   'panel.note.toTodosHint': (v: { ai: string }) =>

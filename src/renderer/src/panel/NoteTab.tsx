@@ -9,9 +9,10 @@ import { useLanguage } from '../language-context.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
+import { type DraftField, NoteDraft } from './NoteDraft.tsx';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
 import { draftKeepOf, NoteSaver, openFromKept, SaveGate } from './note-save.ts';
-import { onOpenNote, takePendingNote } from './open-target.ts';
+import { onOpenNote, requestNoteFocus, takePendingNote } from './open-target.ts';
 import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
 import { useSurface } from './surface.tsx';
@@ -129,6 +130,39 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
       return true;
     }, NEW_NOTE_HOLD_MS),
   );
+  /** 넓은 칸의 빈 새 메모 칸에서 첫 글이 생겼다: 그 글로 메모를 만들어 편집기를 연다 (글자가 더 늘었으면 그것까지) */
+  const [enterField, setEnterField] = useState<{ id: number; field: DraftField }>();
+  const createFromDraft = useCallback(
+    async (read: () => { title: string; body: string }, field: DraftField) => {
+      const turn = ++openTurn.current;
+      const first = read();
+      const n = await bridge.noteAdd(first).catch(() => undefined);
+      if (!n || 'ok' in n) {
+        setNewError((n && 'error' in n && n.error) || t('panel.retry'));
+        return false;
+      }
+      setNewError('');
+      let made: Note = n;
+      const last = read();
+      if (last.title !== first.title || last.body !== first.body) {
+        await bridge.noteUpdate(n.id, last);
+        made = (await bridge.noteGet(n.id)) ?? n;
+      }
+      // 그새 다른 메모를 눌렀으면 만든 메모는 목록에 남기고 그 메모를 열지 않는다
+      if (turn !== openTurn.current) return true;
+      setEnterField({ id: made.id, field });
+      setOpen(made);
+      return true;
+    },
+    [],
+  );
+  /** 나란히 보기의 "새 메모": 메모를 미리 만들지 않고 빈 새 메모 칸으로 돌아가 커서를 준다 */
+  const startDraft = () => {
+    openTurn.current++;
+    setResume(undefined);
+    setOpen(undefined);
+    requestNoteFocus();
+  };
   useEffect(() => {
     if (s.newNoteRequest && bridge.noteNewTake(s.newNoteRequest)) {
       setResume(undefined);
@@ -151,6 +185,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     <NoteEditor
       key={open.id}
       note={open}
+      focusAt={enterField?.id === open.id ? enterField.field : undefined}
       changedAt={s.notes.find((n) => n.id === open.id)?.updatedAt}
       onBack={() => {
         setResume(undefined);
@@ -221,7 +256,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             }
           }}
         />
-        <button type="button" className="primary" onClick={() => void newNote()}>
+        <button type="button" className="primary" onClick={() => (split ? startDraft() : void newNote())}>
           {t('panel.note.new')}
         </button>
       </div>
@@ -260,7 +295,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     <div className={`note-layout${split ? ' split' : ''}`}>
       {listShown ? <div className="note-list-pane">{listEl}</div> : null}
       {editor}
-      {split && !open && !resume ? <p className="note-pane-empty">{t('panel.note.pickOne')}</p> : null}
+      {split && !open && !resume ? <NoteDraft onCreate={createFromDraft} /> : null}
     </div>
   );
 }
@@ -324,10 +359,13 @@ const NoteRow = memo(function NoteRow({
 function NoteEditor({
   note,
   changedAt,
+  focusAt,
   onBack,
   onRemoved,
 }: {
   note: Note;
+  /** 빈 새 메모 칸에서 막 넘어왔다: 글을 쓰던 칸의 끝에 커서를 둔다 */
+  focusAt?: 'title' | 'body';
   /** 목록에 온 이 메모의 고친 시각. 연 뒤 다른 곳(append_note 등)이 고치면 커진다 */
   changedAt?: number;
   onBack: () => void;
@@ -645,6 +683,10 @@ function NoteEditor({
         el.setSelectionRange(Math.min(kept.start, len), Math.min(kept.end, len));
       }
       if (bodyRef.current) bodyRef.current.scrollTop = kept.scroll;
+    } else if (focusAt) {
+      const el = focusAt === 'title' ? titleRef.current : bodyRef.current;
+      el?.focus();
+      el?.setSelectionRange(el.value.length, el.value.length);
     } else if (!note.title && !note.body) bodyRef.current?.focus();
     // 글 없이 자리만 있던 보관 글은 읽었으니 지운다 (저장하지 못한 글은 저장되거나 고를 때까지 둔다)
     if (!draft) dropKept();

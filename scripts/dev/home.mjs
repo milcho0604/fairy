@@ -653,7 +653,7 @@ const body = async () => {
     };
 
     const noteLayout = await wh.ev(`document.querySelector('.note-layout')?.className ?? ''`);
-    check('1100 메모: 나란히 보기 (.split) 이고 아직 안 골랐으면 안내 글', noteLayout.includes('split') && (await shown('.note-pane-empty')) && !(await shown('.note-editor')), noteLayout);
+    check('1100 메모: 나란히 보기 (.split) 이고 아직 안 골랐으면 빈 새 메모 칸', noteLayout.includes('split') && (await shown('.note-draft')) && !(await shown('.note-editor:not(.note-draft)')), noteLayout);
     await openNote(nA);
     const lp = await pos('.note-list-pane');
     const ed = await pos('.note-editor');
@@ -704,7 +704,7 @@ const body = async () => {
     check('(d) 고치다 할 일 탭으로 바꾸면 고친 글이 저장된다', (await noteBody(N.b)).endsWith(' +H1 +T1'), JSON.stringify(await noteBody(N.b)));
     await tab('note');
     await sleep(700);
-    check('(d) 메모 탭으로 돌아오면 목록이고, 그 메모를 열면 고친 글이 그대로 있다', !(await shown('.note-editor')) && (await shown('.note-list-pane')), '');
+    check('(d) 메모 탭으로 돌아오면 목록이고, 그 메모를 열면 고친 글이 그대로 있다', !(await shown('.note-editor:not(.note-draft)')) && (await shown('.note-list-pane')), '');
     await openNote(nB);
     check('(d) 다시 연 메모에 고친 글이 들어 있다', (await editorBody()) === (await noteBody(N.b)), JSON.stringify(await editorBody()));
 
@@ -799,13 +799,13 @@ const body = async () => {
     const n0 = await countNotes();
     await wh.click(`document.querySelector('.note-list-pane .add.row .primary')`);
     await sleep(700);
-    check('새 메모를 누르면 목록은 그대로 두고 오른쪽에 빈 편집기가 열린다', (await countNotes()) === n0 + 1 && (await shown('.note-editor')) && (await editorBody()) === '' && (await wh.ev(`document.querySelectorAll('li.note-row').length`)) >= 4);
+    check('새 메모를 누르면 목록은 그대로 두고 오른쪽에 빈 새 메모 칸이 열린다 (메모는 아직 안 만든다)', (await countNotes()) === n0 && (await shown('.note-editor')) && (await editorBody()) === '' && (await wh.ev(`document.querySelectorAll('li.note-row').length`)) >= 4);
     await openNote(nA);
     await sleep(500);
     check('빈 새 메모를 두고 다른 메모를 누르면 빈 메모가 소리 없이 사라진다 (목록에 빈 메모가 안 남는다)', (await countNotes()) === n0, `${await countNotes()} vs ${n0}`);
     await wh.click(`document.querySelector('.note-editor .link.danger')`);
     await sleep(700);
-    check('지우기를 누르면 편집기가 닫혀 안내 글이 돌아오고 목록에서 빠진다', (await countNotes()) === n0 - 1 && (await shown('.note-pane-empty')));
+    check('지우기를 누르면 편집기가 닫혀 빈 새 메모 칸이 돌아오고 목록에서 빠진다', (await countNotes()) === n0 - 1 && (await shown('.note-draft')));
     await wh.ev(`document.querySelector('.toast .undo')?.click(); 1`);
     await sleep(600);
     check('지운 메모를 되돌리면 돌아온다', (await countNotes()) === n0);
@@ -857,9 +857,9 @@ const body = async () => {
     check('줄인 뒤 쓰던 글이 저장된다', (await noteBody(N.b)).endsWith('+NARROW'));
     await wh.click(`document.querySelector('.note-bar .back')`);
     await sleep(500);
-    check('760 에서 뒤로를 누르면 예전처럼 목록 하나', (await shown('.note-list-pane')) && !(await shown('.note-editor')) && !(await shown('.note-pane-empty')));
+    check('760 에서 뒤로를 누르면 예전처럼 목록 하나', (await shown('.note-list-pane')) && !(await shown('.note-editor')) && !(await shown('.note-draft')));
     await setBounds(1100);
-    check('다시 1100 으로 넓히면 나란히 + 안내 글', (await shown('.note-list-pane')) && (await shown('.note-pane-empty')));
+    check('다시 1100 으로 넓히면 나란히 + 빈 새 메모 칸', (await shown('.note-list-pane')) && (await shown('.note-draft')));
 
     // 폭별 찍기와 넘침
     for (const w of [760, 1100, 1440]) {
@@ -936,7 +936,7 @@ const body = async () => {
       await pp.shot(`lists-panel-todo-w${w}`);
       await main("__jj.panel.openTab('note'); 1");
       await sleep(500);
-      check(`${mark} 메모: 한 열 (나란히 아님), 목록이 보인다`, !(await pp.ev(`document.querySelector('.note-layout').classList.contains('split')`)) && (await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-pane-empty')?.offsetParent`)));
+      check(`${mark} 메모: 한 열 (나란히 아님), 목록이 보인다`, !(await pp.ev(`document.querySelector('.note-layout').classList.contains('split')`)) && (await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-draft')?.offsetParent`)));
       await pp.click(`[...document.querySelectorAll('li.note-row')][0]?.querySelector('button')`);
       await sleep(500);
       check(`${mark} 메모: 열면 편집기 하나, 목록은 사라지고 뒤로 단추가 있다`, (await pp.ev(`!!document.querySelector('.note-editor')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && (await pp.ev(`!!document.querySelector('.note-bar .back')?.offsetParent`)));

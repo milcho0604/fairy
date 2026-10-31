@@ -29,7 +29,7 @@ import { PlanSheetHost } from './MorningPlan.tsx';
 import { mailOverlayAfterTabRequest } from './mail-overlay.ts';
 import { OPEN_MAIL_EVENT, useMailUnread } from './mail-state.ts';
 import { NoteTab } from './NoteTab.tsx';
-import { openNoteById, revealRow } from './open-target.ts';
+import { openNoteById, requestNoteFocus, revealRow } from './open-target.ts';
 import { planTodosKey } from './plan-refresh.ts';
 import { RecordsTab } from './RecordsTab.tsx';
 import { ResizeGrips } from './ResizeGrips.tsx';
@@ -214,6 +214,7 @@ function PanelShell({ kind }: { kind: SurfaceKind }) {
       if (sec.id === 'chat') bridge.openChat();
       else if (sec.id === 'friends') bridge.openFriends();
       else {
+        if (sec.id === 'note') requestNoteFocus();
         setChatOn(false);
         setTabState(sec.id);
         rememberTab(kind, sec.id);
