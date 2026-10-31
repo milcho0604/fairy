@@ -161,6 +161,9 @@ export const ko = {
   'settings.osNotify': '페어리가 안 보일 때 시스템 알림으로',
   'settings.osNotifyHint':
     '전체 화면이나 숨김이라 페어리 말풍선을 못 볼 때 일정 알림을 컴퓨터 알림으로도 한 번 보내. 누르면 회의를 열거나 페어리를 불러.',
+  'settings.dueSoonAlert': '할 일 마감 임박 알림',
+  'settings.dueSoonAlertHint':
+    '마감 시각이 있는 할 일은 하루 전과 1시간 전에, 날짜만 있으면 전날 저녁에 한 번 말해 줘. 끝낸 할 일이나 꺼져 있던 사이 지난 건 말하지 않아.',
   'settings.chatterHint.quiet': '답이 왔다는 알림만 해.',
   'settings.chatterHint.normal': '바쁠 때 같은 상태 알림까지, 한 시간에 {n}개까지.',
   'settings.chatterHint.sometimes': '보통에 더해 혼잣말을 가끔 해(30분에 한 번쯤), 한 시간에 {n}개까지.',
@@ -656,6 +659,9 @@ export const en: Translation<typeof ko> = {
   'settings.osNotify': "System notifications when you can't see me",
   'settings.osNotifyHint':
     "If you can't see my bubble (full screen, hidden), I'll also send event reminders as a system notification, once. Click it to join the meeting or call me back.",
+  'settings.dueSoonAlert': 'Task due soon alerts',
+  'settings.dueSoonAlertHint':
+    'For tasks with a due time I speak up a day before and an hour before, and for date-only tasks the evening before, once. Finished tasks and ones that passed while the app was off stay quiet.',
   'settings.chatterHint.quiet': 'Only tells you when an answer arrives.',
   'settings.chatterHint.normal': 'Also status notes like when you look busy, up to {n} an hour.',
   'settings.chatterHint.sometimes':

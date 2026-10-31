@@ -17,6 +17,7 @@ OUT=/tmp/fairy-settings LANG_UNDER_TEST=ko node scripts/dev/settings-polish.mjs 
 OUT=<레포 밖 폴더> LANG_UNDER_TEST=ko|en [TAG=before|after JJ_ROOT=<체크아웃>] node scripts/dev/chat-settings-detail.mjs  # 채팅, 설정, 만들기 화면 디테일: 펫 이름 안 잘림과 머리줄 단추 높이(320, 400, 600), 새 대화 그림 단추, 마크다운 표와 태그 무해, 사용량 막대 기준선, 설정 탭 한 줄(360), 칩 줄 끝 흐림, 같은 줄 단추 높이, AI 칩 V/X, 만들기 제목 한 줄(480) x 밝음, 어두움 (가짜 claude)
 OUT=/tmp/fairy-onboarding LANG_UNDER_TEST=ko node scripts/dev/onboarding-resume.mjs # #149: 일하는 시간 설명, 파일 출처 이름, 닫기/앱 재시작 뒤 이어보기, 시작/건너뛰기 완료 (en도 실행; 앱 직접 실행)
 OUT=/tmp/fairy-146149 LANG_UNDER_TEST=ko node scripts/dev/todo-gallery-setup.mjs # #146/#149: 새 할 일 위치·긴 목록·검색/태그, 내장 갤러리 중복, 첫 안내 기본 설정 (en도 실행; 로컬 갤러리·앱 직접 실행)
+OUT=<레포 밖 폴더> LANG_UNDER_TEST=ko JJ_INSPECT_PORT=9850 JJ_PAGE_PORT=9851 node scripts/dev/todo-due.mjs # 할 일 마감 시각: 마감 칩 메뉴의 시각 넣기와 지우기, 임박(1시간 안)과 지남 색, 줄에 시각, 폭 320과 560, 밝음과 어두움 (en도 실행; 앱 직접 실행)
 OUT=/tmp/fairy-reset LANG_UNDER_TEST=ko node scripts/dev/settings-reset-maker.mjs # #149: 설정 기본값 복원과 보존 데이터, 페어리 만들기 방법/AI 안내 (en도 실행)
 OUT=<레포 밖 폴더> node scripts/dev/panel-resize.mjs  # 패널 크기 손잡이 (#144): 끌기, 범위, 기억, 화면 밖 값, 폭 320/360/560 넘침 (PASS/FAIL, 앱을 직접 띄우고 데이터 폴더를 지운다)
 OUT=<레포 밖 폴더> node scripts/dev/keep-drafts.mjs  # 쓰던 글과 보던 위치 (#145): 패널 고정 핀, 일정, 빠른 입력, 할 일, 채팅 글과 그림의 보관과 복원, 채팅 실패 뒤 질문 복원과 다시 묻기(가짜 claude), 탭 전환 뒤 검색어, 날짜, 스크롤, 가로 넘침 (PASS/FAIL, ONLY=panel|quick|chat 으로 한쪽만, 데이터 폴더와 HOME 은 임시 폴더라 끝나면 지운다)
