@@ -1002,10 +1002,10 @@ ready
           })
           .then(openCalendarSettings);
       },
-      // 설정 창을 보고 있으면 알리지 않는다 (거기 결과 글이 이미 있다)
+      // 설정 창이나 큰 창의 비서 구역(캘린더 연결 칸)을 보고 있으면 알리지 않는다 (거기 결과 글이 이미 있다)
       quiet: () => {
         const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.isVisible();
+        return (!!w && !w.isDestroyed() && w.isVisible()) || home?.visibleSection() === 'assist';
       },
       // 구글 캘린더로 보낸 짝꿍 일정, 구글에서 이미 읽어 온 일정이 같은 캘린더를 가져올 때 또 오면 거른다 (둘씩 보이지 않게)
       skipUids: () => gcal.skipUids(),
@@ -1478,6 +1478,7 @@ ready
       setScale: (n) => pet.setScale(n),
       openMaker: (target) => maker.open(target),
       hub: () => home?.contents,
+      hubWindow: () => home?.window,
       // 설정에서 꺼낸 페어리, 비서 구역: 열려 있는 작은 패널은 닫고 큰 창의 그 구역으로
       openHome: (tab) => {
         panel.closePanel();
@@ -1612,6 +1613,8 @@ ready
         return !!w && !w.isDestroyed() && w.webContents === wc;
       },
       target: () => settingsWindow.window,
+      isHub: (wc) => !!home?.contents && wc === home.contents,
+      hub: () => home?.contents,
       onWrite,
       onCoins: () => {
         panel.refresh();

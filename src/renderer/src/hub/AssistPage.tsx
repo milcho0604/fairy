@@ -7,7 +7,7 @@ import { calendarFlash } from '../settings/flash-of.ts';
 import { GoogleCalendarBox } from '../settings/GoogleCalendarBox.tsx';
 import { icsInput } from '../settings/ics-input.ts';
 import { MemoryEditor, PendingMemory, RulesEditor } from '../settings/tabs/AiTab.tsx';
-import { Section, type TabProps, Toggle } from '../settings/ui.tsx';
+import { bridge, Section, type TabProps, Toggle } from '../settings/ui.tsx';
 import { JumpNav } from './JumpNav.tsx';
 
 const chatterHint = (level: ChatterLevel): string =>
@@ -207,7 +207,7 @@ function CalendarSetup({
           onClick={async () => {
             // 틀린 주소면 가져오지 않는다 (예전에는 칸과 다른 옛 주소로 가져왔다)
             if (!(await commit())) return;
-            const r = await window.jjakkungSettings.syncCalendar();
+            const r = await bridge.syncCalendar();
             setResult(r);
             const f = calendarFlash(r);
             onMsg(f.text, f.error);

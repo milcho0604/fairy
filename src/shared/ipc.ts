@@ -26,6 +26,7 @@ import type { GestureEvent } from './gesture.ts';
 import type { PanelView } from './home-policy.ts';
 import type { HouseStyle } from './house-art.ts';
 import type { HouseSprites } from './house-room.ts';
+import type { HubMethod } from './hub-policy.ts';
 import type { AgeStage } from './illustrate.ts';
 import type { IllustEngine, LocalDrawInfo } from './local-draw.ts';
 import type { LookMotion } from './look-motion.ts';
@@ -535,6 +536,9 @@ export interface SettingsBridge {
   onFocus(listener: (section: SettingsSection) => void): void;
   onPower(listener: (onBattery: boolean) => void): void;
 }
+
+/** 큰 창 페어리, 비서 구역이 받는 설정 다리: 허용표(hub-policy.ts)의 메서드와 변경 알림만 */
+export type HubBridge = Pick<SettingsBridge, HubMethod | 'onChanged' | 'onPower'>;
 
 /** 보낼 그림: 원본은 AI 로, 작은 그림은 대화 기록으로. */
 export interface OutgoingImage {
@@ -1151,6 +1155,8 @@ export const PANEL = {
   tab: 'panel:tab',
   /** 큰 창 → 메인: 본문 칸 안 채팅 자리의 위치와 크기(창 안 CSS 픽셀). 메인이 그 자리에 채팅 view 를 얹는다. null 이면 채팅 구역이 아니다 (#165) */
   homeChat: 'panel:home-chat',
+  /** 큰 창이 지금 보여 주는 구역 (메인이 알림을 조용히 할지 정한다) */
+  homeSection: 'panel:home-section',
   /** 메인 → 큰 창: 채팅 구역을 열어(true) 달라고, 또는 닫아(false) 달라고 (채팅 열기 요청이 큰 창으로 온 때) */
   chatSection: 'panel:chat-section',
   /** 메인 → 큰 창: 채팅 view 가 받은 창 단축키(닫기, 설정, 구역 고르기)를 그대로 넘긴다. view 가 포커스를 쥐면 큰 창 본문이 키를 못 받는다 */
@@ -1510,6 +1516,8 @@ export interface PanelBridge {
   onTab(listener: (tab: PanelTab) => void): void;
   /** 큰 창 본문 칸 안 채팅 자리를 메인에 알린다 (null 이면 채팅 구역이 아니다). 자리가 바뀔 때마다 부른다 */
   homeChat(rect: HomeChatRect | null): void;
+  /** 지금 보는 구역을 메인에 알린다 */
+  homeSection(section: PanelTab | 'chat'): void;
   /** 메인이 채팅 구역을 열고 닫아 달라고 한다 */
   onChatSection(listener: (on: boolean) => void): void;
   /** 채팅 view 가 받은 창 단축키가 넘어온다 */

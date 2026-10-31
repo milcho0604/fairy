@@ -53,4 +53,10 @@
 .hub .settings-jump {
   position: static;
   margin: 8px 0 0;
+  /* 구역 바탕(--panel)과 같게. 설정 창의 --bg 를 쓰면 어두운 모드에서 어두운 띠로 떠 보인다 */
+  background: transparent;
+}
+
+.hub section[id] {
+  scroll-margin-top: 12px;
 }

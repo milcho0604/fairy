@@ -10,6 +10,7 @@ import type { Gaze } from '../shared/gaze.ts';
 import { GCAL, type GcalBridge, type GcalStatus } from '../shared/gcal.ts';
 import type { Point } from '../shared/geometry.ts';
 import type { HouseSprites } from '../shared/house-room.ts';
+import { HUB_METHODS } from '../shared/hub-policy.ts';
 import {
   type BubbleMessage,
   type CarryMessage,
@@ -19,6 +20,7 @@ import {
   FACE,
   type FaceBridge,
   type GestureEvent,
+  type HubBridge,
   IPC,
   LANGUAGE,
   type LanguageEventsBridge,
@@ -330,7 +332,13 @@ if (kind === 'settings' || kind === 'home') {
       ipcRenderer.on(SETTINGS.power, (_e, onBattery: boolean) => listener(onBattery === true));
     },
   };
-  contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
+  if (kind === 'settings') contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
+  else {
+    // 큰 창은 페어리, 비서 구역이 쓰는 메서드만 (허용표는 shared/hub-policy.ts, 메인도 같은 표로 다시 거른다)
+    const hubBridge = { onChanged: bridge.onChanged, onPower: bridge.onPower } as Record<string, unknown>;
+    for (const m of HUB_METHODS) hubBridge[m] = bridge[m];
+    contextBridge.exposeInMainWorld('jjakkungHub', hubBridge as unknown as HubBridge);
+  }
   // 구글 캘린더에 쓰기 (6단계): 상태만 오간다. 토큰은 메인에만 있다
   const gcal: GcalBridge = {
     status: () => ipcRenderer.invoke(GCAL.status),
@@ -352,7 +360,20 @@ if (kind === 'settings' || kind === 'home') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungGcal', gcal);
-  // 서버 계정, 친구, 이벤트, 내보내기는 설정 창만
+  // 서버 계정, 친구, 이벤트, 내보내기는 설정 창만. 큰 창에는 캘린더 칸의 "다른 기기에서 연결했어" 안내에 필요한 셋만
+  if (kind === 'home') {
+    contextBridge.exposeInMainWorld('jjakkungServer', {
+      status: () => ipcRenderer.invoke(SERVER.status),
+      calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
+      onChanged: (listener: (s: ServerStatus) => void) => {
+        const h = (_e: unknown, st: ServerStatus) => listener(st);
+        ipcRenderer.on(SERVER.changed, h);
+        return () => {
+          ipcRenderer.removeListener(SERVER.changed, h);
+        };
+      },
+    });
+  }
   if (kind === 'settings') {
     // 페어리 서버 계정 (이슈 #99): 상태만 오간다. 토큰은 메인에만 있다
     const server: ServerBridge = {
@@ -574,6 +595,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
       ipcRenderer.on(PANEL.tab, (_e, tab: PanelTab) => listener(tab));
     },
     homeChat: (rect) => ipcRenderer.send(PANEL.homeChat, rect),
+    homeSection: (section) => ipcRenderer.send(PANEL.homeSection, section),
     onChatSection: (listener) => {
       ipcRenderer.on(PANEL.chatSection, (_e, on: boolean) => listener(on));
     },

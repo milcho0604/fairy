@@ -66,6 +66,9 @@ export function createServer(o: {
   todos: TodoStore;
   shop: ItemStore;
   isSettings: (wc: WebContents) => boolean;
+  /** 큰 창 비서 구역 (캘린더 칸의 "다른 기기에서 연결했어" 안내만 읽고 끈다) */
+  isHub?: (wc: WebContents) => boolean;
+  hub?: () => WebContents | undefined;
   target: () => BrowserWindow | undefined;
   onWrite: (listener: (sql: string) => void) => void;
   /** 맞추기로 잔액이나 물건이 바뀌었다 */
@@ -212,6 +215,8 @@ export function createServer(o: {
   function send(s: ServerStatus) {
     const w = o.target();
     if (w && !w.isDestroyed()) w.webContents.send(SERVER.changed, s);
+    const h = o.hub?.();
+    if (h && !h.isDestroyed()) h.send(SERVER.changed, s);
     o.onStatus?.();
     // 친구 칸이 새로 보이게 됐으면(로그인, 기능 켬) 목록을 받는다. 숨게 됐으면 칸에 알린다
     const now = friends.available();
@@ -260,8 +265,10 @@ export function createServer(o: {
   });
 
   const ok = (e: IpcMainInvokeEvent) => o.isSettings(e.sender);
+  /** 큰 창은 상태 읽기와 캘린더 안내 끄기만 */
+  const okOrHub = (e: IpcMainInvokeEvent) => ok(e) || !!o.isHub?.(e.sender);
   ipcMain.handle(SERVER.status, (e) => {
-    if (!ok(e)) return undefined;
+    if (!okOrHub(e)) return undefined;
     // 설정 창을 열 때 로그인 서비스와 기능 키를 다시 묻는다 (운영자가 바꾼 스위치, 바뀌면 상태를 다시 보낸다)
     void core.refreshProviders().catch(() => undefined);
     return core.status();
@@ -354,7 +361,7 @@ export function createServer(o: {
     ok(e) ? core.backupDelete(backupId(id)) : { ok: false },
   );
   // 다른 기기의 구글 일정 연결 안내 거절 (#115)
-  ipcMain.handle(SERVER.calendarHintNo, (e) => (ok(e) ? core.calendarHintNo() : undefined));
+  ipcMain.handle(SERVER.calendarHintNo, (e) => (okOrHub(e) ? core.calendarHintNo() : undefined));
 
   // 친구 (#110): 설정 창에서만. 코드 모양은 메인이 한 번 더 본다
   const code = (v: unknown) =>

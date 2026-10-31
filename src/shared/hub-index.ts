@@ -18,32 +18,50 @@ export const HUB_ITEMS: readonly HubItem[] = [
   {
     where: 'pet',
     group: 'look',
-    words: '이름 모습 사진 펫 만들기 포즈 크기 입체 3d 옷 name look photo pose size outfit',
+    words:
+      '이름 모습 외형 꾸미기 사진 만들기 포즈 크기 입체 3d 옷 name look appearance photo pose size outfit',
   },
-  { where: 'pet', group: 'voice', words: '말투 성격 대사 말끝 효과음 persona tone speech lines wording' },
+  {
+    where: 'pet',
+    group: 'voice',
+    words: '말투 어투 성격 대사 말끝 persona tone speech lines wording personality',
+  },
   {
     where: 'pet',
     group: 'move',
-    words: '움직임 돌아다니기 걷기 걸음새 따라 보기 클릭 더블클릭 wander walk gait click cursor',
+    words: '움직임 돌아다니기 걷기 걸음새 클릭 더블클릭 커서 반응 wander walk gait click cursor movement',
   },
   { where: 'pet', group: 'friends', words: '친구 페어리 공유 갤러리 friend share gallery' },
-  { where: 'pet', group: 'mood', words: '삐짐 쉬는 날 매운맛 sulk rest days spicy' },
+  { where: 'pet', group: 'mood', words: '삐짐 토라짐 휴식 쉬는 쉬는날 매운맛 sulk rest spicy' },
   { where: 'pet', group: 'perf', words: '부스트 시스템 모니터 성능 boost monitor performance' },
-  { where: 'assist', group: 'talk', words: '말풍선 수다 가끔 한마디 말 빈도 bubbles chatter frequency' },
-  { where: 'assist', group: 'routine', words: '만나는 시간 출근 퇴근 루틴 meeting time routine' },
-  { where: 'assist', group: 'review', words: '하루 회고 쪽지 저녁 review daily note evening' },
-  { where: 'assist', group: 'calendar', words: '캘린더 구글 일정 가져오기 ics calendar google import' },
+  { where: 'assist', group: 'talk', words: '말풍선 수다 한마디 말 걸기 빈도 bubbles chatter frequency' },
+  { where: 'assist', group: 'routine', words: '만나는 시간 출근 퇴근 출퇴근 루틴 meeting time routine' },
+  { where: 'assist', group: 'review', words: '하루 회고 쪽지 저녁 아침 review daily note evening' },
+  {
+    where: 'assist',
+    group: 'calendar',
+    words: '캘린더 달력 구글 일정 가져오기 연동 ics calendar google import',
+  },
   {
     where: 'assist',
     group: 'ai',
-    words: '규칙 기억 기억하는 것 할 일 알기 도구 일기 rules memory todos tools diary',
+    words: 'ai 도우미 규칙 기억 할 일 도구 일기 helper rules memory todos tools diary',
   },
 ];
 
-/** 찾는 말(낱말마다 모두 있어야 한다)에 맞는 옮긴 항목들 */
+/**
+ * 찾는 말(낱말마다 모두 맞아야 한다)에 맞는 옮긴 항목들.
+ * 낱말의 앞부분이 항목 낱말의 앞과 맞아야 한다 ("ai" 가 "gait", "daily" 안에서 맞지 않게). 마지막 낱말은 조합 중일 수 있다
+ */
 export function movedHits(query: string, composing = false): HubItem[] {
   const words = query.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [];
-  const res = words.map((w, i) => noteQuery(w, composing && i === words.length - 1) as RegExp);
-  return HUB_ITEMS.filter((it) => res.every((re) => re.test(it.words.normalize('NFC').toLowerCase())));
+  const res = words.map((w, i) => {
+    const re = noteQuery(w, composing && i === words.length - 1) as RegExp;
+    return new RegExp(`(?:^|\\s)(?:${re.source})`, 'u');
+  });
+  return HUB_ITEMS.filter((it) => {
+    const text = it.words.normalize('NFC').toLowerCase();
+    return res.every((re) => re.test(text));
+  });
 }

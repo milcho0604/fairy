@@ -1,9 +1,13 @@
 // 설정 창 여러 탭이 같이 쓰는 것: 메인 다리, 칸(Section), 켜고 끄기(Toggle), 탭이 받는 값
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import type { SettingsSnapshot } from '../../../shared/ipc.ts';
+import type { SettingsBridge, SettingsSnapshot } from '../../../shared/ipc.ts';
 import type { Settings } from '../../../shared/settings.ts';
 
-export const bridge = window.jjakkungSettings;
+/**
+ * 설정 창은 설정 다리 전체, 큰 창의 페어리, 비서 구역은 허용표의 메서드만 있는 jjakkungHub.
+ * 구역 화면 조각이 쓰는 메서드는 모두 HUB_METHODS 안이다 (밖의 것을 부르면 큰 창에서는 함수가 없어 실패한다)
+ */
+export const bridge = (window.jjakkungSettings ?? window.jjakkungHub) as SettingsBridge;
 
 /** 탭마다 넘기는 것: 지금 설정, 바꾸기, 상태줄 안내 */
 export interface TabProps {

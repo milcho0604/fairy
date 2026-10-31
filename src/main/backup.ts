@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { app, type BrowserWindow, dialog, nativeImage } from 'electron';
+import { app, type BaseWindow, type BrowserWindow, dialog, nativeImage } from 'electron';
 import {
   BACKUP_FILE_EXT,
   type BackupHeader,
@@ -680,7 +680,7 @@ export function currentSharedPet(): SharedPet {
 
 /** .jjpet 판 2 로 저장한다. meta 로 만든 사람, 허락을 준다 (갤러리에 올리기). 저장한 경로, 그만두면 빈 글 */
 export async function exportPet(
-  parent?: BrowserWindow,
+  parent?: BaseWindow,
   meta?: Partial<PetMeta>,
   title?: string,
 ): Promise<string> {
@@ -702,7 +702,7 @@ export async function exportPet(
 /** .jjpet 을 골라 지금 펫으로. 성공하면 펫 이름, 아니면 오류 글 */
 /** asFriend 면 지금 펫을 바꾸지 않고 친구 펫으로 데려온다 (v2 여러 마리) */
 export async function importPet(
-  parent?: BrowserWindow,
+  parent?: BaseWindow,
   asFriend = false,
   log?: (tag: string, ...rest: unknown[]) => void,
   /** 고를 것 없이 이 파일로 (.jjpet 두 번 눌러 열기). 크기, 형식 검사와 바꿀지 묻기는 똑같이 한다 */

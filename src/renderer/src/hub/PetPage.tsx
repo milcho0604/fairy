@@ -46,6 +46,8 @@ export function PetPage({ snap, setSnap, update, flash }: TabProps) {
   // 이름 칸에서 나가지 않고 창을 닫아도 고친 이름을 잃지 않게 (닫을 때 저장).
   // 사용자가 칸을 고쳤을 때만 저장한다. 다른 곳(펫 만들기, 가져오기)에서 바뀐 이름은 칸에 받아 온다
   const nameEdited = useRef(false);
+  // 칸을 고치기 시작할 때의 저장된 이름. 그 사이 다른 곳이 이름을 바꾸면 쓰던 글을 버린다 (닫을 때 옛 글로 덮지 않게)
+  const nameBase = useRef(s.petName);
   const nameDraft = useRef(name);
   nameDraft.current = name;
   const savedName = useRef('');
@@ -54,7 +56,7 @@ export function PetPage({ snap, setSnap, update, flash }: TabProps) {
     const flush = () => {
       // 비었거나 그대로면 저장하지 않는다 (saveName 과 같은 기준)
       const next = cleanPetName(nameDraft.current);
-      if (nameEdited.current && next && next !== savedName.current)
+      if (nameEdited.current && next && next !== savedName.current && savedName.current === nameBase.current)
         void bridge.set({ petName: next, petNameEdited: true });
     };
     window.addEventListener('beforeunload', flush);
@@ -62,7 +64,11 @@ export function PetPage({ snap, setSnap, update, flash }: TabProps) {
   }, []);
   // 다른 곳(펫 만들기, 가져오기)에서 바뀐 이름은 고치는 중이 아닐 때 칸에 받아 온다
   useEffect(() => {
-    if (!nameEdited.current) setName(s.petName);
+    if (nameEdited.current && s.petName !== nameBase.current) nameEdited.current = false;
+    if (!nameEdited.current) {
+      nameBase.current = s.petName;
+      setName(s.petName);
+    }
   }, [s.petName]);
   useEffect(() => {
     // 펫 크기는 펫 위에서 휠, 손가락으로도 바뀐다. 이 창으로 돌아오면 다시 받는다 (밀대가 옛 값으로 펫을 되돌렸다)
@@ -103,6 +109,7 @@ export function PetPage({ snap, setSnap, update, flash }: TabProps) {
             <PetNameInput
               value={name}
               onValue={(v) => {
+                if (!nameEdited.current) nameBase.current = s.petName;
                 nameEdited.current = true;
                 setName(v);
               }}

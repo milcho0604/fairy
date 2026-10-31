@@ -157,6 +157,10 @@ function PanelShell({ kind }: { kind: SurfaceKind }) {
   /** 지금 알림의 되돌리기 (Cmd/Ctrl+Z). 되돌렸으면 true */
   const undoRef = useRef<() => boolean>(() => false);
 
+  // 큰 창이 지금 보는 구역을 메인에 알린다 (캘린더 끊김 알림은 비서 구역을 보는 중이면 조용히 한다)
+  useEffect(() => {
+    if (kind === 'home') bridge.homeSection(chatOn ? 'chat' : tab);
+  }, [kind, chatOn, tab]);
   const setTab = (next: PanelTab) => {
     setChatOn(false);
     setTabState(next);

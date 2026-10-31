@@ -209,6 +209,12 @@ try {
   await type(ko ? '로그아웃' : 'sign out');
   await sleep(300);
   check('설정에 남은 말은 안내 없이 칸이 나옴', (await s.ev("document.querySelectorAll('.moved-hits').length")) === 0);
+  await type('ai');
+  await sleep(300);
+  check('설정 찾기 "ai" 가 gait, daily 에 걸리지 않음(안내는 AI 도우미 하나)', (await s.ev("document.querySelectorAll('.moved-list li').length")) === 1);
+  await type(ko ? '휴식' : 'rest');
+  await sleep(300);
+  check('설정 찾기 동의어(휴식, rest)가 삐짐으로 안내', (await s.ev("document.querySelectorAll('.moved-list li').length")) >= 1);
   await type('');
   // ---- 딥링크: 설정 -> 큰 창 구역 ----
   await h.ev("document.querySelector('#ptab-today').click()");
@@ -216,8 +222,47 @@ try {
   check('설정에서 비서 구역 열기가 큰 창을 그 구역으로', await until(() => h.ev("document.querySelector('#ptab-assist')?.getAttribute('aria-current') === 'page'")));
   await s.ev("window.jjakkungSettings.openHome('pet')");
   check('설정에서 페어리 구역 열기', await until(() => h.ev("document.querySelector('#ptab-pet')?.getAttribute('aria-current') === 'page'")));
-  // 큰 창에서만 쓰는 것이 설정 창으로 새지 않음: 큰 창에는 설정 다리 중 서버 계정이 없다
-  check('큰 창에는 서버 계정 다리가 없음', (await h.ev('typeof window.jjakkungServer')) === 'undefined');
+  // ---- 큰 창은 허용표 안의 것만: 위험한 설정 다리 메서드는 없고, 메인도 큰 창에서 온 요청을 거절한다 ----
+  const surface = await h.ev(`JSON.stringify({ settings: typeof window.jjakkungSettings, hub: Object.keys(window.jjakkungHub ?? {}).sort(), server: Object.keys(window.jjakkungServer ?? {}).sort() })`);
+  const sf = JSON.parse(surface);
+  const danger = ['relaunch', 'importData', 'exportData', 'restoreConfirm', 'restoreUndo', 'resetCoins', 'clearAiHistory', 'deleteModel', 'checkUpdate', 'saveDiagnostics', 'reset', 'importPet', 'exportPet', 'reveal', 'openOnboarding', 'refreshMcp', 'stats'];
+  check('큰 창에는 설정 다리 전체가 없고 허용표 메서드만 있음', sf.settings === 'undefined' && sf.hub.includes('galleryShare') && danger.every((m) => !sf.hub.includes(m)), sf.hub.join(','));
+  check('큰 창 서버 다리는 안내 읽기와 끄기 셋뿐', sf.server.join(',') === 'calendarHintNo,onChanged,status', sf.server.join(','));
+  const call = (ch, ...args) => main(`(async () => { const { ipcMain } = process.mainModule.require('electron'); const f = ipcMain._invokeHandlers.get(${JSON.stringify(ch)}); return JSON.stringify(await f({ sender: __jj.home.contents }, ...${JSON.stringify(args)})); })()`);
+  await main("__jj.settings.set({ persona: 'cat', lang: '" + LANG + "' }); 1");
+  await call('settings:reset');
+  check('큰 창이 보낸 설정 기본값 복원은 거절됨', (await main('__jj.settings.get().persona')) === 'cat');
+  await call('settings:set', { lang: LANG === 'ko' ? 'en' : 'ko' });
+  check('큰 창이 구역 밖 설정(언어)을 바꾸지 못함', (await main('__jj.settings.get().lang')) === LANG);
+  await call('settings:set', { launchAtLogin: true, persona: 'friend' });
+  check('큰 창 설정 조각에 구역 밖 키가 하나라도 있으면 통째로 거절', (await main('__jj.settings.get().persona')) === 'cat');
+  await call('settings:set', { persona: 'friend' });
+  check('큰 창이 구역 안 설정(말투)은 바꿀 수 있음', (await main('__jj.settings.get().persona')) === 'friend');
+  check('큰 창이 보낸 AI 기록 지우기는 거절됨', JSON.parse(await call('settings:clear-ai-history')).ok === false);
+  check('큰 창이 보낸 내 기록 읽기는 거절됨', (await call('settings:stats')) === undefined);
+  // 다른 곳에서 바꾼 이름을 쓰던 칸이 닫을 때 옛 글로 덮지 않음
+  await h.ev("document.querySelector('#ptab-pet').click()");
+  await sleep(300);
+  await h.ev("(() => { const i = document.querySelector('#hub-pet-look input'); i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '쓰던글'); i.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await main("__jj.settings.set({ petName: '밖에서' }); 1");
+  await sleep(500);
+  await h.ev("window.dispatchEvent(new Event('beforeunload')); 1");
+  await sleep(500);
+  check('쓰던 이름 칸이 다른 곳의 새 이름을 닫을 때 덮지 않음', (await main('__jj.settings.get().petName')) === '밖에서');
+  // 캘린더 끊김 알림이 조용해지는 기준: 큰 창 비서 구역을 보는 중
+  await h.ev("document.querySelector('#ptab-assist').click()");
+  await sleep(400);
+  check('큰 창이 비서 구역을 보는 중임을 메인이 앎', (await main('__jj.home.visibleSection()')) === 'assist');
+  await h.ev("document.querySelector('#ptab-today').click()");
+  await sleep(300);
+  check('다른 구역이면 조용히 하지 않음', (await main('__jj.home.visibleSection()')) === 'today');
+  // 어두운 모드 건너뛰기 줄: 구역 바탕과 같은 느낌(띠 없음)
+  await h.dark(true);
+  await h.ev("document.querySelector('#ptab-assist').click()");
+  await sleep(300);
+  check('어두운 모드 건너뛰기 줄 바탕이 투명', (await h.ev("getComputedStyle(document.querySelector('#hub-page-assist .settings-jump')).backgroundColor")) === 'rgba(0, 0, 0, 0)');
+  await h.shot(`${TAG}-home-assist-top-${LANG}-dark`);
+  await h.dark(false);
   // ---- 로그인 상태의 데이터와 계정 탭: 서버 상태를 메인에서 흉내 내고 로그아웃 단추를 본다 ----
   await main(`(() => {
     const core = __jj.server.core;
