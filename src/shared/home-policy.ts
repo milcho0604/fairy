@@ -38,7 +38,9 @@ export function panelTarget(view: PanelView, home: HomeLook): 'panel' | 'home' {
  * 앱을 다시 열었다(맥 Dock 아이콘 누르기, Spotlight): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살리고(home),
  * 아니면 숨은 펫을 부른다(pet). 우리가 숨겨 둔 큰 창은 Dock 아이콘이 없으니 펫을 부르는 길이다
  */
-export function reopenTarget(why: string, home: HomeLook): 'home' | 'pet' {
+export function reopenTarget(why: string, home: HomeLook, dockIcon = false): 'home' | 'pet' {
+  // Dock 아이콘을 늘 두는 설정이면 아이콘을 누른 것이 큰 창을 여는 뜻이다 (숨겨 뒀거나 없어도)
+  if (why === 'activate' && dockIcon) return 'home';
   return why === 'activate' && homeOpen(home) ? 'home' : 'pet';
 }
 

@@ -83,6 +83,14 @@ export function EaseTab({ snap, update, flash }: TabProps) {
           disabled={!snap.packaged}
           onChange={(v) => update({ launchAtLogin: v })}
         />
+        {mac && (
+          <Toggle
+            label={t('settings.dockIcon')}
+            hint={t('settings.dockIconHint')}
+            on={s.dockIcon}
+            onChange={(v) => update({ dockIcon: v })}
+          />
+        )}
         {/* 시작 안내는 업데이트가 아니라 시작 칸에 (예전엔 업데이트 칸 안에 있었다) */}
         <div className="action-row">
           <button type="button" className="ghost" onClick={() => bridge.openOnboarding()}>
