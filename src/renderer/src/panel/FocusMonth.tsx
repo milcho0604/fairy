@@ -188,7 +188,7 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
           );
         })}
       </fieldset>
-      <p className="fm-detail" role="status" aria-live="polite">
+      <p className={`fm-detail${picked?.day ? '' : ' idle'}`} role="status" aria-live="polite">
         {picked?.day
           ? picked.min === 0
             ? t('records.month.detailNone', { date: dateLabel(picked.day) })
@@ -206,22 +206,24 @@ export function FocusMonth({ s, open }: { s: PanelState; open?: boolean }) {
             ? t('records.month.empty')
             : t('records.month.pick')}
       </p>
-      <div className="fm-legend" aria-hidden="true">
-        <small>{detail ? t('records.month.legendMin') : t('records.month.legend')}</small>
-        <span className="fm-swatches">
-          <span>
-            <i className="lv0" />
-            <small>0</small>
-          </span>
-          {FOCUS_STEPS.map((min, i) => (
-            <span key={min} title={t('records.month.legendStep', { min })}>
-              <i className={`lv${i + 1}`} />
-              <small>{min}+</small>
+      <div className="fm-foot">
+        <div className="fm-legend" aria-hidden="true">
+          <small>{detail ? t('records.month.legendMin') : t('records.month.legend')}</small>
+          <span className="fm-swatches">
+            <span>
+              <i className="lv0" />
+              <small>0</small>
             </span>
-          ))}
-        </span>
+            {FOCUS_STEPS.map((min, i) => (
+              <span key={min} title={t('records.month.legendStep', { min })}>
+                <i className={`lv${i + 1}`} />
+                <small>{min}+</small>
+              </span>
+            ))}
+          </span>
+        </div>
+        <small className="fm-note">{t('records.month.note')}</small>
       </div>
-      <small className="fm-note">{t('records.month.note')}</small>
     </details>
   );
 }

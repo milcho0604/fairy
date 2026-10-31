@@ -34,7 +34,7 @@ export const ko = {
   'records.col.focus': '집중과 한 주',
   'records.col.keep': '일기와 휴지통',
   'records.month.title': '집중 달력',
-  'records.month.hint': '색이 진할수록 그날 집중한 시간이 길어. 날짜를 누르면 자세한 기록을 볼 수 있어.',
+  'records.month.hint': '색이 진할수록 그날 집중한 시간이 길어.',
   'records.month.summary': (v: { min: string; days: number }) => `${v.min}, ${v.days}일`,
   'records.month.prev': '지난달',
   'records.month.next': '다음 달',
@@ -143,7 +143,7 @@ export const en: Translation<typeof ko> = {
   'records.col.focus': 'Focus and this week',
   'records.col.keep': 'Diary and trash',
   'records.month.title': 'Focus calendar',
-  'records.month.hint': 'Darker days mean more focus time. Select a day to see its details.',
+  'records.month.hint': 'Darker days mean more focus time.',
   'records.month.summary': (v: { min: string; days: number }) =>
     `${v.min}, ${v.days} ${v.days === 1 ? 'day' : 'days'}`,
   'records.month.prev': 'Previous month',

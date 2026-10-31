@@ -257,9 +257,19 @@ try {
       check(`${width}: 접으면 다시 숨고 기억도 접힘`, (await cellsInfo(hw2)).every((c) => c.min === null) && (await hw2.ev(`localStorage.getItem('jj.records.focusDetail')`)) === '0');
       // 키보드로도 되는 단추인지: 진짜 button 이고 탭 순서에 있다
       check(`${width}: 단추는 button 이고 탭으로 닿는다`, await hw2.ev(`${btn}.tagName === 'BUTTON' && ${btn}.tabIndex >= 0`));
+      // 설명과 자리표시가 겹치지 않는다: 설명에는 "날짜를 누르면" 이 없고, 고르기 전 자리표시는 흐린 작은 글
+      check(`${width}: 설명 글에는 날짜를 누르라는 말이 없다`, !/날짜를 누르|Select a day|Tap a day/.test(await hw2.ev(`document.querySelector('.fm-head > small').textContent`)));
+      check(`${width}: 고르기 전 자리표시(.fm-detail.idle)는 흐린 작은 글`, await hw2.ev(`(() => { const e = document.querySelector('.fm-detail.idle'); if (!e) return false; const cs = getComputedStyle(e); return parseFloat(cs.fontSize) <= 11.6 && cs.color === getComputedStyle(document.querySelector('.fm-note')).color; })()`));
+      check(`${width}: 범례와 안내 글이 한 덩어리(.fm-foot)`, await hw2.ev(`!!document.querySelector('.fm-foot .fm-legend') && !!document.querySelector('.fm-foot .fm-note')`));
+      // 이번 주 막대: 모든 요일 글자가 같은 기준선, 막대 바닥도 같은 선, 오늘은 굵게만, 아직 안 온 날은 낮은 흐린 자리
+      const wk = await hw2.ev(`[...document.querySelectorAll('.week-bar')].map((b) => { const sm = b.querySelector('small').getBoundingClientRect(); const i = b.querySelector('i').getBoundingClientRect(); return { cls: b.className, label: Math.round(sm.bottom * 10) / 10, bar: Math.round(i.bottom * 10) / 10, h: Math.round(i.height * 10) / 10, w: getComputedStyle(b.querySelector('small')).fontWeight }; })`);
+      check(`${width}: 이번 주 7칸의 요일 글자가 같은 기준선`, wk.length === 7 && new Set(wk.map((x) => x.label)).size === 1, JSON.stringify(wk.map((x) => x.label)));
+      check(`${width}: 이번 주 막대 바닥이 모두 같은 선 (0개인 날, 오늘, 아직 안 온 날 포함)`, new Set(wk.map((x) => x.bar)).size === 1, JSON.stringify(wk.map((x) => x.bar)));
+      check(`${width}: 아직 안 온 날은 낮은 자리 막대(8px 이하)`, wk.filter((x) => x.cls.includes('future')).every((x) => x.h <= 8) && wk.some((x) => x.cls.includes('future')));
+      check(`${width}: 오늘 글자만 굵다`, wk.filter((x) => Number(x.w) >= 700).length === 1 && Number(wk.find((x) => x.cls.includes('is-today')).w) >= 700);
       // 날짜를 누르면 접힌 채여도 아래에 그날 분이 나온다
       await hw2.click(`document.querySelector('.fm-cell.lv3, .fm-cell.lv4')`);
-      check(`${width}: 접힌 채 날짜를 누르면 그날 기록이 아래에 나온다`, /\d/.test(await hw2.ev(`document.querySelector('.fm-detail').innerText`)));
+      check(`${width}: 접힌 채 날짜를 누르면 그날 기록이 아래에 나온다`, /\d/.test(await hw2.ev(`document.querySelector('.fm-detail').innerText`)) && !(await hw2.ev(`!!document.querySelector('.fm-detail.idle')`)));
       await closeHome();
       continue;
     }

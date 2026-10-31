@@ -255,8 +255,20 @@
   line-height: 1.45;
 }
 
+.fm-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+/* 날짜를 고르기 전 자리표시는 흐린 작은 글로 (달력이 먼저 보이게) */
+.fm-detail.idle {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 .fm-legend {
-  margin-top: 6px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -273,7 +285,7 @@
 
 .fm-note {
   display: block;
-  margin-top: 4px;
+  margin-top: 0;
   line-height: 1.45;
 }
 
