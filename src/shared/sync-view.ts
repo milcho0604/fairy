@@ -1,7 +1,10 @@
 // 기기 간 동기화의 상태 (설정 창이 서버 상태 ServerStatus.sync 로 받는다, docs/sync-plan.md 7절).
 
-/** off: 꺼짐, enabling: 켜는 중, needCode: 복구 코드 넣기 필요, on: 켜짐 */
-export type SyncPhase = 'off' | 'enabling' | 'needCode' | 'on';
+/**
+ * off: 꺼짐, enabling: 켜는 중, needCode: 복구 코드 넣기 필요, on: 켜짐,
+ * askUpload: 이 컴퓨터는 다른 계정과 맞추던 것이라, 이 컴퓨터 항목을 이 계정에 올릴지 서버 것만 받을지 고를 때까지 멈춤
+ */
+export type SyncPhase = 'off' | 'enabling' | 'needCode' | 'askUpload' | 'on';
 
 /**
  * 멈춘 까닭. epoch: 다른 곳에서 서버 사본을 지우고 다시 시작했다, gen: 다른 기기가 열쇠를 바꿨다,

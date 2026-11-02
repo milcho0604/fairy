@@ -318,6 +318,7 @@ test('보류: 풀리지 않는 항목, 적용에 실패하는 항목은 그 항�
   assert.equal(num(a.db, 'select count(*) as n from note where title = ?', 'B 에서 새로'), 1);
   // 문제가 사라지면(트리거 제거) 다시 적용 시도로 들어온다
   b.db.exec('drop trigger boom');
+  b.clock.now += 2 * 60_000; // 보류 다시 하기 간격(1분)이 지난 뒤
   await b.engine.run(true);
   assert.equal(num(b.db, 'select count(*) as n from note'), 4);
   assert.equal(b.engine.view().held, 1);

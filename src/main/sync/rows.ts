@@ -31,10 +31,36 @@ const TABLES = `
     orig text not null,
     at integer not null
   );
+  -- 부모가 없어 끊고 쓴 반복 연결의 원래 부모 uid. 부모가 적용되면 다시 잇는다 (끊은 것은 칸 시각을 올리지 않는다)
+  create table if not exists sync_link (
+    kind text not null,
+    uid text not null,
+    field text not null,
+    target text not null,
+    primary key (kind, uid, field)
+  ) without rowid;
+  -- 반복 연결이 가리키는 행의 번호와 uid (부모를 영구 삭제해도 자식의 연결이 가리키던 uid 를 알려고. 번호는 기기마다 다르다)
+  create table if not exists sync_idmap (
+    kind text not null,
+    id integer not null,
+    uid text not null,
+    primary key (kind, id)
+  ) without rowid;
+  -- 다른 계정의 것이라 이 계정에 올리지 않기로 한 항목 (처음 보낼 때 빼고, 보낸 뒤나 새로 고친 뒤에는 풀린다)
+  create table if not exists sync_skip (
+    kind text not null,
+    uid text not null,
+    at integer not null,
+    primary key (kind, uid)
+  ) without rowid;
 `;
 
 export function ensureTables(db: Db): void {
   db.exec(TABLES);
+  // 보류 다시 하기 간격: 처음 만든 표에는 칸이 없으니 더한다
+  const cols = (db.prepare('pragma table_info(sync_hold)').all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes('tries')) db.exec('alter table sync_hold add column tries integer not null default 0');
+  if (!cols.includes('next')) db.exec('alter table sync_hold add column next integer not null default 0');
 }
 
 type Row = Record<string, unknown>;
@@ -54,10 +80,18 @@ export { isKind };
 
 // ---- 읽기: 표 행을 항목으로 ----
 
+/** 연결이 가리키는 행의 uid. 행이 영구 삭제됐으면 지우기 전에 적어 둔 uid (자식이 보내는 값이 기기마다 같도록) */
 const uidOf = (db: Db, table: string, id: unknown): string | null => {
   if (id === null || id === undefined) return null;
   const r = one(db, `select uid from ${table} where id = ?`, id as number);
-  return r && typeof r.uid === 'string' ? r.uid : null;
+  if (r && typeof r.uid === 'string') return r.uid;
+  const m = one(db, 'select uid from sync_idmap where kind = ? and id = ?', table, id as number);
+  return m ? String(m.uid) : null;
+};
+
+/** 부모가 될 수 있는 행(모든 할 일, 반복 일정 원본)의 번호와 uid 를 적어 둔다 */
+const idmapPut = (db: Db, kind: SyncKind, id: number, uid: string): void => {
+  run(db, 'insert or replace into sync_idmap (kind, id, uid) values (?, ?, ?)', kind, id, uid);
 };
 
 const idOf = (db: Db, table: string, uid: string): number | undefined => {
@@ -113,6 +147,7 @@ export function readItem(
   if (!r) return undefined;
   const id = Number(r.id);
   let f: Record<string, Json>;
+  if (kind === 'todo' || (kind === 'event' && r.repeat_series === r.id)) idmapPut(db, kind, id, uid);
   if (kind === 'todo') {
     f = {
       title: r.title as string,
@@ -123,7 +158,7 @@ export function readItem(
       coin_paid: Number(r.coin_paid),
       deleted_at: (r.deleted_at as number | null) ?? null,
       repeat: (r.repeat as string | null) ?? null,
-      repeat_of: uidOf(db, 'todo', r.repeat_of),
+      repeat_of: uidOf(db, 'todo', r.repeat_of) ?? linkOf(db, 'todo', uid, 'repeat_of'),
       repeat_anchor: (r.repeat_anchor as string | null) ?? null,
       pinned_at: (r.pinned_at as number | null) ?? null,
       due_min: (r.due_min as number | null) ?? null,
@@ -156,7 +191,11 @@ export function readItem(
     // 지웠다 되살린 회차는 다시 추적 대상이 아니지만 지운 쪽이 서버나 다른 기기에 있어 되살린 것을 알려야 한다
     if (!eventTracked(r) && !getSeen(db, uid) && !hasClock(db, 'event', uid)) return undefined;
     const series =
-      r.repeat_series === null ? null : r.repeat_series === r.id ? uid : uidOf(db, 'event', r.repeat_series);
+      r.repeat_series === null
+        ? linkOf(db, 'event', uid, 'repeat_series')
+        : r.repeat_series === r.id
+          ? uid
+          : uidOf(db, 'event', r.repeat_series);
     f = {
       title: r.title as string,
       start_at: Number(r.start_at),
@@ -228,7 +267,8 @@ function write(db: Db, item: SyncItem, o: { now: number; degrade?: boolean }): A
       // 앞 회차가 이 기기에 없어도, 서버가 아는 항목인데 행이 없으면 영구 삭제된 것이니 연결만 끊고 쓴다
       if (target === undefined && !o.degrade && !getSeen(db, f.repeat_of)) return 'parent';
       repeatOf = target ?? null;
-    }
+      linkNote(db, 'todo', uid, 'repeat_of', target === undefined ? f.repeat_of : null);
+    } else linkNote(db, 'todo', uid, 'repeat_of', null);
     const vals = [
       txt(f.title, ''),
       txt(f.due),
@@ -331,11 +371,56 @@ function write(db: Db, item: SyncItem, o: { now: number; degrade?: boolean }): A
     id = writeEvent(db, item, have, o);
     if (id < 0) return 'parent';
   }
+  if (kind === 'todo' || (kind === 'event' && item.f.repeat_series === uid)) idmapPut(db, kind, id, uid);
   // 칸 시각은 합친 결과 그대로
   const put = db.prepare('insert or replace into sync_clock (kind, uid, field, t) values (?, ?, ?, ?)');
   for (const k of Object.keys(f)) put.run(kind, uid, k, item.c[k] ?? 0);
   run(db, 'delete from sync_tomb where kind = ? and uid = ?', kind, uid);
+  relink(db, kind, uid, id);
   return 'ok';
+}
+
+/** 끊고 쓴 연결의 원래 부모 uid 를 적어 둔다 (target 이 null 이면 지운다) */
+function linkNote(db: Db, kind: SyncKind, uid: string, field: string, target: string | null): void {
+  if (target === null)
+    run(db, 'delete from sync_link where kind = ? and uid = ? and field = ?', kind, uid, field);
+  else
+    run(
+      db,
+      'insert or replace into sync_link (kind, uid, field, target) values (?, ?, ?, ?)',
+      kind,
+      uid,
+      field,
+      target,
+    );
+}
+
+const linkOf = (db: Db, kind: SyncKind, uid: string, field: string): string | null => {
+  const r = one(
+    db,
+    'select target from sync_link where kind = ? and uid = ? and field = ?',
+    kind,
+    uid,
+    field,
+  );
+  return r ? String(r.target) : null;
+};
+
+/** 방금 쓴 행이 부모를 기다리던 자식의 부모면 다시 잇는다 (칸 시각은 그대로) */
+function relink(db: Db, kind: SyncKind, uid: string, id: number): void {
+  if (kind !== 'todo' && kind !== 'event') return;
+  for (const l of all(db, 'select kind, uid, field from sync_link where target = ?', uid)) {
+    if (l.kind !== kind) continue;
+    const col = l.field === 'repeat_of' ? 'repeat_of' : 'repeat_series';
+    run(db, `update ${kind} set ${col} = ? where uid = ?`, id, String(l.uid));
+    run(
+      db,
+      'delete from sync_link where kind = ? and uid = ? and field = ?',
+      kind,
+      String(l.uid),
+      String(l.field),
+    );
+  }
 }
 
 /** 일정 한 행(과 반복 시리즈의 딸린 표)을 쓴다. 시리즈가 아직 없으면 -1 */
@@ -352,7 +437,8 @@ function writeEvent(
     const target = idOf(db, 'event', f.repeat_series);
     if (target === undefined && !o.degrade && !getSeen(db, f.repeat_series)) return -1;
     series = target ?? null;
-  }
+    linkNote(db, 'event', uid, 'repeat_series', target === undefined ? f.repeat_series : null);
+  } else linkNote(db, 'event', uid, 'repeat_series', null);
   const reminds = asList(f.reminders);
   const start = num(f.start_at, 0) as number;
   const vals = [
@@ -540,6 +626,7 @@ function clean(db: Db, kind: SyncKind, uid: string): void {
   run(db, 'delete from sync_clock where kind = ? and uid = ?', kind, uid);
   run(db, 'delete from sync_outbox where kind = ? and uid = ?', kind, uid);
   run(db, 'delete from sync_tomb where kind = ? and uid = ?', kind, uid);
+  run(db, 'delete from sync_link where kind = ? and uid = ?', kind, uid);
 }
 
 export const cleanKey = clean;
@@ -597,11 +684,15 @@ export function addHold(
   blob: string,
   now: number,
 ): void {
-  // 같은 항목을 다시 보류해도 처음 보류한 때를 둔다 (부모가 오래 안 오는지 재는 데 쓴다)
+  // 같은 항목을 다시 보류해도 처음 보류한 때를 둔다 (부모가 오래 안 오는지 재는 데 쓴다).
+  // 다시 하기는 간격을 늘려 간다 (1분, 2분, ... 30분): 계속 실패하는 항목이 로그와 일을 반복해 만들지 않게
   run(
     db,
-    `insert or replace into sync_hold (uid, kind, rev, reason, blob, at)
-     values (?1, ?2, ?3, ?4, ?5, coalesce((select at from sync_hold where uid = ?1), ?6))`,
+    `insert or replace into sync_hold (uid, kind, rev, reason, blob, at, tries, next)
+     values (?1, coalesce(?2, (select kind from sync_hold where uid = ?1)), ?3, ?4, ?5,
+       coalesce((select at from sync_hold where uid = ?1), ?6),
+       coalesce((select tries from sync_hold where uid = ?1), -1) + 1,
+       ?6 + min(1800000, 60000 * (1 << min(coalesce((select tries from sync_hold where uid = ?1), -1) + 1, 10))))`,
     uid,
     kind,
     rev,
@@ -610,6 +701,11 @@ export function addHold(
     now,
   );
 }
+
+export const holdTries = (db: Db, uid: string): number | undefined => {
+  const r = one(db, 'select tries from sync_hold where uid = ?', uid);
+  return r ? Number(r.tries) : undefined;
+};
 
 export function dropHold(db: Db, uid: string): void {
   run(db, 'delete from sync_hold where uid = ?', uid);
@@ -622,12 +718,14 @@ export interface Hold {
   reason: string;
   blob: string;
   at: number;
+  /** 다시 해 봐도 되는 때 */
+  next: number;
 }
 
 export function holds(db: Db, reason?: string): Hold[] {
   return all(
     db,
-    `select uid, kind, rev, reason, blob, at from sync_hold ${reason ? 'where reason = ?' : ''} order by rev`,
+    `select uid, kind, rev, reason, blob, at, next from sync_hold ${reason ? 'where reason = ?' : ''} order by rev`,
     ...(reason ? [reason] : []),
   ).map((r) => ({
     uid: String(r.uid),
@@ -636,6 +734,7 @@ export function holds(db: Db, reason?: string): Hold[] {
     reason: String(r.reason),
     blob: String(r.blob),
     at: Number(r.at),
+    next: Number(r.next),
   }));
 }
 
@@ -719,6 +818,29 @@ export function enqueueAll(db: Db): number {
       select 'event', uid from event
         where uid is not null and source = 'local'
           and (repeat_series is null or repeat_series = id or user_edited = 1 or track = 1 or deleted_at is not null);
+    delete from sync_outbox where (kind, uid) in (
+      select s.kind, s.uid from sync_skip s
+        where not exists (select 1 from sync_clock c where c.kind = s.kind and c.uid = s.uid and c.t > s.at));
   `);
   return outboxCount(db) - before;
 }
+
+/** 이 컴퓨터의 모든 항목을 이 계정에 올리지 않기로 한다: 보낼 목록을 비우고 표시를 남긴다 (이후 새로 고친 항목은 올라간다) */
+export function skipAll(db: Db, now: number): void {
+  db.exec('delete from sync_outbox');
+  for (const [kind, where] of [
+    ['todo', 'uid is not null'],
+    ['todo_step', 'uid is not null'],
+    ['note', 'uid is not null'],
+    ['event', "uid is not null and source = 'local'"],
+  ] as const)
+    run(
+      db,
+      `insert or replace into sync_skip (kind, uid, at) select '${kind}', uid, ? from ${kind} where ${where}`,
+      now,
+    );
+}
+
+export const skipDrop = (db: Db, kind: SyncKind, uid: string): void => {
+  run(db, 'delete from sync_skip where kind = ? and uid = ?', kind, uid);
+};

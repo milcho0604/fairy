@@ -57,10 +57,20 @@ export function formatRecoveryCode(canonical: string): string {
  * 25글자가 아니거나 없는 글자(U 등)가 있으면 null
  */
 export function normalizeRecoveryCode(input: string): string | null {
-  // 공백과 모든 줄표 모양(하이픈, 긴 줄표, 마이너스 기호)과 밑줄은 지운다
+  // 공백류(줄바꿈, 줄 바꿈 없는 공백, 전각 공백 포함)와 줄표 모양과 눈에 안 보이는 글자와 밑줄은 지운다
   const dash = (c: string) => {
     const n = c.charCodeAt(0);
-    return c === '-' || c === '_' || (n >= 0x2010 && n <= 0x2015) || n === 0x2212;
+    // 줄표 모양, 마이너스 기호, 눈에 안 보이는 글자(제로폭 공백, 이음 없는 글자, 이음 글자, 바이트 순서 표식, 단어 이음)
+    return (
+      c === '-' ||
+      c === '_' ||
+      (n >= 0x2010 && n <= 0x2015) ||
+      n === 0x2212 ||
+      (n >= 0x200b && n <= 0x200d) ||
+      n === 0x2060 ||
+      n === 0xfeff ||
+      n === 0x00ad
+    );
   };
   const s = [...input.toUpperCase()]
     .filter((c) => !/\s/.test(c) && !dash(c))

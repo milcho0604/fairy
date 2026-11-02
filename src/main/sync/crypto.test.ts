@@ -33,6 +33,10 @@ test('복구 코드 정규화: 대소문자, 하이픈, 공백, O/0, I/L/1 혼�
     normalizeRecoveryCode(['01234', '56789', 'ABCDE', 'FGHJK', 'MNPQR'].join(String.fromCharCode(0x2013))),
     canon,
   );
+  // 붙여 넣을 때 따라온 눈에 안 보이는 글자와 여러 공백류
+  const hidden = ['\u200b', '\u200c', '\u200d', '\ufeff', '\u2060', '\u00ad'].join('');
+  assert.equal(normalizeRecoveryCode(`${hidden}01234\u00a056789\u3000ABCDE\tFGHJK\r\nMNPQR${hidden}`), canon);
+  assert.equal(normalizeRecoveryCode('01\u200b234-56789-ABCDE-FGHJK-MNPQR'), canon);
   // I 와 L 은 1 로 읽는다
   assert.equal(normalizeRecoveryCode('IIIII-LLLLL-iiiii-lllll-11111'), '1'.repeat(25));
   // 길이가 다르거나 없는 글자(U)가 있으면 null

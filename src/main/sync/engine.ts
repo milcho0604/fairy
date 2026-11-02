@@ -55,6 +55,10 @@ export interface SyncState {
   paused: 'epoch' | 'gen' | 'code' | null;
   lastAt: number | null;
   full: boolean;
+  /** 마지막으로 맞춘 계정 코드. 끄거나 로그아웃해도 남긴다 (다른 계정에 이 컴퓨터 항목을 자동으로 올리지 않으려고) */
+  lastAccount: string | null;
+  /** 켰는데 이 컴퓨터는 다른 계정과 맞추던 것이다: 올릴지 받기만 할지 고를 때까지 멈춘다 */
+  ask: boolean;
 }
 
 export const freshSyncState = (random: (n: number) => Uint8Array = randomBytes): SyncState => ({
@@ -69,6 +73,8 @@ export const freshSyncState = (random: (n: number) => Uint8Array = randomBytes):
   paused: null,
   lastAt: null,
   full: false,
+  lastAccount: null,
+  ask: false,
 });
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
@@ -87,6 +93,8 @@ export function parseSyncState(raw: unknown, random?: (n: number) => Uint8Array)
   s.paused = r.paused === 'epoch' || r.paused === 'gen' || r.paused === 'code' ? r.paused : null;
   if (isCount(r.lastAt)) s.lastAt = r.lastAt;
   s.full = r.full === true;
+  s.lastAccount = typeof r.lastAccount === 'string' ? r.lastAccount : null;
+  s.ask = r.ask === true && s.on;
   return s;
 }
 
@@ -119,10 +127,11 @@ export interface SyncDeps {
 export type EnableResult =
   | { ok: true; kind: 'created'; code: string }
   | { ok: true; kind: 'needCode' | 'on' }
-  | { ok: false; error: string };
+  /** code: 서버에 열쇠가 생겼는데 이 기기에 저장하지 못했고 되돌리지도 못했을 때, 사용자가 적어 둘 복구 코드 */
+  | { ok: false; error: string; code?: string };
 
 export type CodeResult = { ok: true } | { ok: false; error: string };
-export type NewCodeResult = { ok: true; code: string } | { ok: false; error: string };
+export type NewCodeResult = { ok: true; code: string } | { ok: false; error: string; code?: string };
 
 /** 묶음 하나의 항목 수와 덩어리 합(base64 글자) 상한. 서버 본문 상한 4MB 아래 */
 const BATCH_ITEMS = 200;
@@ -165,6 +174,8 @@ export function createSyncEngine(d: SyncDeps) {
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let lastVersion = -1;
+  /** 계정이 끝날 때마다 오른다: 기다리던 일이 돌아와 보니 계정이 끝났으면 결과를 버린다 */
+  let session = 0;
 
   const save = () => {
     try {
@@ -175,21 +186,22 @@ export function createSyncEngine(d: SyncDeps) {
   };
 
   // 열쇠는 운영체제 열쇠에서 풀어야 해서 한 번만 읽어 기억한다 (상태를 자주 묻는다)
-  let keyCache: Buffer | null | undefined;
+  let keyCache: Buffer | undefined;
   const loadKey = (): Buffer | null => {
-    if (keyCache !== undefined) return keyCache;
+    // 찾은 열쇠만 기억한다: 시작할 때 운영체제 열쇠를 잠깐 못 읽은 것을 굳히지 않는다
+    if (keyCache) return keyCache;
     let key: Buffer | null = null;
     if (!d.key.unreadable()) {
       const s = d.key.get();
       const b = s ? Buffer.from(s, 'base64') : null;
       key = b && b.length === 32 ? b : null;
     }
-    keyCache = key;
+    if (key) keyCache = key;
     return key;
   };
   const storeKey = (k: Buffer | null) => {
     d.key.set(k ? k.toString('base64') : null);
-    keyCache = k;
+    keyCache = k ?? undefined;
   };
 
   function view(): SyncView {
@@ -198,9 +210,11 @@ export function createSyncEngine(d: SyncDeps) {
       ? 'enabling'
       : !on
         ? 'off'
-        : loadKey() && !st.paused
-          ? 'on'
-          : 'needCode';
+        : st.ask && loadKey()
+          ? 'askUpload'
+          : loadKey() && !st.paused
+            ? 'on'
+            : 'needCode';
     const shown: SyncProblem | null = !on
       ? problem === 'account'
         ? 'account'
@@ -235,7 +249,8 @@ export function createSyncEngine(d: SyncDeps) {
     } catch {
       // 지우지 못해도 아래에서 꺼진 상태로 둔다
     }
-    st = { ...freshSyncState(random), dev: st.dev };
+    session += 1;
+    st = { ...freshSyncState(random), dev: st.dev, lastAccount: st.account ?? st.lastAccount };
     rows.resetSeen(d.db);
     problem = null;
     offline = false;
@@ -278,10 +293,16 @@ export function createSyncEngine(d: SyncDeps) {
       offline = true;
       backoff();
     } else if (r.status === 409 && (r.error === 'epoch' || r.error === 'no_key')) pause('epoch');
-    else if (r.status === 401 || (r.status === 403 && r.error === 'login')) problem = 'login';
-    else if (r.status === 403) problem = 'feature';
-    else if (r.status === 426) problem = 'update';
-    else if (r.status === 429) {
+    else if (r.status === 401 || (r.status === 403 && r.error === 'login')) {
+      problem = 'login';
+      backoff();
+    } else if (r.status === 403) {
+      problem = 'feature';
+      backoff();
+    } else if (r.status === 426) {
+      problem = 'update';
+      backoff();
+    } else if (r.status === 429) {
       // 서버가 분당 요청 수를 막았다 (아주 많은 항목을 처음 받을 때): 한 창(1분)을 쉰다. 받은 곳까지는 커서에 남아 이어 받는다
       backoff(61_000);
     } else if (r.status === 413 && r.error === 'sync_full') {
@@ -319,10 +340,12 @@ export function createSyncEngine(d: SyncDeps) {
   }
 
   /** 받은 변경 하나를 저장 파일에 적용한다. 적용한 것이 있으면 true. 던지지 않는다 (실패는 그 항목만 보류) */
+  let curKind: string | null = null;
   function ingestChange(ch: SyncChange, degrade = false): boolean {
     const seen = rows.getSeen(d.db, ch.uid);
     if (seen && seen.rev >= ch.rev && !degrade) return false;
     const now = d.now();
+    curKind = null;
     d.db.exec('savepoint sync_item');
     try {
       const applied = handle(ch, now, degrade);
@@ -331,8 +354,10 @@ export function createSyncEngine(d: SyncDeps) {
     } catch (err) {
       d.db.exec('rollback to sync_item');
       d.db.exec('release sync_item');
-      d.log('sync', '적용 실패', err instanceof Error ? err.message : String(err));
-      rows.addHold(d.db, ch.uid, null, ch.rev, ch.deleted ? 'tomb' : 'apply', ch.blob, now);
+      // 같은 항목이 되풀이해 실패해도 로그는 처음 한 번만
+      if (rows.holdTries(d.db, ch.uid) === undefined)
+        d.log('sync', '적용 실패', err instanceof Error ? err.message : String(err));
+      rows.addHold(d.db, ch.uid, curKind, ch.rev, ch.deleted ? 'tomb' : 'apply', ch.blob, now);
       return false;
     }
   }
@@ -354,6 +379,7 @@ export function createSyncEngine(d: SyncDeps) {
       rows.addHold(d.db, ch.uid, null, ch.rev, 'decrypt', ch.blob, now);
       return false;
     }
+    curKind = (SYNC_KINDS as readonly string[]).includes(opened.kind) ? opened.kind : null;
     if (ch.deleted) {
       if (!(SYNC_KINDS as readonly string[]).includes(opened.kind) || typeof opened.tomb !== 'number') {
         rows.addHold(d.db, ch.uid, null, ch.rev, 'decrypt', ch.blob, now);
@@ -465,8 +491,20 @@ export function createSyncEngine(d: SyncDeps) {
    * (부모가 영영 안 오는 항목이 계속 막히지 않게). 단계는 부모 없이는 쓸 수 없어 계속 보류한다
    */
   function retryHolds(last: boolean): number {
-    const retriable = () => rows.holds(d.db).filter((h) => h.reason === 'parent' || h.reason === 'apply');
-    const asChange = (h: rows.Hold) => ({ uid: h.uid, rev: h.rev, blob: h.blob, deleted: false });
+    // 부모를 기다리는 것은 늘, 적용 실패와 삭제 표식 실패는 간격을 늘려 가며 다시 한다
+    const retriable = () =>
+      rows
+        .holds(d.db)
+        .filter(
+          (h) =>
+            h.reason === 'parent' || ((h.reason === 'apply' || h.reason === 'tomb') && h.next <= d.now()),
+        );
+    const asChange = (h: rows.Hold) => ({
+      uid: h.uid,
+      rev: h.rev,
+      blob: h.blob,
+      deleted: h.reason === 'tomb',
+    });
     if (retriable().length === 0) return 0;
     let n = applyBatch(retriable().map(asChange));
     if (last) {
@@ -483,8 +521,10 @@ export function createSyncEngine(d: SyncDeps) {
   /** 받기. 계속해도 되면 true */
   async function pull(): Promise<boolean> {
     let appliedAny = false;
+    const mine = session;
     for (;;) {
       const r = await d.call((api, s) => api.syncChanges(s, st.cursor, PAGE, st.epoch));
+      if (mine !== session) return false;
       if (!r.ok) {
         failed(r);
         return false;
@@ -550,6 +590,8 @@ export function createSyncEngine(d: SyncDeps) {
 
   /** 보낸 항목이 받아들여졌다: 본 번호를 적고, 그사이 고치지 않았으면 보낼 목록에서 뺀다 */
   function sentOk(b: Built, rev: number): void {
+    rows.dropHold(d.db, b.uid);
+    rows.skipDrop(d.db, b.kind, b.uid);
     if ('tomb' in b.sent) {
       rows.setSeen(d.db, b.kind, b.uid, rev);
       if (rows.tombOf(d.db, b.kind, b.uid) === b.sent.tomb) {
@@ -568,6 +610,7 @@ export function createSyncEngine(d: SyncDeps) {
   async function push(): Promise<boolean> {
     const key = loadKey();
     if (!key) return false;
+    const mine = session;
     for (let round = 0; round < ROUNDS; round++) {
       // 부모가 먼저: 할 일, 메모, 반복 일정 원본 → 일정 회차 → 단계 (받는 쪽이 보류하지 않아도 되게)
       const origins = rows.eventOrigins(d.db);
@@ -590,6 +633,7 @@ export function createSyncEngine(d: SyncDeps) {
             sending.map((b) => b.push),
           ),
         );
+        if (mine !== session) return false;
         if (!r.ok) {
           failed(r);
           return false;
@@ -668,7 +712,7 @@ export function createSyncEngine(d: SyncDeps) {
       emit();
       return;
     }
-    if (st.paused || !loadKey()) return;
+    if (st.paused || st.ask || !loadKey()) return;
     if (!d.secure()) {
       problem = 'secure';
       emit();
@@ -722,17 +766,55 @@ export function createSyncEngine(d: SyncDeps) {
 
   // ---- 켜기 ----
 
-  /** 켜고 나서 처음 맞출 때: 이 기기의 모든 항목을 올리고 (합집합) 본 번호를 버린다 */
+  /**
+   * 켜고 나서 처음 맞출 때: 본 번호를 버리고 이 기기의 모든 항목을 올린다 (합집합).
+   * 다만 이 컴퓨터가 마지막으로 맞춘 계정이 지금 계정과 다르면 자동으로 올리지 않고 멈춰서 묻는다 (uploadLocal, downloadOnly)
+   */
   function startFresh(): void {
     st.cursor = 0;
     st.paused = null;
     st.full = false;
     problem = null;
     rows.resetSeen(d.db);
+    if (st.lastAccount && st.account && st.lastAccount !== st.account) {
+      st.ask = true;
+      save();
+      emit();
+      return;
+    }
+    st.ask = false;
+    st.lastAccount = st.account;
     rows.enqueueAll(d.db);
     save();
     emit();
     kick();
+  }
+
+  /** 다른 계정과 맞추던 컴퓨터: 이 컴퓨터의 항목을 이 계정에도 올린다 */
+  function uploadLocal(): CodeResult {
+    if (!st.on || !st.ask) return { ok: false, error: 'off' };
+    st.ask = false;
+    st.lastAccount = st.account;
+    rows.enqueueAll(d.db);
+    save();
+    emit();
+    kick();
+    return { ok: true };
+  }
+
+  /**
+   * 다른 계정과 맞추던 컴퓨터: 이 컴퓨터의 기존 항목은 올리지 않고 서버 것만 받는다.
+   * 기존 항목은 "이 계정에 안 올림" 표시를 남겨 다시 올리지 않고, 이후 새로 고친 항목은 올라간다
+   */
+  function downloadOnly(): CodeResult {
+    if (!st.on || !st.ask) return { ok: false, error: 'off' };
+    st.ask = false;
+    st.lastAccount = st.account;
+    rows.skipAll(d.db, d.now());
+    save();
+    emit();
+    kick();
+    return { ok: true };
   }
 
   async function enable(): Promise<EnableResult> {
@@ -745,14 +827,17 @@ export function createSyncEngine(d: SyncDeps) {
       enabling = true;
       problem = null;
       emit();
+      const mine = session;
       try {
         const g = await d.call((api, s) => api.syncKeyGet(s));
+        if (mine !== session) return { ok: false as const, error: 'login' };
         if (g.ok) return pendCode(acct);
         if (g.status !== 404) return { ok: false as const, error: g.error };
         // 서버에 열쇠가 없다: 이 기기가 첫 기기. 만들고, 올린 뒤에만 저장한다
         const key = newDataKey(random);
         const code = newRecoveryCode(random);
         const w = await wrapDataKey(key, code, acct, 1, params);
+        if (mine !== session) return { ok: false as const, error: 'login' };
         let epoch = 0;
         let put = await d.call((api, s) => api.syncKeyPut(s, { epoch, ...w }));
         if (!put.ok && put.status === 409 && put.error === 'epoch') {
@@ -764,10 +849,19 @@ export function createSyncEngine(d: SyncDeps) {
           if (put.status === 409 && put.error === 'key_exists') return pendCode(acct);
           return { ok: false as const, error: put.error };
         }
-        try {
-          storeKey(key);
-        } catch {
-          return { ok: false as const, error: 'secure' };
+        // 올린 뒤 저장을 못 하거나 그사이 계정이 끝났으면 서버에 아무도 코드를 모르는 열쇠가 남는다: 지워서 되돌린다.
+        // 지우지도 못하면 사용자가 코드를 적어 두고 나중에 넣을 수 있게 코드를 돌려준다
+        let stored = mine === session;
+        if (stored)
+          try {
+            storeKey(key);
+          } catch {
+            stored = false;
+          }
+        if (!stored) {
+          const undo = await d.call((api, s) => api.syncRemove(s));
+          if (undo.ok) return { ok: false as const, error: mine === session ? 'secure' : 'login' };
+          return { ok: false as const, error: mine === session ? 'secure' : 'login', code };
         }
         st = {
           ...st,
@@ -799,6 +893,7 @@ export function createSyncEngine(d: SyncDeps) {
       const acct = d.account();
       if (!acct) return { ok: false as const, error: 'login' };
       if (!d.secure()) return { ok: false as const, error: 'secure' };
+      const mine = session;
       const g = await d.call((api, s) => api.syncKeyGet(s));
       if (!g.ok) return { ok: false as const, error: g.status === 404 ? 'none' : g.error };
       let key: Buffer | null;
@@ -807,6 +902,7 @@ export function createSyncEngine(d: SyncDeps) {
       } catch {
         return { ok: false as const, error: 'params' };
       }
+      if (mine !== session) return { ok: false as const, error: 'login' };
       if (!key) return { ok: false as const, error: 'code' };
       try {
         storeKey(key);
@@ -825,18 +921,28 @@ export function createSyncEngine(d: SyncDeps) {
       const key = loadKey();
       const acct = d.account();
       if (!st.on || !key || !acct || st.paused) return { ok: false as const, error: 'off' };
+      const mine = session;
       for (let attempt = 0; attempt < 2; attempt++) {
         const g = await d.call((api, s) => api.syncKeyGet(s));
+        if (mine !== session) return { ok: false as const, error: 'login' };
         if (!g.ok) return { ok: false as const, error: g.error };
+        // 서버 사본이 다른 곳에서 다시 시작됐으면(epoch) 이 기기의 열쇠는 낡았다: 서버 열쇠를 덮지 않고 멈춘다.
+        // (서버의 감싼 열쇠는 옛 복구 코드로 감싼 것이라 이 기기에서 풀어 비교할 수 없다. epoch 와 gen 이 같으면 같은 열쇠 줄기다)
+        if (g.data.epoch !== st.epoch) {
+          pause('epoch');
+          return { ok: false as const, error: 'epoch' };
+        }
         if (g.data.gen !== st.gen) {
           pause('gen');
           return { ok: false as const, error: 'gen' };
         }
         const code = newRecoveryCode(random);
         const w = await wrapDataKey(key, code, acct, g.data.gen, params);
+        if (mine !== session) return { ok: false as const, error: 'login' };
         const put = await d.call((api, s) =>
-          api.syncKeyPut(s, { epoch: g.data.epoch, ...w, gen: g.data.gen, keyRev: g.data.keyRev }),
+          api.syncKeyPut(s, { epoch: st.epoch, ...w, gen: g.data.gen, keyRev: g.data.keyRev }),
         );
+        if (mine !== session) return { ok: false as const, error: 'login' };
         if (put.ok) {
           st.keyRev = put.data.keyRev;
           save();
@@ -860,9 +966,15 @@ export function createSyncEngine(d: SyncDeps) {
       const acct = d.account();
       if (!st.on || !old || !acct || st.paused) return { ok: false as const, error: 'off' };
       if (!d.secure()) return { ok: false as const, error: 'secure' };
+      const mine = session;
       for (let attempt = 0; attempt < 2; attempt++) {
         const g = await d.call((api, s) => api.syncKeyGet(s));
+        if (mine !== session) return { ok: false as const, error: 'login' };
         if (!g.ok) return { ok: false as const, error: g.error };
+        if (g.data.epoch !== st.epoch) {
+          pause('epoch');
+          return { ok: false as const, error: 'epoch' };
+        }
         if (g.data.gen !== st.gen) {
           pause('gen');
           return { ok: false as const, error: 'gen' };
@@ -871,18 +983,30 @@ export function createSyncEngine(d: SyncDeps) {
         const code = newRecoveryCode(random);
         const gen = g.data.gen + 1;
         const w = await wrapDataKey(key, code, acct, gen, params);
+        if (mine !== session) return { ok: false as const, error: 'login' };
+        // 새 열쇠를 먼저 이 기기에 둔다. 저장이 안 되면 서버를 바꾸지 않는다 (서버 항목이 지워지고 열쇠를 잃는 일을 막는다)
+        try {
+          storeKey(key);
+        } catch {
+          return { ok: false as const, error: 'secure' };
+        }
         const put = await d.call((api, s) =>
-          api.syncKeyPut(s, { epoch: g.data.epoch, ...w, gen, keyRev: g.data.keyRev }),
+          api.syncKeyPut(s, { epoch: st.epoch, ...w, gen, keyRev: g.data.keyRev }),
         );
+        if (mine !== session) {
+          // 그사이 계정이 끝났다: forgetLocal 이 이미 열쇠를 지웠다. 서버에 올라갔어도 이 기기는 모른다
+          return { ok: false as const, error: 'login', ...(put.ok ? { code } : {}) };
+        }
         if (put.ok) {
-          try {
-            storeKey(key);
-          } catch {
-            return { ok: false as const, error: 'secure' };
-          }
           st = { ...st, epoch: put.data.epoch, gen: put.data.gen, keyRev: put.data.keyRev };
           startFresh();
           return { ok: true as const, code };
+        }
+        // 올리지 못했다: 옛 열쇠로 되돌린다
+        try {
+          storeKey(old);
+        } catch {
+          d.log('sync', '옛 열쇠 되돌리기 실패');
         }
         if (put.status === 409 && put.error === 'key_rev') continue;
         if (put.status === 409 && put.error === 'epoch') {
@@ -909,7 +1033,7 @@ export function createSyncEngine(d: SyncDeps) {
 
   /** 로그아웃, 탈퇴, 서버 계정이 없어짐: 열쇠와 커서를 지우고 끈다 (같은 컴퓨터의 다른 사람 로그인에 앞사람 메모가 올라가지 않게) */
   function onAccountEnd(why: string): void {
-    if (!st.on && !loadKey()) return;
+    if (!st.on && !loadKey() && !enabling) return;
     d.log('sync', '계정이 끝나 지움', why);
     forgetLocal();
   }
@@ -966,6 +1090,8 @@ export function createSyncEngine(d: SyncDeps) {
     run,
     enable,
     enterCode,
+    uploadLocal,
+    downloadOnly,
     newCode,
     rotateKey,
     disable,
