@@ -12,7 +12,6 @@ import {
   bodyHash,
   clampClock,
   conflictCopy,
-  conflictDate,
   type Json,
   mergeItems,
   type SyncItem,
@@ -111,7 +110,6 @@ export interface SyncDeps {
   /** 운영체제 열쇠(safeStorage)를 쓸 수 있다. 못 쓰면 켜지 않는다 */
   secure: () => boolean;
   now: () => number;
-  deviceName: () => string;
   random?: (n: number) => Uint8Array;
   log: (tag: string, ...rest: unknown[]) => void;
   /** 상태가 바뀌었다 (설정 창에 보낸다) */
@@ -277,6 +275,14 @@ export function createSyncEngine(d: SyncDeps) {
     emit();
   }
 
+  /**
+   * 서버가 알려 준 세대가 이 기기가 아는 것보다 크면 다른 기기가 열쇠를 바꾼 것이다(열쇠 바꾸기도 epoch 를 올리므로
+   * epoch 만 보면 구분되지 않는다). 아니면 서버 사본이 지워졌다가 다시 시작된 것이다
+   */
+  function pausedBy(gen: unknown): 'epoch' | 'gen' {
+    return typeof gen === 'number' && gen > st.gen ? 'gen' : 'epoch';
+  }
+
   function backoff(minMs = 0): void {
     fails += 1;
     nextTry = d.now() + Math.max(minMs, Math.min(BACKOFF_MAX_MS, BACKOFF_MIN_MS * 2 ** (fails - 1)));
@@ -292,7 +298,7 @@ export function createSyncEngine(d: SyncDeps) {
     if (r.status === 0) {
       offline = true;
       backoff();
-    } else if (r.status === 409 && (r.error === 'epoch' || r.error === 'no_key')) pause('epoch');
+    } else if (r.status === 409 && (r.error === 'epoch' || r.error === 'no_key')) pause(pausedBy(r.body.gen));
     else if (r.status === 401 || (r.status === 403 && r.error === 'login')) {
       problem = 'login';
       backoff();
@@ -318,7 +324,7 @@ export function createSyncEngine(d: SyncDeps) {
   // ---- 항목 풀기와 합치기 ----
 
   const ctx = () => ({ account: st.account as string, gen: st.gen });
-  const dev = () => ({ id: st.dev, name: d.deviceName() });
+  const dev = () => ({ id: st.dev });
 
   /** 풀린 글을 항목으로. 모양이 틀리면 던진다 */
   function toItem(o: ReturnType<typeof openItem>, now: number): SyncItem {
@@ -333,7 +339,6 @@ export function createSyncEngine(d: SyncDeps) {
       f: o.f as Record<string, Json>,
       c,
       dev: typeof o.dev === 'string' ? o.dev : '',
-      name: typeof o.name === 'string' ? o.name.slice(0, 60) : '',
       bh: typeof o.bh === 'string' ? o.bh : null,
       ...(typeof o.copyOf === 'string' ? { copyOf: o.copyOf } : {}),
     };
@@ -454,14 +459,8 @@ export function createSyncEngine(d: SyncDeps) {
     if (m.ahead) rows.outboxAdd(d.db, kind, uid);
     else rows.outboxDrop(d.db, kind, uid);
     if (m.copy) {
-      const loserName = m.copy.fromLocal ? dev().name : item.name;
       const loserTitle = String((m.copy.fromLocal ? local?.f.title : item.f.title) ?? '');
-      const copy = conflictCopy(
-        m.item,
-        m.copy,
-        tr('sync.conflictCopy', { title: loserTitle, device: loserName, date: conflictDate(m.copy.t) }),
-        dev(),
-      );
+      const copy = conflictCopy(m.item, m.copy, tr('sync.conflictCopy', { title: loserTitle }), dev());
       const exist = rows.readItem(d.db, 'note', copy.uid, dev());
       const mc = mergeItems(exist, copy, undefined);
       if (!exist || !sameContent(mc.item, exist)) rows.applyItem(d.db, mc.item, { now });
@@ -530,7 +529,7 @@ export function createSyncEngine(d: SyncDeps) {
         return false;
       }
       if (r.data.gen !== st.gen || r.data.epoch !== st.epoch) {
-        pause(r.data.epoch !== st.epoch ? 'epoch' : 'gen');
+        pause(pausedBy(r.data.gen));
         return false;
       }
       if (applyBatch(r.data.items) > 0) appliedAny = true;
@@ -565,7 +564,6 @@ export function createSyncEngine(d: SyncDeps) {
         f: item.f,
         c: item.c,
         dev: item.dev,
-        name: item.name,
         ...(kind === 'note' ? { bh: item.bh ?? null } : {}),
         ...(copyOf ? { copyOf } : {}),
       });
@@ -579,9 +577,7 @@ export function createSyncEngine(d: SyncDeps) {
     }
     const t = rows.tombOf(d.db, kind, uid);
     if (t !== undefined && rows.rowId(d.db, kind, uid) === undefined) {
-      const blob = sealItem(key, ctx(), uid, kind, { tomb: t, dev: st.dev, name: d.deviceName() }).toString(
-        'base64',
-      );
+      const blob = sealItem(key, ctx(), uid, kind, { tomb: t, dev: st.dev }).toString('base64');
       return { kind, uid, push: { uid, base, blob, deleted: true }, sent: { tomb: t }, size: blob.length };
     }
     rows.outboxDrop(d.db, kind, uid);
@@ -639,7 +635,7 @@ export function createSyncEngine(d: SyncDeps) {
           return false;
         }
         if (r.data.gen !== st.gen || r.data.epoch !== st.epoch) {
-          pause(r.data.epoch !== st.epoch ? 'epoch' : 'gen');
+          pause(pausedBy(r.data.gen));
           return false;
         }
         const by = new Map(sending.map((b) => [b.uid, b]));

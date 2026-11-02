@@ -26,7 +26,6 @@ const item = (
   f,
   c,
   dev: 'd',
-  name: 'N',
   ...over,
 });
 
@@ -146,13 +145,13 @@ test('충돌 사본 uid 는 원본 uid, 진 쪽 시각, 본문 지문이 같으�
     orig,
     { body: '본문', t: 9, hash: bodyHash('본문'), fromLocal: true },
     '제목 (충돌 사본)',
-    { id: 'a', name: 'A' },
+    { id: 'a' },
   );
   const c2 = conflictCopy(
     orig,
     { body: '본문', t: 9, hash: bodyHash('본문'), fromLocal: false },
     '제목 (충돌 사본)',
-    { id: 'b', name: 'B' },
+    { id: 'b' },
   );
   assert.equal(c1.uid, c2.uid);
   assert.deepEqual(c1.f, c2.f);

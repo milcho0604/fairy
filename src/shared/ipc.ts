@@ -1265,6 +1265,8 @@ export interface NoteSummary {
   updatedAt: number;
   /** 고정한 시각. 고정 안 했으면 null */
   pinnedAt: number | null;
+  /** 기기 간 동기화가 두 곳에서 고친 글을 합치지 못해 남긴 충돌 사본이다 (목록에 작은 표시) */
+  conflictCopy?: true;
 }
 
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */

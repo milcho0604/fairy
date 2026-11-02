@@ -10,6 +10,7 @@ import { EventsBox } from '../EventsBox.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
 import { exportFlash, type Flash, importFlash, storageFlash } from '../flash-of.ts';
 import { ServerAccountBox, useServerStatus } from '../ServerAccountBox.tsx';
+import { SyncBox } from '../SyncBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
 /** 데이터와 계정 탭: 계정(로그인, 로그아웃), 백업과 옮기기, 코인 초기화, 저장 공간 */
@@ -26,6 +27,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
     <>
       {/* 계정(로그인, 로그아웃)을 맨 위에: 설정에서 가장 먼저 찾는 것 */}
       <ServerAccountBox />
+      <SyncBox />
       <Section title={t('settings.backup')}>
         <small>{t('settings.backupHint')}</small>
         <div className="action-row">

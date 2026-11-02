@@ -43,7 +43,6 @@ function flakyDevice(
       },
       secure: () => true,
       now: Date.now,
-      deviceName: () => 'X',
       random: (n) => randomBytes(n),
       log: (...a) => f.logs.push(a.join(' ')),
       scrypt: { N: 1 << 10, r: 8, p: 1 },
@@ -380,7 +379,8 @@ test('K14 다른 기기가 열쇠를 바꾸면 낡은 기기는 멈추고 낡은
   const before = server.head;
   await a.engine.run(true);
   assert.equal(server.head, before, '낡은 기기가 올렸다');
-  assert.equal(a.engine.view().problem, 'epoch');
+  // 열쇠 바꾸기도 서버 epoch 를 올리지만 세대(gen)가 앞섰으니 "다른 기기가 열쇠를 바꿨다"로 멈춘다
+  assert.equal(a.engine.view().problem, 'gen');
   assert.equal(num(a.db, 'select count(*) as n from note'), 2, '데이터 유지');
   const c = await a.engine.enterCode(r.ok ? r.code : '');
   assert.ok(c.ok);

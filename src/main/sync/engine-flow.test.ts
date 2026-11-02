@@ -40,7 +40,7 @@ test('메모 충돌: 같은 본문을 서로 다르게 고치면 나중 것이 �
       .prepare('select title, body from note where uid <> ?')
       .get(uidOf(a.db, 'note', n.id)) as { title: string; body: string };
     assert.equal(copy.body, '완전히 다른 A 의 글', '진 쪽 본문이 사본으로');
-    assert.match(copy.title, /일기 \(충돌 사본, A, \d{4}-\d{2}-\d{2}\)/);
+    assert.match(copy.title, /^일기 \(충돌 사본\)$/);
   }
   same(a, b);
   assert.equal(

@@ -16,8 +16,10 @@ export class FeaturesController {
 
   @Get()
   async list(@Req() req: HttpReq) {
-    this.limiter.check(`features:${ipKey(req)}`, LIMITS.loginByIp);
+    // 토큰이 있으면 계정별 한도, 없으면 IP 한도 (공유 IP 의 여러 계정이 서로 막지 않게)
     const auth = await this.guard.identify(req);
+    if (auth) this.limiter.check(`features-a:${auth.accountId}`, LIMITS.featuresByAccount);
+    else this.limiter.check(`features:${ipKey(req)}`, LIMITS.featuresByIp);
     const out: Partial<Record<FeatureKey, boolean>> = {};
     for (const key of Object.keys(FEATURES) as FeatureKey[])
       out[key] = await this.features.featureAllowed(key, auth?.accountId ?? null);
