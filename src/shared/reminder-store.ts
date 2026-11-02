@@ -13,6 +13,7 @@ interface Row {
 export class ReminderStore {
   #db: Db;
   #kind: ReminderKind;
+  #ins: ReturnType<Db['prepare']> | undefined;
 
   constructor(db: Db, kind: ReminderKind) {
     this.#db = db;
@@ -82,7 +83,6 @@ export class ReminderStore {
         this.#db
           .prepare('delete from reminder where kind = ? and ref_id = ? and before_min = ?')
           .run(this.#kind, id, before);
-    let ins: ReturnType<Db['prepare']> | undefined;
     for (const m of marks) {
       if (have.has(m.before)) {
         this.#db
@@ -90,10 +90,10 @@ export class ReminderStore {
           .run(m.notifiedAt, this.#kind, id, m.before);
         continue;
       }
-      ins ??= this.#db.prepare(
+      this.#ins ??= this.#db.prepare(
         'insert into reminder (kind, ref_id, before_min, notified_at) values (?, ?, ?, ?)',
       );
-      ins.run(this.#kind, id, m.before, m.notifiedAt);
+      this.#ins.run(this.#kind, id, m.before, m.notifiedAt);
       have.add(m.before);
     }
   }

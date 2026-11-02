@@ -66,6 +66,7 @@ export const SYNC_EXCLUDED_FIELDS: Record<SyncKind, readonly string[]> = {
     'external_id',
     'notified_at',
     'remind_min',
+    'track',
     'google_id',
     'google_cal',
     'google_uid',

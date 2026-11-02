@@ -14,7 +14,7 @@ interface Spec {
 }
 
 const eventTracked = (r: string) =>
-  `(${r}.source = 'local' and (${r}.repeat_series is null or ${r}.repeat_series = ${r}.id or ${r}.user_edited = 1 or ${r}.deleted_at is not null))`;
+  `(${r}.source = 'local' and (${r}.repeat_series is null or ${r}.repeat_series = ${r}.id or ${r}.user_edited = 1 or ${r}.track = 1 or ${r}.deleted_at is not null))`;
 
 const SPECS: Spec[] = [
   {
@@ -81,7 +81,7 @@ function rowTriggers(s: Spec): string {
   const upd = s.fields.map((f) => `select '${f}' as f where ${adopt} or old.${f} is not new.${f}`);
   const adoptExtra = s.extra.map((f) => `select '${f}' as f where ${adopt}`);
   const updSel = [...upd, ...adoptExtra].join(' union all ');
-  const cols = [...s.fields, ...(t === 'event' ? ['source'] : [])].join(', ');
+  const cols = [...s.fields, ...(t === 'event' ? ['source', 'track'] : [])].join(', ');
   const stamp = (when: string) => `
     insert into sync_clock (kind, uid, field, t)
       select '${t}', new.uid, f, ${NOW} from (${when}) where true
@@ -102,6 +102,9 @@ function rowTriggers(s: Spec): string {
   end;
   create trigger sync_${t}_ai2 after insert on ${t} when new.uid is not null and ${ON} and ${trNew} begin${stampAll}
     insert or ignore into sync_outbox (kind, uid) values ('${t}', new.uid);
+  end;
+  create trigger sync_${t}_tomb after insert on ${t} when new.uid is not null and ${ON} begin
+    delete from sync_tomb where kind = '${t}' and uid = new.uid;
   end;
   create trigger sync_${t}_au after update of ${cols} on ${t}
     when new.uid is not null and ${ON} and (${trNew} or ${trOld}) and (${adopt} or ${diff}) begin${stamp(updSel)}
@@ -128,7 +131,7 @@ function reminderTriggers(): string {
   const parent = (r: string) =>
     `case ${r}.kind when 'todo' then (select uid from todo where id = ${r}.ref_id)
       else (select uid from event where id = ${r}.ref_id and source = 'local'
-        and (repeat_series is null or repeat_series = id or user_edited = 1 or deleted_at is not null)) end`;
+        and (repeat_series is null or repeat_series = id or user_edited = 1 or track = 1 or deleted_at is not null)) end`;
   const mk = (name: string, on: string, r: string, extra = '') =>
     `create trigger sync_reminder_${name} ${on} when ${extra}${ON} begin${bump(`${r}.kind`, parent(r), 'reminders')}
   end;`;
@@ -170,10 +173,17 @@ export const SYNC_MIGRATION_SQL = `
   alter table note add column uid text;
   alter table event add column uid text;
   alter table todo add column coin_paid integer not null default 0; -- 어느 기기에서든 이 할 일로 코인을 받음
+  alter table event add column track integer not null default 0; -- 펼친 회차가 고정되거나 알림이 바뀌면 1 (그때부터 추적)
   alter table event add column slot integer; -- 펼친 반복 회차를 만들 때의 원래 시작 시각 (옮겨도 안 바뀐다)
   update todo set coin_paid = 1
-    where coins > 0 or exists (select 1 from coin_log where ref_id = todo.id and reason in ('todo', 'early'));
-  update event set slot = start_at where repeat_series is not null and repeat_series <> id;
+    where (select coalesce(sum(amount), 0) from coin_log
+      where ref_id = todo.id and reason in ('todo', 'early', 'undo')) > 0;
+  -- 같은 시리즈 같은 시각에 회차가 겹치면(휴지통 회차와 그 자리로 옮겨 온 회차) 산 행이 slot 을 갖고 나머지는 null
+  update event set slot = start_at
+    where repeat_series is not null and repeat_series <> id
+      and (deleted_at is null or not exists (
+        select 1 from event o where o.repeat_series = event.repeat_series and o.start_at = event.start_at
+          and o.id <> event.id and (o.deleted_at is null or o.id < event.id)));
   update todo set uid = lower(hex(randomblob(16)));
   update todo_step set uid = lower(hex(randomblob(16)));
   update note set uid = lower(hex(randomblob(16)));

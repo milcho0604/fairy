@@ -463,8 +463,9 @@ test('24판 올리기: coin_paid 는 코인을 받은 할 일만 1, slot 은 펼
   db.prepare(
     "insert into todo (id, title, created_at, coins) values (1, '코인', 0, 10), (2, '장부', 0, 0), (3, '없음', 0, 0)",
   ).run();
+  db.prepare("insert into todo (id, title, created_at, coins) values (4, '환불', 0, 0)").run();
   db.prepare(
-    "insert into coin_log (amount, reason, ref_id, day, at) values (10, 'todo', 2, '2026-01-01', 0)",
+    "insert into coin_log (amount, reason, ref_id, day, at) values (10, 'todo', 1, '2026-01-01', 0), (10, 'todo', 2, '2026-01-01', 0), (5, 'todo', 4, '2026-01-01', 0), (-5, 'undo', 4, '2026-01-01', 1)",
   ).run();
   db.prepare(
     "insert into event (id, title, start_at, created_at, repeat_series) values (1, '원본', 100, 0, 1), (2, '회차', 200, 0, 1), (3, '단발', 300, 0, null)",
@@ -476,7 +477,7 @@ test('24판 올리기: coin_paid 는 코인을 받은 할 일만 1, slot 은 펼
   }[];
   assert.deepEqual(
     paid.map((r) => r.p),
-    [1, 1, 0],
+    [1, 1, 0, 0],
   );
   const slots = db.prepare('select id, slot from event order by id').all() as {
     id: number;
@@ -493,7 +494,7 @@ test('24판 올리기: coin_paid 는 코인을 받은 할 일만 1, slot 은 펼
   assert.equal(repairDerivedEventUids(db), 0);
 });
 
-test('coin_paid 는 맞추는 칸이다: 끝내서 코인을 받으면 1 이 되고 칸 시각이 적힌다. 되돌려도 1 이다', () => {
+test('coin_paid 는 맞추는 칸이다: 끝내서 코인을 받으면 1 이 되고 칸 시각이 적힌다. 환불하면 0 이다', () => {
   const db = mem();
   const todos = new TodoStore(db, utcDay);
   const t = todos.add({ title: '가', due: utcDay(NOW) }, NOW);
@@ -503,7 +504,7 @@ test('coin_paid 는 맞추는 칸이다: 끝내서 코인을 받으면 1 이 되
   assert.ok(fields(db, 'todo', uidOf(db, 'todo', t.id)).includes('coin_paid'));
   assert.ok(!fields(db, 'todo', uidOf(db, 'todo', t.id)).includes('coins'));
   todos.undo(t.id, NOW);
-  assert.equal(n(db, 'select coin_paid n from todo where id = ?', t.id), 1);
+  assert.equal(n(db, 'select coin_paid n from todo where id = ?', t.id), 0);
 });
 
 test('반복 할 일: 끝냄, 되돌림, 다시 끝냄에서 다음 회차는 하나, uid 는 이전 회차에서 정해진다', () => {
@@ -590,4 +591,126 @@ test('quietly: 표식은 같은 묶음 안에서만 켜지고, 실패하면 되�
   assert.equal(clearStaleApplying(db), false);
   notes.add({ title: '다시 기록' }, NOW);
   assert.equal(n(db, 'select count(*) n from sync_outbox'), 1);
+});
+
+test('23판에서 휴지통 회차와 옮긴 회차가 같은 시각이어도 uid 보정이 끝까지 간다', () => {
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  db.exec('begin');
+  for (const sql of MIGRATIONS.slice(0, 23)) db.exec(sql);
+  db.exec('pragma user_version = 23; commit');
+  const ie = db.prepare(
+    "insert into event (title, start_at, created_at, repeat_kind, repeat_series, repeat_clock, user_edited, deleted_at, removed_by) values (?, ?, 0, 'daily', ?, 0, ?, ?, ?)",
+  );
+  const o = Number(ie.run('r', NOW, null, 0, null, null).lastInsertRowid);
+  db.prepare('update event set repeat_series = ? where id = ?').run(o, o);
+  ie.run('r', NOW + 2 * DAY, o, 0, NOW, 'user');
+  ie.run('r', NOW + 2 * DAY, o, 1, null, null);
+  ie.run('r', NOW + 3 * DAY, o, 0, NOW, 'user');
+  ie.run('r', NOW + 3 * DAY, o, 0, NOW, 'user');
+  migrate(db);
+  // 산 행이 slot 을 갖고, 같은 자리의 휴지통 행 중에는 하나만 갖는다
+  assert.equal(n(db, 'select count(*) n from event where slot = ? and deleted_at is null', NOW + 2 * DAY), 1);
+  assert.equal(n(db, 'select count(*) n from event where slot = ?', NOW + 2 * DAY), 1);
+  assert.equal(n(db, 'select count(*) n from event where slot = ?', NOW + 3 * DAY), 1);
+  assert.equal(repairDerivedEventUids(db), 2);
+  assert.equal(n(db, "select count(*) n from app_meta where key = 'event_uid_derived'"), 1);
+});
+
+test('uid 보정은 uid 가 겹치는 한 줄이 있어도 나머지를 끝까지 하고 표식을 세운다', () => {
+  const db = mem();
+  const events = new EventStore(db);
+  const s = events.add({ title: '매일', startAt: NOW + DAY, repeat: 'daily' }, NOW);
+  events.dueReminders(NOW);
+  const ids = db
+    .prepare('select id, slot from event where repeat_series = ? and id <> ? order by id limit 3')
+    .all(s.id, s.id) as { id: number; slot: number }[];
+  const origin = uidOf(db, 'event', s.id);
+  db.prepare('update event set uid = ? where id = ?').run('zz', ids[0]?.id);
+  db.prepare('update event set uid = ? where id = ?').run(
+    eventSlotUid(origin, ids[0]?.slot ?? 0),
+    ids[1]?.id,
+  );
+  db.exec("delete from app_meta where key = 'event_uid_derived'");
+  assert.doesNotThrow(() => repairDerivedEventUids(db));
+  assert.equal(n(db, "select count(*) n from app_meta where key = 'event_uid_derived'"), 1);
+  assert.equal(uidOf(db, 'event', ids[2]?.id ?? 0), eventSlotUid(origin, ids[2]?.slot ?? 0));
+});
+
+test('영구 삭제한 다음 회차를 다시 만들면 같은 uid 의 삭제 표식이 사라진다', () => {
+  const db = mem();
+  const todos = new TodoStore(db, utcDay);
+  const a = todos.add({ title: 'a', repeat: 'daily', due: '2026-11-02' }, NOW);
+  todos.complete(a.id, NOW);
+  const nextId = () =>
+    Number((db.prepare('select id from todo where repeat_of = ?').get(a.id) as { id: number }).id);
+  const uid = uidOf(db, 'todo', nextId());
+  todos.remove(nextId(), NOW);
+  todos.purge([nextId()]);
+  assert.equal(n(db, 'select count(*) n from sync_tomb where uid = ?', uid), 1);
+  todos.undo(a.id, NOW + 1);
+  todos.complete(a.id, NOW + 2);
+  assert.equal(uidOf(db, 'todo', nextId()), uid);
+  assert.equal(n(db, 'select count(*) n from sync_tomb where uid = ?', uid), 0);
+  // 다른 기기 변경을 적용하는 중의 insert 는 표식을 건드리지 않는다
+  db.prepare('insert into sync_tomb (kind, uid, t) values (?, ?, 1)').run('note', 'ff');
+  quietly(db, () =>
+    db.prepare("insert into note (uid, title, created_at, updated_at) values ('ff', 'x', 0, 0)").run(),
+  );
+  assert.equal(n(db, "select count(*) n from sync_tomb where uid = 'ff'"), 1);
+});
+
+test('펼친 회차를 고정하거나 알림만 바꿔도 그 회차를 추적하기 시작한다 (track)', () => {
+  const db = mem();
+  const events = new EventStore(db);
+  const s = events.add({ title: '매일', startAt: NOW + DAY, repeat: 'daily' }, NOW);
+  events.dueReminders(NOW);
+  const occ = db
+    .prepare('select id from event where repeat_series = ? and id <> ? order by start_at limit 3')
+    .all(s.id, s.id) as { id: number }[];
+  const [a, b, c] = [occ[0]?.id ?? 0, occ[1]?.id ?? 0, occ[2]?.id ?? 0];
+  clear(db);
+  events.pin(a, true, NOW);
+  const auid = uidOf(db, 'event', a);
+  assert.deepEqual(outbox(db), [`event:${auid}`]);
+  for (const f of SYNC_FIELDS.event) assert.ok(fields(db, 'event', auid).includes(f), f);
+  clear(db);
+  events.update(b, { reminds: [30] }, NOW);
+  const buid = uidOf(db, 'event', b);
+  assert.deepEqual(outbox(db), [`event:${buid}`]);
+  assert.ok(fields(db, 'event', buid).includes('reminders'));
+  assert.equal(n(db, 'select count(*) n from sync_clock where uid = ?', uidOf(db, 'event', c)), 0);
+  assert.equal(n(db, 'select track n from event where id = ?', c), 0);
+});
+
+test('되살릴 때는 사람이 휴지통에 넣은 다음 회차도 마감과 알림을 새로 센다', () => {
+  const db = mem();
+  const todos = new TodoStore(db, utcDay);
+  const a = todos.add({ title: 'a', repeat: 'daily', due: '2026-11-02', dueMin: 600, reminds: [10] }, NOW);
+  todos.complete(a.id, NOW);
+  const next = Number((db.prepare('select id from todo where repeat_of = ?').get(a.id) as { id: number }).id);
+  todos.remove(next, NOW + 1);
+  todos.undo(a.id, NOW + 2);
+  todos.complete(a.id, NOW + 3 * DAY);
+  const row = db.prepare('select due, deleted_at d from todo where id = ?').get(next) as {
+    due: string;
+    d: number | null;
+  };
+  assert.equal(row.d, null);
+  assert.equal(row.due, utcDay(NOW + 4 * DAY));
+  assert.equal(n(db, 'select count(*) n from todo'), 2);
+});
+
+test('읽기 경로(dueReminders, between)는 반복 회차가 다 만들어진 뒤 아무것도 쓰지 않는다', () => {
+  const db = mem();
+  const events = new EventStore(db);
+  for (let i = 0; i < 3; i++)
+    events.add({ title: `매일 ${i}`, startAt: NOW + DAY + i * 3600_000, repeat: 'daily' }, NOW);
+  events.dueReminders(NOW);
+  events.between(NOW, NOW + 400 * DAY);
+  const before = n(db, 'select total_changes() n');
+  for (let i = 0; i < 5; i++) {
+    events.dueReminders(NOW + i * 1000);
+    events.between(NOW, NOW + 30 * DAY);
+  }
+  assert.equal(n(db, 'select total_changes() n') - before, 0);
 });

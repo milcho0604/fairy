@@ -183,6 +183,12 @@ const cleanEnd = (ms: number | null | undefined): number | null => (eventTimeOk(
  * 읽기는 그 행에서 던지므로 쓰기(update)로만 고친다. 고친 행 수
  */
 export function repairEventTimes(db: Db, now: number): number {
+  const bad = db
+    .prepare(
+      'select 1 from event where abs(end_at) > ? or (deleted_at is null and abs(start_at) > ?) limit 1',
+    )
+    .get(EVENT_TIME_MAX_MS, EVENT_TIME_MAX_MS);
+  if (!bad) return 0;
   return quietly(db, () => {
     const ends = db
       .prepare('update event set end_at = null where end_at is not null and abs(end_at) > ?')
@@ -465,14 +471,18 @@ export class EventStore {
     }
     // 기존 데이터도 한 번 추론한 기준 시각을 모든 회차에 저장한다. 이후 첫 회차를 영구 삭제해도 유지된다.
     // 기계적 보정이라 동기화 기록은 남기지 않는다 (sync-quiet.ts)
-    quietly(this.#db, () => {
-      this.#db
-        .prepare('update event set repeat_clock = ? where id = ? and repeat_clock is null')
-        .run(repeatClock, seriesId);
-      this.#db
-        .prepare('update event set repeat_clock = ? where repeat_series = ? and repeat_clock is null')
-        .run(repeatClock, seriesId);
-    });
+    const needsClock = this.#db
+      .prepare('select 1 from event where (id = ? or repeat_series = ?) and repeat_clock is null limit 1')
+      .get(seriesId, seriesId);
+    if (needsClock)
+      quietly(this.#db, () => {
+        this.#db
+          .prepare('update event set repeat_clock = ? where id = ? and repeat_clock is null')
+          .run(repeatClock, seriesId);
+        this.#db
+          .prepare('update event set repeat_clock = ? where repeat_series = ? and repeat_clock is null')
+          .run(repeatClock, seriesId);
+      });
     const [hour, minute, second, millisecond] = repeatClockParts(repeatClock);
     const reminderRows = this.#reminders.many(
       latest && latest.id !== seriesId ? [seriesId, Number(latest.id)] : [seriesId],
@@ -526,6 +536,12 @@ export class EventStore {
         | { uid: string | null }
         | undefined
     )?.uid;
+    // 회차를 수백 개 만들 때 문장을 한 번만 준비한다 (트리거가 많아 준비 때마다 컴파일 비용이 든다)
+    const skipSql = this.#db.prepare('select 1 from event_repeat_skip where series_id = ? and start_at = ?');
+    const heldSql = this.#db.prepare('select 1 from event where repeat_series = ? and start_at = ?');
+    const insertSql = this.#db.prepare(
+      'insert or ignore into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock, slot, uid) values (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)',
+    );
     while (interval <= through) {
       let day = dayOf(interval);
       if (repeat === 'weekly') day = plusDays(day, 7);
@@ -539,32 +555,22 @@ export class EventStore {
       const next = new Date(year ?? 2000, (month ?? 1) - 1, date ?? 1, hour, minute, second, millisecond);
       const startAt = next.getTime();
       if (startAt > through) break;
-      const skipped = this.#db
-        .prepare('select 1 from event_repeat_skip where series_id = ? and start_at = ?')
-        .get(seriesId, startAt);
+      const skipped = skipSql.get(seriesId, startAt);
       // 휴지통에 있는 회차 자리도 찬 자리다 (유일 색인은 지우지 않은 행만 막는다)
-      const held = skipped
-        ? undefined
-        : this.#db
-            .prepare('select 1 from event where repeat_series = ? and start_at = ?')
-            .get(seriesId, startAt);
+      const held = skipped ? undefined : heldSql.get(seriesId, startAt);
       if (!skipped && !held) {
-        const inserted = this.#db
-          .prepare(
-            'insert or ignore into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock, slot, uid) values (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)',
-          )
-          .run(
-            title,
-            startAt,
-            duration === null ? null : startAt + duration,
-            remindMin,
-            createdAt,
-            repeat,
-            seriesId,
-            repeatClock,
-            startAt,
-            seriesUid ? eventSlotUid(seriesUid, startAt) : null,
-          );
+        const inserted = insertSql.run(
+          title,
+          startAt,
+          duration === null ? null : startAt + duration,
+          remindMin,
+          createdAt,
+          repeat,
+          seriesId,
+          repeatClock,
+          startAt,
+          seriesUid ? eventSlotUid(seriesUid, startAt) : null,
+        );
         if (Number(inserted.changes) > 0)
           this.#reminders.set(
             Number(inserted.lastInsertRowid),
@@ -729,9 +735,10 @@ export class EventStore {
     this.#db
       .prepare(
         `update event set title = ?, start_at = ?, end_at = ?, all_day = ?,
-         user_edited = case when ? then 1 else user_edited end where id = ?`,
+         user_edited = case when ? then 1 else user_edited end,
+         track = case when ? then 1 else track end where id = ?`,
       )
-      .run(title, startAt, endAt, allDay ? 1 : 0, edited ? 1 : 0, id);
+      .run(title, startAt, endAt, allDay ? 1 : 0, edited ? 1 : 0, remindsChanged ? 1 : 0, id);
     if (moved || remindsChanged)
       this.#reminders.set(id, reminds, eventAnchor({ startAt, allDay }), {
         ...(now === undefined ? {} : { now }),
@@ -748,7 +755,9 @@ export class EventStore {
     const e = this.get(id);
     if (!e) return undefined;
     if (on && e.pinnedAt !== null) return e;
-    this.#db.prepare('update event set pinned_at = ? where id = ?').run(on ? now : null, id);
+    this.#db
+      .prepare('update event set pinned_at = ?, track = case when ? then 1 else track end where id = ?')
+      .run(on ? now : null, on ? 1 : 0, id);
     return this.get(id);
   }
 

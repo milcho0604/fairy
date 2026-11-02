@@ -108,8 +108,16 @@ export function repairDerivedEventUids(db: Db): number {
   db.exec('begin');
   try {
     for (const r of rows) {
-      set.run(eventSlotUid(r.origin, Number(r.slot)), r.id);
-      n++;
+      // 겹치는 uid 같은 한 줄이 막아도 나머지는 계속한다 (그 줄은 무작위 uid 로 남는다)
+      db.exec('savepoint uid_fix');
+      try {
+        set.run(eventSlotUid(r.origin, Number(r.slot)), r.id);
+        db.exec('release uid_fix');
+        n++;
+      } catch {
+        db.exec('rollback to uid_fix');
+        db.exec('release uid_fix');
+      }
     }
     db.prepare("insert or replace into app_meta (key, value) values ('event_uid_derived', '1')").run();
     db.exec('commit');

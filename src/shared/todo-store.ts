@@ -755,11 +755,12 @@ export class TodoStore {
     this.#db.exec('begin');
     try {
       // 지운 때가 미래(틀린 시계, 다른 컴퓨터에서 가져온 백업)면 지금으로 맞춘다
-      quietly(this.#db, () =>
-        this.#db
-          .prepare('update todo set deleted_at = ? where deleted_at > ?')
-          .run(Math.floor(now), Math.floor(now)),
-      );
+      if (this.#db.prepare('select 1 from todo where deleted_at > ? limit 1').get(Math.floor(now)))
+        quietly(this.#db, () =>
+          this.#db
+            .prepare('update todo set deleted_at = ? where deleted_at > ?')
+            .run(Math.floor(now), Math.floor(now)),
+        );
       const n = this.#purgeRow(`deleted_at <= ${Math.floor(before)}`, true);
       this.#db.exec('commit');
       return n;
@@ -872,14 +873,12 @@ export class TodoStore {
         } else if (found) {
           nextId = Number(found.id);
           this.#db.prepare('update todo set deleted_at = null, auto_removed = 0 where id = ?').run(nextId);
-          // 되돌리기가 걷어 낸(손대지 않은) 회차는 이번 끝낸 날 기준으로 마감을 다시 센다
-          if (Number(found.auto_removed) === 1) {
-            this.#db.prepare('update todo set due = ?, due_min = ? where id = ?').run(due, t.dueMin, nextId);
-            this.#reminders.set(nextId, t.reminds, todoAnchor({ due, dueMin: t.dueMin }), {
-              now,
-              reset: true,
-            });
-          }
+          // 걷어 낸 것이든 사람이 지운 것이든 이번 끝낸 날 기준으로 마감과 알림을 다시 센다 (새로 만들 때와 같은 결과)
+          this.#db.prepare('update todo set due = ?, due_min = ? where id = ?').run(due, t.dueMin, nextId);
+          this.#reminders.set(nextId, t.reminds, todoAnchor({ due, dueMin: t.dueMin }), {
+            now,
+            reset: true,
+          });
         } else {
           const next = this.add(
             {
@@ -939,7 +938,12 @@ export class TodoStore {
     this.#db.exec('begin');
     try {
       if (back > 0) this.#log(-back, 'undo', id, now);
-      this.#db.prepare('update todo set done_at = null, coins = 0 where id = ?').run(id);
+      // 코인을 되돌려 받았으면 이 기기가 환불한 것이라 다시 끝내면 받아야 한다 (coin_paid 를 0 으로)
+      this.#db
+        .prepare(
+          'update todo set done_at = null, coins = 0, coin_paid = case when ? > 0 then 0 else coin_paid end where id = ?',
+        )
+        .run(back, id);
       // 끝내서 생긴 다음 회차는 걷어 낸다 (아직 손대지 않은 것만. 단계를 하나라도 체크했으면 손댄 것이라 둔다).
       this.#db
         .prepare(
