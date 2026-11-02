@@ -33,6 +33,7 @@ import {
   parsePetActions,
 } from '../shared/pet-actions.ts';
 import { cleanMemoryItem } from '../shared/pet-memory.ts';
+import { clearStaleApplying } from '../shared/sync-quiet.ts';
 import { filterTodos } from '../shared/todo-filter.ts';
 import { isRepeat, localDay, STEP_MAX, stepProgress, type Todo, TodoStore } from '../shared/todo-store.ts';
 import { MCP_BEAT_FILE } from '../shared/together.ts';
@@ -112,6 +113,11 @@ function open() {
   }
   db.exec('pragma journal_mode = wal;');
   const d = db as unknown as Db;
+  try {
+    clearStaleApplying(d);
+  } catch {
+    // 잠겨 있으면 다음에
+  }
   // 예전에 들어간 너무 큰 일정 시각은 읽을 때 던진다 (event-store.ts EVENT_TIME_MAX_MS)
   try {
     repairEventTimes(d, Date.now());
