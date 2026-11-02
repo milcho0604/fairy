@@ -10,6 +10,8 @@ import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
 import { type Anchor, atLocal, DEFAULT_REMINDS, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
 import { ReminderStore } from './reminder-store.ts';
+import { quietly } from './sync-quiet.ts';
+import { copiedStepUid, nextTodoUid } from './sync-uid.ts';
 
 /** 코인 값과 하루 상한은 coin-rules.ts 한 곳에 (서버도 같은 값을 쓴다) */
 export { COIN };
@@ -274,7 +276,7 @@ export class TodoStore {
   }
 
   /** 단계 더하기 (맨 아래). 할 일이 없거나 끝났거나 단계가 꽉 찼거나 제목이 비면 undefined */
-  addStep(todoId: number, title: string, now: number): TodoStep | undefined {
+  addStep(todoId: number, title: string, now: number, uid: string | null = null): TodoStep | undefined {
     const text = cutText(title.trim(), STEP_TITLE_MAX);
     const todo = this.get(todoId);
     if (!text || !todo || todo.doneAt !== null || todo.steps.length >= STEP_MAX) return undefined;
@@ -289,8 +291,10 @@ export class TodoStore {
         ).m,
       ) + 1;
     const r = this.#db
-      .prepare('insert into todo_step (todo_id, title, done, ord, created_at) values (?, ?, 0, ?, ?)')
-      .run(todoId, text, ord, now);
+      .prepare(
+        `insert into todo_step (todo_id, title, done, ord, created_at${uid ? ', uid' : ''}) values (?, ?, 0, ?, ?${uid ? ', ?' : ''})`,
+      )
+      .run(...[todoId, text, ord, now, ...(uid ? [uid] : [])]);
     return { id: Number(r.lastInsertRowid), title: text, done: false };
   }
 
@@ -345,6 +349,8 @@ export class TodoStore {
     },
     now: number,
     repeatOf: number | null = null,
+    /** 정해진 uid (반복 다음 회차). 없으면 트리거가 무작위로 채운다 */
+    uid: string | null = null,
   ): Todo {
     const title = input.title.trim();
     if (!title) throw new Error('할 일 제목이 비었다');
@@ -356,15 +362,26 @@ export class TodoStore {
     // 같은 번호가 다시 쓰이면 서버 맞추기의 ref(소금 + 번호)가 옛 할 일 것과 겹치고, 새 할 일 코인이 옛 코인만큼 깎인다 (#125)
     const r = this.#db
       .prepare(
-        `insert into todo (id, title, due, important, created_at, repeat, repeat_of, due_min)
+        `insert into todo (id, title, due, important, created_at, repeat, repeat_of, due_min${uid ? ', uid' : ''})
          values (
            max(
              coalesce((select max(id) from todo), 0),
              coalesce((select hi from todo_hi where id = 1), 0),
              coalesce((select max(ref_id) from coin_log where reason in ('todo', 'early', 'undo')), 0)
-           ) + 1, ?, ?, ?, ?, ?, ?, ?)`,
+           ) + 1, ?, ?, ?, ?, ?, ?, ?${uid ? ', ?' : ''})`,
       )
-      .run(cutText(title, 200), due, input.important ? 1 : 0, now, repeat, repeatOf, dueMin);
+      .run(
+        ...[
+          cutText(title, 200),
+          due,
+          input.important ? 1 : 0,
+          now,
+          repeat,
+          repeatOf,
+          dueMin,
+          ...(uid ? [uid] : []),
+        ],
+      );
     const id = Number(r.lastInsertRowid);
     // 매달 반복은 날을 기억한다 (repeat_anchor 에 "31"). 2월 28일 회차를 끝내도 3월은 31일로
     const monthDay =
@@ -738,9 +755,11 @@ export class TodoStore {
     this.#db.exec('begin');
     try {
       // 지운 때가 미래(틀린 시계, 다른 컴퓨터에서 가져온 백업)면 지금으로 맞춘다
-      this.#db
-        .prepare('update todo set deleted_at = ? where deleted_at > ?')
-        .run(Math.floor(now), Math.floor(now));
+      quietly(this.#db, () =>
+        this.#db
+          .prepare('update todo set deleted_at = ? where deleted_at > ?')
+          .run(Math.floor(now), Math.floor(now)),
+      );
       const n = this.#purgeRow(`deleted_at <= ${Math.floor(before)}`, true);
       this.#db.exec('commit');
       return n;
@@ -827,43 +846,68 @@ export class TodoStore {
         if (owed > 0) this.#log(owed, 'early', id, now);
         coins = base + owed;
       }
-      this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
+      this.#db
+        .prepare('update todo set done_at = ?, coins = ?, coin_paid = max(coin_paid, ?) where id = ?')
+        .run(now, coins, coins > 0 ? 1 : 0, id);
       // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
-      // 되돌린 뒤 다시 끝내도, 이 회차에서 난 다음 회차가 (끝냈더라도) 남아 있으면 새로 만들지 않는다
-      const hasNext = this.#db
-        .prepare('select 1 from todo where repeat_of = ? and deleted_at is null limit 1')
-        .get(id);
-      if (t.repeat && !hasNext) {
+      // 다음 회차의 uid 는 이 회차 uid 에서 정해진다. 되돌린 뒤 다시 끝내면 걷어 낸(또는 지운) 그 행을 되살려 둘이 되지 않는다
+      if (t.repeat) {
+        const mine = (this.#db.prepare('select uid from todo where id = ?').get(id) as { uid: string | null })
+          .uid;
+        const nextUid = mine ? nextTodoUid(mine) : null;
+        const found = this.#db
+          .prepare(
+            `select id, deleted_at, auto_removed from todo where repeat_of = ? or uid is ?
+             order by deleted_at is not null, (uid is ?) desc, id limit 1`,
+          )
+          .get(id, nextUid, nextUid) as
+          | { id: number; deleted_at: number | null; auto_removed: number }
+          | undefined;
         const kept = this.#repeatAnchor(id);
         const monthDay = t.repeat === 'monthly' ? monthAnchor(kept, t.due) : undefined;
-        const next = this.add(
-          {
-            title: t.title,
-            important: t.important,
-            repeat: t.repeat,
-            due: nextDue(t.repeat === 'weekly' ? (kept ?? t.due) : t.due, t.repeat, day, monthDay),
-            dueMin: t.dueMin,
-            reminds: t.reminds,
-            ...(monthDay !== undefined ? { repeatDay: monthDay } : {}),
-          },
-          now,
-          id,
-        );
-        // 손으로 정한 자리가 있으면 다음 회차도 그 자리에
-        const ord = (
-          this.#db.prepare('select sort_ord from todo where id = ?').get(id) as { sort_ord: number | null }
-        ).sort_ord;
-        if (ord !== null && ord !== undefined)
-          this.#db.prepare('update todo set sort_ord = ? where id = ?').run(ord, next.id);
-        // 고정한 반복 할 일은 다음 회차도 같은 자리에 고정한다
-        if (t.pinnedAt !== null)
-          this.#db.prepare('update todo set pinned_at = ? where id = ?').run(t.pinnedAt, next.id);
-        // 단계도 안 한 채로 옮겨 적는다 (매일 아침 루틴 체크리스트)
-        this.addSteps(
-          next.id,
-          t.steps.map((st) => st.title),
-          now,
-        );
+        const due = nextDue(t.repeat === 'weekly' ? (kept ?? t.due) : t.due, t.repeat, day, monthDay);
+        let nextId: number;
+        if (found && found.deleted_at === null) {
+          nextId = -1; // 이미 열려 있거나 끝낸 다음 회차가 있다
+        } else if (found) {
+          nextId = Number(found.id);
+          this.#db.prepare('update todo set deleted_at = null, auto_removed = 0 where id = ?').run(nextId);
+          // 되돌리기가 걷어 낸(손대지 않은) 회차는 이번 끝낸 날 기준으로 마감을 다시 센다
+          if (Number(found.auto_removed) === 1) {
+            this.#db.prepare('update todo set due = ?, due_min = ? where id = ?').run(due, t.dueMin, nextId);
+            this.#reminders.set(nextId, t.reminds, todoAnchor({ due, dueMin: t.dueMin }), {
+              now,
+              reset: true,
+            });
+          }
+        } else {
+          const next = this.add(
+            {
+              title: t.title,
+              important: t.important,
+              repeat: t.repeat,
+              due,
+              dueMin: t.dueMin,
+              reminds: t.reminds,
+              ...(monthDay !== undefined ? { repeatDay: monthDay } : {}),
+            },
+            now,
+            id,
+            nextUid,
+          );
+          nextId = next.id;
+          // 손으로 정한 자리가 있으면 다음 회차도 그 자리에
+          const ord = (
+            this.#db.prepare('select sort_ord from todo where id = ?').get(id) as { sort_ord: number | null }
+          ).sort_ord;
+          if (ord !== null && ord !== undefined)
+            this.#db.prepare('update todo set sort_ord = ? where id = ?').run(ord, next.id);
+          // 고정한 반복 할 일은 다음 회차도 같은 자리에 고정한다
+          if (t.pinnedAt !== null)
+            this.#db.prepare('update todo set pinned_at = ? where id = ?').run(t.pinnedAt, next.id);
+        }
+        // 단계도 안 한 채로 옮겨 적는다 (매일 아침 루틴 체크리스트). 단계 uid 는 새 회차 uid 에서 정해, 이미 옮긴 단계는 건너뛴다
+        if (nextId > 0) this.#copySteps(id, nextId, now);
       }
       this.#db.exec('commit');
     } catch (err) {
@@ -871,6 +915,20 @@ export class TodoStore {
       throw err;
     }
     return coins;
+  }
+
+  /** 끝낸 회차의 단계를 다음 회차로 옮겨 적는다 (이미 옮긴 것은 건너뜀) */
+  #copySteps(fromId: number, toId: number, now: number): void {
+    const toUid = (this.#db.prepare('select uid from todo where id = ?').get(toId) as { uid: string | null })
+      .uid;
+    const steps = this.#db
+      .prepare('select uid, title from todo_step where todo_id = ? order by ord, id')
+      .all(fromId) as { uid: string | null; title: string }[];
+    for (const st of steps) {
+      const uid = toUid && st.uid ? copiedStepUid(toUid, st.uid) : null;
+      if (uid && this.#db.prepare('select 1 from todo_step where uid = ?').get(uid)) continue;
+      this.addStep(toId, st.title, now, uid);
+    }
   }
 
   /** 끝낸 것 되돌리기. 받은 코인을 회수하되 이미 써서 모자라면 0 에서 멈춘다. 회수한 코인 수를 돌려준다. */

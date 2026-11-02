@@ -1,6 +1,8 @@
 // SQLite 스키마 (P2-01). node:sqlite 를 쓴다: Electron 44 의 Node 24.21 에 들어 있어 네이티브 모듈 빌드가 없다.
 // 버전은 PRAGMA user_version 에 적고, 앱이 올라갈 때 순서대로 바꾼다. 바꾸기 전 파일 복사는 메인이 한다.
 
+import { SYNC_MIGRATION_SQL } from './db-schema-sync.ts';
+
 /** 버전 n 으로 올리는 SQL. 배열 순서 = 버전 (0번은 1판으로 올리는 것). 한 번 내보낸 판은 고치지 않고 새 판을 더한다. */
 export const MIGRATIONS: readonly string[] = [
   // 1판: 할 일, 코인 장부, 펫 상태
@@ -353,6 +355,8 @@ export const MIGRATIONS: readonly string[] = [
   alter table mail add column coins_paid integer;
   update mail set coins_paid = read_at where source = 'local' and coins is not null and read_at is not null;
   `,
+  // 24판: 기기 간 동기화 바탕 (docs/sync-plan.md 4절). uid, 칸 시각, 보낼 목록, 영구 삭제 표식을 트리거가 채운다
+  SYNC_MIGRATION_SQL,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

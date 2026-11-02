@@ -20,6 +20,8 @@ import {
 } from './quick-words.ts';
 import { type Anchor, DEFAULT_REMINDS, dayOf, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
 import { ReminderStore } from './reminder-store.ts';
+import { quietly } from './sync-quiet.ts';
+import { eventSlotUid } from './sync-uid.ts';
 import { localDay, TRASH_DAYS, trashDaysLeft } from './todo-store.ts';
 
 export interface CalEvent {
@@ -181,15 +183,17 @@ const cleanEnd = (ms: number | null | undefined): number | null => (eventTimeOk(
  * 읽기는 그 행에서 던지므로 쓰기(update)로만 고친다. 고친 행 수
  */
 export function repairEventTimes(db: Db, now: number): number {
-  const ends = db
-    .prepare('update event set end_at = null where end_at is not null and abs(end_at) > ?')
-    .run(EVENT_TIME_MAX_MS);
-  const starts = db
-    .prepare(
-      "update event set deleted_at = ?, removed_by = 'user' where deleted_at is null and abs(start_at) > ?",
-    )
-    .run(now, EVENT_TIME_MAX_MS);
-  return Number(ends.changes) + Number(starts.changes);
+  return quietly(db, () => {
+    const ends = db
+      .prepare('update event set end_at = null where end_at is not null and abs(end_at) > ?')
+      .run(EVENT_TIME_MAX_MS);
+    const starts = db
+      .prepare(
+        "update event set deleted_at = ?, removed_by = 'user' where deleted_at is null and abs(start_at) > ?",
+      )
+      .run(now, EVENT_TIME_MAX_MS);
+    return Number(ends.changes) + Number(starts.changes);
+  });
 }
 
 /** 반복 회차를 미리 만들어 두는 가장 먼 때 (지금부터 일 수) */
@@ -233,7 +237,9 @@ export function repairAllDayZone(db: Db): number {
     const after = end === null ? undefined : allDayOrigin(end);
     const nextEnd = end === null || after === undefined ? end : dayStartMs(after);
     if (nextStart === start && nextEnd === end) continue;
-    db.prepare('update event set start_at = ?, end_at = ? where id = ?').run(nextStart, nextEnd, r.id);
+    quietly(db, () =>
+      db.prepare('update event set start_at = ?, end_at = ? where id = ?').run(nextStart, nextEnd, r.id),
+    );
     fixed++;
   }
   return fixed;
@@ -278,7 +284,9 @@ export function repairRepeatZone(db: Db, now: number): number {
     ).getTime();
     if (next === start) continue;
     const end = r.end_at === null ? null : Number(r.end_at) - start + next;
-    db.prepare('update event set start_at = ?, end_at = ? where id = ?').run(next, end, r.id);
+    quietly(db, () =>
+      db.prepare('update event set start_at = ?, end_at = ? where id = ?').run(next, end, r.id),
+    );
     fixed++;
   }
   return fixed;
@@ -456,12 +464,15 @@ export class EventStore {
       )[0];
     }
     // 기존 데이터도 한 번 추론한 기준 시각을 모든 회차에 저장한다. 이후 첫 회차를 영구 삭제해도 유지된다.
-    this.#db
-      .prepare('update event set repeat_clock = ? where id = ? and repeat_clock is null')
-      .run(repeatClock, seriesId);
-    this.#db
-      .prepare('update event set repeat_clock = ? where repeat_series = ? and repeat_clock is null')
-      .run(repeatClock, seriesId);
+    // 기계적 보정이라 동기화 기록은 남기지 않는다 (sync-quiet.ts)
+    quietly(this.#db, () => {
+      this.#db
+        .prepare('update event set repeat_clock = ? where id = ? and repeat_clock is null')
+        .run(repeatClock, seriesId);
+      this.#db
+        .prepare('update event set repeat_clock = ? where repeat_series = ? and repeat_clock is null')
+        .run(repeatClock, seriesId);
+    });
     const [hour, minute, second, millisecond] = repeatClockParts(repeatClock);
     const reminderRows = this.#reminders.many(
       latest && latest.id !== seriesId ? [seriesId, Number(latest.id)] : [seriesId],
@@ -490,22 +501,31 @@ export class EventStore {
     const remindMin = template?.remind_min ?? initial?.remind_min ?? latest?.remind_min ?? DEFAULT_REMIND_MIN;
     const createdAt = template?.created_at ?? initial?.created_at ?? latest?.created_at ?? Date.now();
     if (!template) {
-      this.#db
-        .prepare(
-          'insert or ignore into event_repeat_template (series_id, start_at, repeat_kind, title, duration_ms, repeat_clock, reminders, remind_min, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        )
-        .run(
-          seriesId,
-          Number(validInitial?.start_at ?? latest?.start_at),
-          repeat,
-          title,
-          duration,
-          repeatClock,
-          JSON.stringify(reminds),
-          remindMin,
-          createdAt,
-        );
+      // 템플릿이 없던 옛 반복의 보정이라 동기화 기록은 남기지 않는다
+      quietly(this.#db, () =>
+        this.#db
+          .prepare(
+            'insert or ignore into event_repeat_template (series_id, start_at, repeat_kind, title, duration_ms, repeat_clock, reminders, remind_min, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .run(
+            seriesId,
+            Number(validInitial?.start_at ?? latest?.start_at),
+            repeat,
+            title,
+            duration,
+            repeatClock,
+            JSON.stringify(reminds),
+            remindMin,
+            createdAt,
+          ),
+      );
     }
+
+    const seriesUid = (
+      this.#db.prepare('select uid from event where id = ?').get(seriesId) as
+        | { uid: string | null }
+        | undefined
+    )?.uid;
     while (interval <= through) {
       let day = dayOf(interval);
       if (repeat === 'weekly') day = plusDays(day, 7);
@@ -531,7 +551,7 @@ export class EventStore {
       if (!skipped && !held) {
         const inserted = this.#db
           .prepare(
-            'insert or ignore into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
+            'insert or ignore into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock, slot, uid) values (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)',
           )
           .run(
             title,
@@ -542,6 +562,8 @@ export class EventStore {
             repeat,
             seriesId,
             repeatClock,
+            startAt,
+            seriesUid ? eventSlotUid(seriesUid, startAt) : null,
           );
         if (Number(inserted.changes) > 0)
           this.#reminders.set(

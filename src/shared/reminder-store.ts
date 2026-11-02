@@ -66,11 +66,36 @@ export class ReminderStore {
       opts.now === undefined
         ? befores.map((before) => ({ before, notifiedAt: keep.get(before) ?? null }))
         : armReminders(anchor, befores, opts.now, keep);
-    this.#db.prepare('delete from reminder where kind = ? and ref_id = ?').run(this.#kind, id);
-    const ins = this.#db.prepare(
-      'insert into reminder (kind, ref_id, before_min, notified_at) values (?, ?, ?, ?)',
+    // 지우고 다시 넣지 않고 달라진 것만 고친다: 같은 알림 목록이면 before_min 이 안 바뀌어 동기화 기록(24판 트리거)도 남지 않는다
+    const have = new Set(
+      (
+        this.#db
+          .prepare('select before_min from reminder where kind = ? and ref_id = ?')
+          .all(this.#kind, id) as {
+          before_min: number;
+        }[]
+      ).map((r) => Number(r.before_min)),
     );
-    for (const m of marks) ins.run(this.#kind, id, m.before, m.notifiedAt);
+    const want = new Set(marks.map((m) => m.before));
+    for (const before of have)
+      if (!want.has(before))
+        this.#db
+          .prepare('delete from reminder where kind = ? and ref_id = ? and before_min = ?')
+          .run(this.#kind, id, before);
+    let ins: ReturnType<Db['prepare']> | undefined;
+    for (const m of marks) {
+      if (have.has(m.before)) {
+        this.#db
+          .prepare('update reminder set notified_at = ? where kind = ? and ref_id = ? and before_min = ?')
+          .run(m.notifiedAt, this.#kind, id, m.before);
+        continue;
+      }
+      ins ??= this.#db.prepare(
+        'insert into reminder (kind, ref_id, before_min, notified_at) values (?, ?, ?, ?)',
+      );
+      ins.run(this.#kind, id, m.before, m.notifiedAt);
+      have.add(m.before);
+    }
   }
 
   /**
