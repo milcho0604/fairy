@@ -5,6 +5,7 @@ import { type AppDeps, appModule } from './app.module';
 import type { Config } from './config';
 import { Feeds } from './feeds';
 import { rejectEncodedBody } from './no-encoded-body';
+import { SYNC_PUSH_BODY } from './sync';
 import { updateGate } from './update-gate';
 
 /**
@@ -14,6 +15,11 @@ import { updateGate } from './update-gate';
  */
 export const UPLOAD_REQUEST_MS = 30 * 60_000;
 export const REQUEST_MS = 300_000;
+
+type Mw0 = { headers: Record<string, string | string[] | undefined> };
+type UseArg = (req: Mw0, res: unknown, next: () => void) => void;
+// 본문 해석기를 길별로 고르려고 platform-express 가 쓰는 express 를 그대로 가져온다
+const expressJson = (require('express') as { json(o: { limit: string }): UseArg }).json;
 
 type RawReq = {
   method?: string;
@@ -34,6 +40,16 @@ export async function createApp(config: Config, deps: AppDeps = {}): Promise<Nes
   app.disable('x-powered-by');
   // 압축된 요청 본문은 415 로 거절한다 (본문 해석기보다 먼저)
   app.use(rejectEncodedBody);
+  // 동기화 올리기(push)만 4MB: 잠근 덩어리가 커서 아래 256KB 상한과 따로 둔다 (서버 백업 PUT 처럼 길별로).
+  // 먼저 읽힌 본문은 아래 json 해석기가 다시 읽지 않는다
+  // 인증 전에 4MB 를 읽지 않게: 세션 토큰 모양(Bearer fs_)이 아니면 이 파서를 건너뛰고 아래 256KB 파서가 받는다
+  const bigJson = expressJson({ limit: SYNC_PUSH_BODY });
+  app.use('/v1/sync/push', (req: Mw0, res: unknown, next: () => void) => {
+    const raw = req.headers.authorization;
+    const auth = Array.isArray(raw) ? raw[0] : raw;
+    if (auth?.startsWith('Bearer fs_')) bigJson(req, res, next);
+    else next();
+  });
   // 요청 본문 상한. 서버 백업(5단계)만 따로 크게 받는다.
   app.useBodyParser('json', { limit: '256kb' });
   // 운영자 화면(/admin)의 폼. 스크립트 없이 폼만 쓴다 (admin.ts)

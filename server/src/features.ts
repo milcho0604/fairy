@@ -37,6 +37,8 @@ export const FEATURES = {
    * 이 스위치의 허용 목록이 그 판단까지 맡는다. 사서 받은 이용권이 생기면 그 몫을 따로 센다
    */
   friend_gift_passes: { env: 'FEATURE_FRIEND_GIFT_PASSES', fallback: 'allowlist', admins: true },
+  /** 기기 간 동기화 (docs/sync-plan.md). 서버는 기기에서 잠근 덩어리만 보관한다. 처음에는 허용 계정과 운영자 계정만 */
+  sync: { env: 'FEATURE_SYNC', fallback: 'allowlist', admins: true },
 } as const satisfies Record<string, FeatureDef>;
 
 /** 기능 하나: 기본값을 읽는 env, env 가 비었을 때의 값(없으면 off), allowlist 에서 운영자 계정도 켜지는가 */
