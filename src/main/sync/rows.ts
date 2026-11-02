@@ -137,12 +137,7 @@ function clocksOf(db: Db, kind: SyncKind, uid: string, keys: string[]): Record<s
  * 이 기기의 항목 하나를 보낼 모양으로. 행이 없거나 추적하지 않는 일정이면 undefined.
  * 부모가 없는 단계도 undefined (보낼 수 없다)
  */
-export function readItem(
-  db: Db,
-  kind: SyncKind,
-  uid: string,
-  dev: { id: string; name: string },
-): SyncItem | undefined {
+export function readItem(db: Db, kind: SyncKind, uid: string, dev: { id: string }): SyncItem | undefined {
   const r = one(db, `select * from ${kind} where uid = ?`, uid);
   if (!r) return undefined;
   const id = Number(r.id);
@@ -235,7 +230,7 @@ export function readItem(
   }
   const c = clocksOf(db, kind, uid, Object.keys(f));
   if (kind === 'todo') c.auto_removed = c.deleted_at ?? 0;
-  return { kind, uid, f, c, dev: dev.id, name: dev.name };
+  return { kind, uid, f, c, dev: dev.id };
 }
 
 // ---- 쓰기: 항목을 표 행으로 ----

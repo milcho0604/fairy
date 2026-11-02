@@ -12,7 +12,6 @@ import {
   bodyHash,
   clampClock,
   conflictCopy,
-  conflictDate,
   type Json,
   mergeItems,
   type SyncItem,
@@ -111,7 +110,6 @@ export interface SyncDeps {
   /** 운영체제 열쇠(safeStorage)를 쓸 수 있다. 못 쓰면 켜지 않는다 */
   secure: () => boolean;
   now: () => number;
-  deviceName: () => string;
   random?: (n: number) => Uint8Array;
   log: (tag: string, ...rest: unknown[]) => void;
   /** 상태가 바뀌었다 (설정 창에 보낸다) */
@@ -326,7 +324,7 @@ export function createSyncEngine(d: SyncDeps) {
   // ---- 항목 풀기와 합치기 ----
 
   const ctx = () => ({ account: st.account as string, gen: st.gen });
-  const dev = () => ({ id: st.dev, name: d.deviceName() });
+  const dev = () => ({ id: st.dev });
 
   /** 풀린 글을 항목으로. 모양이 틀리면 던진다 */
   function toItem(o: ReturnType<typeof openItem>, now: number): SyncItem {
@@ -341,7 +339,6 @@ export function createSyncEngine(d: SyncDeps) {
       f: o.f as Record<string, Json>,
       c,
       dev: typeof o.dev === 'string' ? o.dev : '',
-      name: typeof o.name === 'string' ? o.name.slice(0, 60) : '',
       bh: typeof o.bh === 'string' ? o.bh : null,
       ...(typeof o.copyOf === 'string' ? { copyOf: o.copyOf } : {}),
     };
@@ -462,14 +459,8 @@ export function createSyncEngine(d: SyncDeps) {
     if (m.ahead) rows.outboxAdd(d.db, kind, uid);
     else rows.outboxDrop(d.db, kind, uid);
     if (m.copy) {
-      const loserName = m.copy.fromLocal ? dev().name : item.name;
       const loserTitle = String((m.copy.fromLocal ? local?.f.title : item.f.title) ?? '');
-      const copy = conflictCopy(
-        m.item,
-        m.copy,
-        tr('sync.conflictCopy', { title: loserTitle, device: loserName, date: conflictDate(m.copy.t) }),
-        dev(),
-      );
+      const copy = conflictCopy(m.item, m.copy, tr('sync.conflictCopy', { title: loserTitle }), dev());
       const exist = rows.readItem(d.db, 'note', copy.uid, dev());
       const mc = mergeItems(exist, copy, undefined);
       if (!exist || !sameContent(mc.item, exist)) rows.applyItem(d.db, mc.item, { now });
@@ -573,7 +564,6 @@ export function createSyncEngine(d: SyncDeps) {
         f: item.f,
         c: item.c,
         dev: item.dev,
-        name: item.name,
         ...(kind === 'note' ? { bh: item.bh ?? null } : {}),
         ...(copyOf ? { copyOf } : {}),
       });
@@ -587,9 +577,7 @@ export function createSyncEngine(d: SyncDeps) {
     }
     const t = rows.tombOf(d.db, kind, uid);
     if (t !== undefined && rows.rowId(d.db, kind, uid) === undefined) {
-      const blob = sealItem(key, ctx(), uid, kind, { tomb: t, dev: st.dev, name: d.deviceName() }).toString(
-        'base64',
-      );
+      const blob = sealItem(key, ctx(), uid, kind, { tomb: t, dev: st.dev }).toString('base64');
       return { kind, uid, push: { uid, base, blob, deleted: true }, sent: { tomb: t }, size: blob.length };
     }
     rows.outboxDrop(d.db, kind, uid);

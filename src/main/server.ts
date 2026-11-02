@@ -3,7 +3,6 @@
 // 서버 주소(server-url.ts)가 비면 서버 기능이 모두 꺼진다: 칸이 숨고 어떤 요청도 나가지 않는다.
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { hostname } from 'node:os';
 import { join } from 'node:path';
 import {
   app,
@@ -216,10 +215,6 @@ export function createServer(o: {
     key: secret('sync-key'),
     secure: () => memory || osCrypto.available(),
     now: Date.now,
-    deviceName: () =>
-      hostname()
-        .replace(/\.local$/i, '')
-        .slice(0, 40) || 'device',
     log: o.log,
     onChange: () => sendStatus(core.status()),
     ...(o.onSyncApplied ? { onApplied: o.onSyncApplied } : {}),

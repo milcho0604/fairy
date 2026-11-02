@@ -3,15 +3,17 @@
 // 꺼짐, 복구 코드 넣기(다른 기기), 올릴지 묻기, 켜짐의 네 모양과, 복구 코드를 한 번 보여 주는 칸.
 // 복구 코드는 메인이 답으로 한 번 준다. 이 창은 메모리에만 들고 있다가 "적어 뒀어"를 누르고 닫으면 버린다.
 import { type FormEvent, useEffect, useState } from 'react';
-import { formatBytes } from '../../../shared/bytes.ts';
 import { type I18nKey, locale, t } from '../../../shared/i18n/index.ts';
+import type { SyncBoxMode } from '../../../shared/sync-ui.ts';
 import {
   codeWhy,
   problemKey,
+  sizeText,
   syncBoxMode,
   syncErrorKey,
   syncLines,
   syncShown,
+  syncUnavailable,
 } from '../../../shared/sync-ui.ts';
 import type { SyncReply, SyncView } from '../../../shared/sync-view.ts';
 import { useNear } from './NearResult.tsx';
@@ -63,7 +65,8 @@ export function SyncBox() {
   const b = server()?.sync;
   if (!syncShown(s) || !s?.sync || !b) return null;
   const v: SyncView = s.sync;
-  const mode = syncBoxMode(v);
+  // 서버가 기능 키를 껐는데 이 기기는 켜 둔 상태: 쓸 수 없다는 한 줄과 끄기만
+  const mode: SyncBoxMode | 'unavailable' = syncUnavailable(s) ? 'unavailable' : syncBoxMode(v);
 
   /** 단추 하나의 일: 누르는 동안 막고, 실패는 단추 아래에 보인다 */
   const run = async (f: () => Promise<SyncReply>, done: (r: SyncReply) => void) => {
@@ -194,6 +197,24 @@ export function SyncBox() {
           </div>
         )}
 
+        {!reveal && mode === 'unavailable' && (
+          <div className="server-group">
+            <small className="warn">{t('sync.unavailable')}</small>
+            <div className="action-row">
+              <button
+                type="button"
+                className={`ghost${sure === 'local' ? ' danger' : ''}`}
+                disabled={busy}
+                onBlur={() => setSure(null)}
+                onClick={twice('local', () => disable(false))}
+              >
+                {sure === 'local' ? t('sync.sure') : t('sync.disable.local')}
+              </button>
+            </div>
+            {near}
+          </div>
+        )}
+
         {!reveal && mode === 'off' && (
           <div className="server-group">
             <small>{t('sync.off.lede')}</small>
@@ -307,8 +328,8 @@ export function SyncBox() {
                   {t('sync.usage', {
                     used: v.usage.items.toLocaleString(locale()),
                     items: v.usage.maxItems.toLocaleString(locale()),
-                    bytes: formatBytes(v.usage.bytes),
-                    size: formatBytes(v.usage.maxBytes),
+                    bytes: sizeText(v.usage.bytes),
+                    size: sizeText(v.usage.maxBytes),
                   })}
                 </small>
               )}

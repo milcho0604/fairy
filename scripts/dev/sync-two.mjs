@@ -301,6 +301,7 @@ const T = {
     download: '올리지 않고 받기만',
     copyTag: '충돌 사본',
     lede: '메모, 할 일, 일정을 이 컴퓨터에서 잠가 서버에 두고',
+    unavailable: '지금은 동기화를 쓸 수 없어.',
   },
   en: {
     turnOn: 'Turn on sync',
@@ -325,6 +326,7 @@ const T = {
     download: 'Only receive, no upload',
     copyTag: 'Conflict copy',
     lede: 'Locks your notes, to-dos, and events on this computer',
+    unavailable: "Sync isn't available right now.",
   },
 }[LANG];
 
@@ -467,6 +469,7 @@ try {
   await runSync(A);
   await sleep(500);
   await pa.matrix('sync-3-on');
+  check('사용량 상한이 100MB 로 보인다 (서버 상한과 같은 1024 기준)', /\/ 100MB/.test(await boxText(pa)), (await boxText(pa)).split('\n').find((x) => x.includes('MB')));
   const needle = [Buffer.from(code), Buffer.from(code.replaceAll('-', ''))];
   const leaks = dataHas(A.data, needle);
   check('A 앱 폴더 어디에도 복구 코드 글자가 없다', leaks.length === 0, leaks.join(','));
@@ -549,6 +552,7 @@ try {
   await runSync(B);
   await settle(A, B);
   check('충돌: 양쪽에 충돌 사본 메모가 하나씩', (await noteTitles(A)).filter((x) => x.includes('충돌 사본') || x.includes('conflict copy')).length === 1);
+  check('충돌 사본 제목에 기기 이름과 날짜가 없다', (await noteTitles(A)).some((x) => /^일기 \((충돌 사본|conflict copy)\)$/.test(x)), (await noteTitles(A)).join('|'));
   await main(A, `__jj.panel.refresh(); __jj.panel.openTab('note'); 1`);
   await sleep(1200);
   await main(A, `__jj.panel.window.removeAllListeners('blur'); 1`);
@@ -682,6 +686,15 @@ try {
   check('다시 시작한 곳의 새 코드를 A 가 넣으면 이어서 맞춘다', (await view(A)).phase === 'on' && (await view(A)).problem === null);
   await pa.shot('sync-20-a-resumed');
 
+  // 기능 키가 꺼져도 켜 둔 기기는 "쓸 수 없어"와 끄기만 보인다
+  sql(`INSERT INTO feature_flag (key, mode) VALUES ('sync', 'off') ON CONFLICT (key) DO UPDATE SET mode = 'off'`);
+  await until('A 기능 키 꺼짐', async () => {
+    await main(A, '__jj.server.core.refreshProviders(true).then(() => 1)');
+    return (await status(A)).features?.sync === false;
+  }, 20_000);
+  await until('A 쓸 수 없음 칸', async () => (await boxText(pa)).includes(T.unavailable), 15_000);
+  check('키가 꺼졌어도 켜 둔 기기: 쓸 수 없다는 한 줄과 끄기 단추만', !(await boxText(pa)).includes(T.newCode) && (await boxText(pa)).includes(T.local));
+  await pa.shot('sync-3b-unavailable');
   // 가로 넘침, 영어 화면에 한글, 줄표
   const allText = await boxText(pa);
   check('긴 줄표와 가운뎃점이 없다', !/[\u2014\u00b7]/.test(allText));

@@ -3,9 +3,25 @@ import type { I18nKey } from './i18n/index.ts';
 import { featureOn, type ServerStatus, serverView } from './server-account.ts';
 import type { SyncProblem, SyncView } from './sync-view.ts';
 
-/** 칸이 보이나: 서버 계정이 켜졌고, 로그인했고, 서버가 기능 키 sync 를 열었고, 엔진이 상태를 줬을 때만 */
+/**
+ * 칸이 보이나: 서버 계정이 켜졌고, 로그인했고, 엔진이 상태를 줬고, 서버가 기능 키 sync 를 열었을 때.
+ * 키가 꺼졌어도 이 기기에서 동기화를 켜 둔 상태(phase 가 off 가 아님)면 끄기 위해 보인다
+ */
 export function syncShown(s: ServerStatus | null | undefined): boolean {
-  return !!s && serverView(s) === 'server' && s.signedIn && featureOn(s, 'sync') && !!s.sync;
+  if (!s || serverView(s) !== 'server' || !s.signedIn || !s.sync) return false;
+  return featureOn(s, 'sync') || s.sync.phase !== 'off';
+}
+
+/** 서버 기능 키가 꺼졌는데 이 기기는 켜 둔 상태: "지금은 동기화를 쓸 수 없어" 와 끄기만 보인다 */
+export function syncUnavailable(s: ServerStatus | null | undefined): boolean {
+  return !!s && !featureOn(s, 'sync') && !!s.sync && s.sync.phase !== 'off';
+}
+
+/** 서버 상한(100MB)과 같은 1024 기준 크기 글 ("100MB", "1.5MB", "12KB") */
+export function sizeText(n: number): string {
+  const mb = n / 1048576;
+  if (mb >= 1) return `${Number.isInteger(mb) || mb >= 10 ? Math.round(mb) : mb.toFixed(1)}MB`;
+  return `${Math.max(1, Math.round(n / 1024))}KB`;
 }
 
 /**

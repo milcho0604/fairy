@@ -80,12 +80,13 @@ export const ko = {
   'server.reverted': '다른 기기에서 먼저 코인을 써서 {what} 사기를 되돌렸어. 코인은 돌려받았어.',
   'server.coinsLowered': '서버 기록에 맞춰 코인이 {n} 줄었어.',
   // 기기 간 동기화: 같은 메모를 두 기기에서 고쳐 합치지 못했을 때 진 쪽 글로 만드는 사본의 제목
-  'sync.conflictCopy': '{title} (충돌 사본, {device}, {date})',
+  'sync.conflictCopy': '{title} (충돌 사본)',
   // 설정 > 데이터와 계정 > 기기 간 동기화 (docs/sync-plan.md 7절, SyncBox.tsx)
   'sync.title': '기기 간 동기화',
   'sync.searchKeys': '동기화 기기 복구 코드 열쇠 sync recovery code key devices',
   'sync.off.lede':
     '메모, 할 일, 일정을 이 컴퓨터에서 잠가 서버에 두고 다른 컴퓨터와 맞춰. 복구 코드가 없으면 운영자도 볼 수 없어.',
+  'sync.unavailable': '지금은 동기화를 쓸 수 없어.',
   'sync.turnOn': '동기화 켜기',
   'sync.turningOn': '켜는 중이야.',
   'sync.code.title': '복구 코드',
@@ -348,11 +349,12 @@ export const en: Translation<typeof ko> = {
   'server.reverted':
     'Coins were spent first on another device, so buying {what} was undone. Your coins are back.',
   'server.coinsLowered': 'Your coins went down by {n} to match the server record.',
-  'sync.conflictCopy': '{title} (conflict copy, {device}, {date})',
+  'sync.conflictCopy': '{title} (conflict copy)',
   'sync.title': 'Sync between devices',
   'sync.searchKeys': 'sync devices recovery code key 동기화 기기 복구 코드',
   'sync.off.lede':
     "Locks your notes, to-dos, and events on this computer, keeps them on the server, and matches them with your other computers. Without the recovery code, even the operator can't read them.",
+  'sync.unavailable': "Sync isn't available right now.",
   'sync.turnOn': 'Turn on sync',
   'sync.turningOn': 'Turning it on.',
   'sync.code.title': 'Recovery code',

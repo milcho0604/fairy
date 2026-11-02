@@ -26,7 +26,6 @@ function putRemote(
     f,
     c: clocks,
     dev: 'ffffffffffffffff',
-    name: '남의 기기',
     ...extra,
   });
   server.head += 1;

@@ -2,7 +2,17 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { dicts } from './i18n/index.ts';
 import type { ServerStatus } from './server-account.ts';
-import { codeWhy, FRESH_MS, syncBoxMode, syncErrorKey, syncLines, syncShown, usageRatio } from './sync-ui.ts';
+import {
+  codeWhy,
+  FRESH_MS,
+  sizeText,
+  syncBoxMode,
+  syncErrorKey,
+  syncLines,
+  syncShown,
+  syncUnavailable,
+  usageRatio,
+} from './sync-ui.ts';
 import type { SyncView } from './sync-view.ts';
 
 const view = (o: Partial<SyncView> = {}): SyncView => ({
@@ -42,6 +52,29 @@ test('칸은 서버 계정 켬, 로그인, 기능 키 sync, 엔진 상태가 모
   assert.equal(syncShown(status({ features: null })), false, '서버에 아직 닿지 않음');
   const { sync: _s, ...noEngine } = status();
   assert.equal(syncShown(noEngine as ServerStatus), false, '엔진 상태 없음');
+});
+
+test('기능 키가 꺼져도 이 기기가 켜 둔 상태면 칸이 보이고 쓸 수 없다고만 한다', () => {
+  const off = (phase: SyncView['phase']) => status({ features: { sync: false }, sync: view({ phase }) });
+  assert.equal(syncShown(off('off')), false, '꺼 둔 기기에는 숨김');
+  for (const p of ['on', 'needCode', 'askUpload', 'enabling'] as const) {
+    assert.equal(syncShown(off(p)), true, p);
+    assert.equal(syncUnavailable(off(p)), true, p);
+  }
+  assert.equal(syncUnavailable(status({ sync: view({ phase: 'on' }) })), false, '키가 켜져 있으면 평소 모양');
+  assert.equal(
+    syncShown(status({ features: null, sync: view({ phase: 'on' }), signedIn: false })),
+    false,
+    '로그인 안 함',
+  );
+  assert.match(dicts.ko['sync.unavailable'], /지금은 동기화를 쓸 수 없어/);
+});
+
+test('크기는 서버 상한과 같은 1024 기준: 100MB 상한이 100MB 로 보인다', () => {
+  assert.equal(sizeText(100 * 1024 * 1024), '100MB');
+  assert.equal(sizeText(1620), '2KB');
+  assert.equal(sizeText(1.5 * 1048576), '1.5MB');
+  assert.equal(sizeText(0), '1KB');
 });
 
 test('칸 모양은 엔진 단계를 그대로 따른다', () => {

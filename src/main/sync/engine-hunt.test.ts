@@ -43,7 +43,6 @@ function flakyDevice(
       },
       secure: () => true,
       now: Date.now,
-      deviceName: () => 'X',
       random: (n) => randomBytes(n),
       log: (...a) => f.logs.push(a.join(' ')),
       scrypt: { N: 1 << 10, r: 8, p: 1 },
