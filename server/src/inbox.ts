@@ -1,21 +1,60 @@
 import {
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { familyIds, lockAccount, lockAccountsOrdered } from './accounts';
+import { CONFIG } from './app.tokens';
+import type { Config } from './config';
 import { Db } from './db';
 import { returnGift } from './friend-links';
 import { addTickets, creditCoins } from './rewards';
+import { openText, plainStored, sealText } from './seal';
 
 // 쪽지함 (이슈 #101 범위 추가 4). 운영자가 보내는 쪽지(개인 지급, 알림)와 정기 지급의 달마다 쪽지를 서버 DB 에 둔다.
 // - 첨부(코인, 채팅 이용권)는 사용자가 열 때 준다. 계정 행과 쪽지 행을 잠그고 opened_at 을 보므로 동시에 열어도 한 번,
 //   코인은 장부 기록 번호 'inbox:<id>' 가 한 번 더 막는다
 // - 연 쪽지도 지우지 않고 이력으로 남긴다 (열린 때, 받은 첨부). 1년 지나면 정리, 탈퇴하면 함께 지워진다
 // - 같은 계정(같은 구글 로그인, 합쳐진 계정 포함)의 모든 기기가 같은 쪽지함을 본다
+
+// 쪽지 글(message)은 INBOX_ENC_KEY 가 있으면 칸 암호화로 저장한다 (seal.ts). AAD 는 "inbox|<쪽지 번호>".
+// 닉네임(sender_nickname)과 첨부 숫자는 그대로 둔다. 열쇠가 없으면 평문으로 쓰고, 읽을 때는 접두어로 가려 푼다.
+// 열쇠는 앱 하나에 하나라서 모듈에 둔다 (sendInbox 가 곳곳에서 연결만 받고 불린다). Inbox 서비스가 켜질 때 넣고 꺼질 때 뺀다.
+let noteKey: Buffer | undefined;
+let warnedNoKey = false;
+
+/** 평문 글 상한 (글자 수. DB 의 길이 검사는 암호문이 들어갈 만큼 넓다) */
+export const NOTE_MAX_CHARS = 200;
+/** 풀 수 없는 글 대신 보이는 말 (열쇠를 잃었거나 바꿨을 때) */
+export const NOTE_UNREADABLE = '(풀 수 없는 쪽지 글이에요)';
+
+const noteAad = (id: string | number) => `inbox|${id}`;
+
+/** 저장할 모양으로 (열쇠가 있으면 잠근다) */
+function noteIn(id: string | number, text: string | null): string | null {
+  if (text === null) return null;
+  return noteKey ? sealText(noteKey, text, noteAad(id)) : plainStored(text);
+}
+
+/** 앱과 운영자 화면에 내보낼 모양으로 (풀 수 없으면 알림 글) */
+export function noteOut(id: string | number, stored: string | null): string | null {
+  if (stored === null) return null;
+  try {
+    return openText(noteKey, stored, noteAad(id));
+  } catch (err) {
+    // 열쇠가 없어 못 푸는 경우는 줄마다 같은 말이라 처음 한 번만
+    if (noteKey || !warnedNoKey) console.warn(`[inbox] 쪽지 ${id} 글을 풀지 못했다:`, (err as Error).message);
+    if (!noteKey) warnedNoKey = true;
+    return NOTE_UNREADABLE;
+  }
+}
+
+/** 쪽지 글 암호화가 켜져 있나 (운영자 화면) */
+export const noteSealOn = (): boolean => noteKey !== undefined;
 
 /** 한 번에 돌려주는 쪽지 수 */
 export const INBOX_PAGE = 20;
@@ -96,7 +135,7 @@ function item(r: Row): InboxItem {
   return {
     id: Number(r.id),
     kind: r.kind,
-    message: r.message,
+    message: noteOut(r.id, r.message),
     from: FRIEND_KINDS.includes(r.kind) ? 'friend' : 'admin',
     sender: FRIEND_KINDS.includes(r.kind) ? { code: r.sender_code, nickname: r.sender_nickname } : null,
     coins: r.coins,
@@ -128,17 +167,22 @@ export async function sendInbox(
     friendRequestId?: string | null;
   },
 ): Promise<string> {
+  if (o.message && o.message.length > NOTE_MAX_CHARS) throw new Error('inbox: 쪽지 글은 200자까지');
   const who = await snapshot(c, o.fromAccount);
+  // 번호를 먼저 받아 그 번호를 AAD 로 잠근다 (줄을 바꿔치기해도 풀리지 않게)
+  const idr = await c.query<{ id: string }>("SELECT nextval(pg_get_serial_sequence('inbox', 'id')) AS id");
+  const id = idr.rows[0]?.id as string;
   const r = await c.query<{ id: string }>(
-    `INSERT INTO inbox (account_id, kind, message, coins, chat_passes, fill_to, expires_at, from_account,
+    `INSERT INTO inbox (id, account_id, kind, message, coins, chat_passes, fill_to, expires_at, from_account,
                         friend_request_id, sender_code, sender_nickname)
-     VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7::float8 IS NULL THEN NULL ELSE to_timestamp($7 / 1000.0) END,
+     OVERRIDING SYSTEM VALUE
+     VALUES ($12, $1, $2, $3, $4, $5, $6, CASE WHEN $7::float8 IS NULL THEN NULL ELSE to_timestamp($7 / 1000.0) END,
              $8, $9, $10, $11)
      RETURNING id`,
     [
       accountId,
       o.kind,
-      o.message ?? null,
+      noteIn(id, o.message || null),
       o.coins ?? 0,
       o.chatPasses ?? 0,
       o.fillTo ?? null,
@@ -147,6 +191,7 @@ export async function sendInbox(
       o.friendRequestId ?? null,
       who.code,
       who.nickname,
+      id,
     ],
   );
   return r.rows[0]?.id as string;
@@ -155,10 +200,21 @@ export async function sendInbox(
 @Injectable()
 export class Inbox implements OnModuleInit, OnModuleDestroy {
   #sweep: NodeJS.Timeout | undefined;
+  /** 시작 때 옛 글 잠그기가 끝나면 이행되는 약속 (시험이 기다린다) */
+  sealed: Promise<void> = Promise.resolve();
 
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    @Inject(CONFIG) private readonly config: Config,
+  ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    noteKey = this.config.inboxKey;
+    if (noteKey)
+      await this.sealPending().catch((err) =>
+        console.warn('[inbox] 옛 글 잠그기 실패:', (err as Error).message),
+      );
+    else console.warn('[inbox] INBOX_ENC_KEY 가 비어 쪽지 글을 평문으로 저장한다');
     const run = () =>
       void this.db.pool
         .query(
@@ -174,6 +230,40 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     clearInterval(this.#sweep);
+    if (noteKey === this.config.inboxKey) noteKey = undefined;
+  }
+
+  /**
+   * 열쇠가 생기기 전에 쓴 평문 글을 묶음으로 잠근다 (서버가 켜질 때 한 번, 기동을 막지 않고 뒤에서). 읽기는 평문과 암호문을
+   * 모두 처리하므로 도는 중에도 앱은 정상이다. 줄 잠금(FOR UPDATE)이라 같은 줄을 여는 요청과 부딪히지 않고, 조언 잠금이라
+   * 서버가 둘 떠도 한쪽만 한다. 묶음마다 UPDATE 한 번이다. 이미 잠긴 줄은 건너뛰므로 몇 번을 해도 같다. 잠근 줄 수를 돌려준다
+   */
+  async sealPending(batch = 500): Promise<number> {
+    if (!noteKey) return 0;
+    let done = 0;
+    for (;;) {
+      const n = await this.db.tx(async (c) => {
+        const lock = await c.query<{ ok: boolean }>(
+          "SELECT pg_try_advisory_xact_lock(hashtext('inbox-seal')) AS ok",
+        );
+        if (!lock.rows[0]?.ok) return 0;
+        const r = await c.query<{ id: string; message: string }>(
+          `SELECT id, message FROM inbox WHERE message IS NOT NULL AND message NOT LIKE 's1:%'
+            ORDER BY id LIMIT $1 FOR UPDATE`,
+          [batch],
+        );
+        if (r.rows.length === 0) return 0;
+        const ids = r.rows.map((x) => x.id);
+        const sealed = r.rows.map((x) => noteIn(x.id, openText(noteKey, x.message, noteAad(x.id))));
+        await c.query(
+          'UPDATE inbox i SET message = v.m FROM unnest($1::bigint[], $2::text[]) AS v(id, m) WHERE i.id = v.id',
+          [ids, sealed],
+        );
+        return r.rows.length;
+      });
+      done += n;
+      if (n < batch) return done;
+    }
   }
 
   /** 쪽지함 한 쪽 (최근 것부터). before 를 주면 그 번호보다 앞의 것. next 가 있으면 더 있다 */
