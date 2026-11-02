@@ -25,6 +25,7 @@ import { openText, plainStored, sealText } from './seal';
 // 닉네임(sender_nickname)과 첨부 숫자는 그대로 둔다. 열쇠가 없으면 평문으로 쓰고, 읽을 때는 접두어로 가려 푼다.
 // 열쇠는 앱 하나에 하나라서 모듈에 둔다 (sendInbox 가 곳곳에서 연결만 받고 불린다). Inbox 서비스가 켜질 때 넣고 꺼질 때 뺀다.
 let noteKey: Buffer | undefined;
+let warnedNoKey = false;
 
 /** 평문 글 상한 (글자 수. DB 의 길이 검사는 암호문이 들어갈 만큼 넓다) */
 export const NOTE_MAX_CHARS = 200;
@@ -45,7 +46,9 @@ export function noteOut(id: string | number, stored: string | null): string | nu
   try {
     return openText(noteKey, stored, noteAad(id));
   } catch (err) {
-    console.warn(`[inbox] 쪽지 ${id} 글을 풀지 못했다:`, (err as Error).message);
+    // 열쇠가 없어 못 푸는 경우는 줄마다 같은 말이라 처음 한 번만
+    if (noteKey || !warnedNoKey) console.warn(`[inbox] 쪽지 ${id} 글을 풀지 못했다:`, (err as Error).message);
+    if (!noteKey) warnedNoKey = true;
     return NOTE_UNREADABLE;
   }
 }
@@ -197,6 +200,8 @@ export async function sendInbox(
 @Injectable()
 export class Inbox implements OnModuleInit, OnModuleDestroy {
   #sweep: NodeJS.Timeout | undefined;
+  /** 시작 때 옛 글 잠그기가 끝나면 이행되는 약속 (시험이 기다린다) */
+  sealed: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly db: Db,
@@ -229,10 +234,11 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 열쇠가 생기기 전에 쓴 평문 글을 묶음으로 잠근다 (서버가 켜질 때 한 번). 잠금은 DB 의 조언 잠금이라 서버가 둘 떠도
-   * 한쪽만 한다. 이미 잠긴 줄은 건너뛰므로 몇 번을 해도 같다. 잠근 줄 수를 돌려준다
+   * 열쇠가 생기기 전에 쓴 평문 글을 묶음으로 잠근다 (서버가 켜질 때 한 번, 기동을 막지 않고 뒤에서). 읽기는 평문과 암호문을
+   * 모두 처리하므로 도는 중에도 앱은 정상이다. 줄 잠금(FOR UPDATE)이라 같은 줄을 여는 요청과 부딪히지 않고, 조언 잠금이라
+   * 서버가 둘 떠도 한쪽만 한다. 묶음마다 UPDATE 한 번이다. 이미 잠긴 줄은 건너뛰므로 몇 번을 해도 같다. 잠근 줄 수를 돌려준다
    */
-  async sealPending(batch = 200): Promise<number> {
+  async sealPending(batch = 500): Promise<number> {
     if (!noteKey) return 0;
     let done = 0;
     for (;;) {
@@ -246,11 +252,13 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
             ORDER BY id LIMIT $1 FOR UPDATE`,
           [batch],
         );
-        for (const row of r.rows)
-          await c.query('UPDATE inbox SET message = $2 WHERE id = $1', [
-            row.id,
-            noteIn(row.id, openText(noteKey, row.message, noteAad(row.id))),
-          ]);
+        if (r.rows.length === 0) return 0;
+        const ids = r.rows.map((x) => x.id);
+        const sealed = r.rows.map((x) => noteIn(x.id, openText(noteKey, x.message, noteAad(x.id))));
+        await c.query(
+          'UPDATE inbox i SET message = v.m FROM unnest($1::bigint[], $2::text[]) AS v(id, m) WHERE i.id = v.id',
+          [ids, sealed],
+        );
         return r.rows.length;
       });
       done += n;

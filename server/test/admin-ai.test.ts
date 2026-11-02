@@ -311,14 +311,14 @@ describe('정기 지급 (구독처럼)', () => {
 
 describe('정책: 자동 정기 지급과 자리 수 (#101)', () => {
   test('허용된 계정에는 "매달 100장까지 채우기" 가 저절로 걸려 쪽지로 온다. 해지하면 다시 걸리지 않는다', async () => {
-    clock = Date.parse('2027-01-10T12:00:00+09:00');
+    clock = Date.parse(`${monthStart(3).slice(0, 8)}10T12:00:00+09:00`);
     const u = await newDevice('18+', '자동');
     const us = await session(u.id);
     assert.equal((await adminApi('ai/allow', { account: u.code, allowed: true })).status, 200);
     const sub = await h.pool.query('SELECT monthly, mode FROM ai_subscription WHERE account_id = $1', [u.id]);
     assert.deepEqual(sub.rows, [{ monthly: 100, mode: 'fill' }]);
     const st = await api('GET', '/v1/ai', { token: us });
-    assert.deepEqual(st.body.subscription, { monthly: 100, mode: 'fill', nextFill: '2027-02-01' });
+    assert.deepEqual(st.body.subscription, { monthly: 100, mode: 'fill', nextFill: monthStart(4) });
     const note = (await api('GET', '/v1/inbox', { token: us })).body.items[0];
     assert.equal(note.fillTo, 100);
     const o = await api('POST', `/v1/inbox/${note.id}/open`, { token: us });

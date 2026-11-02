@@ -2,9 +2,11 @@
 // 줄 바꿔치기(AAD), 앱 응답과 운영자 화면은 평문, DB 에는 평문이 없다. 탈퇴와 철회는 그대로.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { createApp } from '../src/app';
-import { NOTE_UNREADABLE } from '../src/inbox';
+import { Inbox, NOTE_UNREADABLE } from '../src/inbox';
 import { AdminBrowser, client, type Harness, startHarness } from './helpers';
 
 const ADMIN_TOKEN = 'a'.repeat(20) + randomUUID().replaceAll('-', '');
@@ -192,6 +194,7 @@ describe('열쇠가 없다가 생길 때', () => {
     const prev = h;
     h = h2;
     try {
+      await app2.get(Inbox).sealed;
       for (const acc of [a, b])
         for (const r of await rawMessages(acc.id)) assert.match(r.message ?? '', /^s1:/);
       assert.ok(!(await rawMessages(a.id))[0]?.message?.includes('열쇠 전'));
@@ -201,7 +204,6 @@ describe('열쇠가 없다가 생길 때', () => {
       assert.equal(lb.body.items[0].message, 's1:열쇠 전 접두어 글');
       // 한 번 더 해도 같다 (멱등)
       const before2 = (await rawMessages(a.id))[0]?.message;
-      const { Inbox } = await import('../src/inbox');
       assert.equal(await app2.get(Inbox).sealPending(), 0);
       assert.equal((await rawMessages(a.id))[0]?.message, before2);
       // 새 글도 잠긴다
@@ -210,6 +212,53 @@ describe('열쇠가 없다가 생길 때', () => {
       assert.ok((await admin.act('/admin/notes', { account: c.code, message: '열쇠 뒤 글' })).ok);
       assert.match((await rawMessages(c.id))[0]?.message ?? '', /^s1:/);
       assert.ok(!(await admin.page()).text.includes('쪽지 암호화가 꺼져'));
+    } finally {
+      await app2.close().catch(() => {});
+      h = prev;
+    }
+  });
+});
+
+describe('옛 평문이 접두어로 시작할 때', () => {
+  before(async () => {
+    h = await startHarness({ adminToken: ADMIN_TOKEN });
+  });
+  after(async () => {
+    await h?.stop();
+  });
+
+  test('마이그레이션 0020 이 s0: 를 붙여 두면 열쇠를 켠 뒤에도 글이 그대로 읽힌다', async () => {
+    const a = await newDevice('18+', '옛접두어');
+    for (const m of ['s1:안녕하세요 공지입니다', 's0:중요 안내', '일반 글'])
+      await h.pool.query(`INSERT INTO inbox (account_id, kind, message) VALUES ($1, 'notice', $2)`, [
+        a.id,
+        m,
+      ]);
+    // 마이그레이션은 이미 돌았으니 그 파일의 갱신문을 옛 행에 다시 적용한다
+    const sql = readFileSync(
+      join(__dirname, '..', '..', 'db', 'migrations', '0020_inbox_message_sealed.sql'),
+      'utf8',
+    );
+    const update = /UPDATE inbox[^;]*;/.exec(sql)?.[0];
+    assert.ok(update);
+    await h.pool.query(update);
+    await h.app.close();
+    const config = { ...h.config, inboxKey: Buffer.from(KEY, 'hex') };
+    const app2 = await createApp(config);
+    await app2.listen(0, '127.0.0.1');
+    const addr = app2.getHttpServer().address();
+    const prev = h;
+    config.publicUrl = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+    h = { ...h, app: app2, config, base: config.publicUrl };
+    try {
+      await app2.get(Inbox).sealed;
+      const list = await api('GET', '/v1/inbox', { token: a.token });
+      assert.deepEqual(list.body.items.map((x: { message: string }) => x.message).sort(), [
+        's0:중요 안내',
+        's1:안녕하세요 공지입니다',
+        '일반 글',
+      ]);
+      for (const r of await rawMessages(a.id)) assert.match(r.message ?? '', /^s1:/);
     } finally {
       await app2.close().catch(() => {});
       h = prev;
