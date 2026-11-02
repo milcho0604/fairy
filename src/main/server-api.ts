@@ -463,7 +463,13 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
   async function call<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     path: string,
-    o: { token?: string; body?: unknown; read: (json: Record<string, unknown>) => T | undefined },
+    o: {
+      token?: string;
+      body?: unknown;
+      /** 대답 본문 상한 (기본 REPLY_MAX_BYTES) */
+      max?: number;
+      read: (json: Record<string, unknown>) => T | undefined;
+    },
   ): Promise<ApiResult<T>> {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), SERVER_TIMEOUT_MS);
@@ -478,7 +484,7 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
         ...(o.body === undefined ? {} : { body: JSON.stringify(o.body) }),
         signal: ac.signal,
       });
-      const text = res.status === 204 ? '' : await readCapped(res, REPLY_MAX_BYTES);
+      const text = res.status === 204 ? '' : await readCapped(res, o.max ?? REPLY_MAX_BYTES);
       if (text === undefined) return { ok: false, status: res.status || 500, error: 'too_big', body: {} };
       let json: Record<string, unknown> = {};
       if (text) {
@@ -834,6 +840,102 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
               }
             : undefined,
       }),
+    /** 기기 간 동기화: 감싼 데이터 열쇠 받기 (세션). 없으면 404 */
+    syncKeyGet: (token: string) => call<SyncKeyView>('GET', '/v1/sync/key', { token, read: syncKeyOf }),
+    /** 감싼 열쇠 올리기. 처음이면 저장, 있으면 keyRev 가 같을 때만 덮는다 */
+    syncKeyPut: (token: string, b: SyncKeyBody) =>
+      call<{ epoch: number; gen: number; keyRev: number; created: boolean }>('PUT', '/v1/sync/key', {
+        token,
+        body: {
+          epoch: b.epoch,
+          salt: b.salt,
+          params: b.params,
+          wrapped: b.wrapped,
+          ...(b.gen === undefined ? {} : { gen: b.gen }),
+          ...(b.keyRev === undefined ? {} : { key_rev: b.keyRev }),
+        },
+        read: (j) => {
+          const epoch = nat(j.epoch);
+          const gen = nat(j.gen);
+          const keyRev = nat(j.key_rev);
+          return epoch === undefined || gen === undefined || keyRev === undefined
+            ? undefined
+            : { epoch, gen, keyRev, created: j.created === true };
+        },
+      }),
+    syncStatus: (token: string) =>
+      call<SyncStatusView>('GET', '/v1/sync/status', {
+        token,
+        read: (j) => {
+          const items = nat(j.items);
+          const bytes = nat(j.bytes);
+          const maxItems = nat(j.maxItems);
+          const maxBytes = nat(j.maxBytes);
+          const epoch = nat(j.epoch);
+          const gen = nat(j.gen);
+          if ([items, bytes, maxItems, maxBytes, epoch, gen].some((v) => v === undefined)) return undefined;
+          return {
+            on: j.on === true,
+            items: items as number,
+            bytes: bytes as number,
+            maxItems: maxItems as number,
+            maxBytes: maxBytes as number,
+            soon: j.soon === true,
+            epoch: epoch as number,
+            gen: gen as number,
+          };
+        },
+      }),
+    /** since 뒤에 바뀐 항목 (한 번에 500개, 덩어리 합 4MB 까지). epoch 가 다르면 409 */
+    syncChanges: (token: string, since: number, limit: number, epoch: number) =>
+      call<SyncChanges>(
+        'GET',
+        `/v1/sync/changes?since=${Math.max(0, Math.floor(since))}&limit=${Math.max(1, Math.floor(limit))}&epoch=${Math.max(0, Math.floor(epoch))}`,
+        {
+          token,
+          max: SYNC_CHANGES_REPLY_MAX,
+          read: (j) => {
+            const head = nat(j.head);
+            const epoch2 = nat(j.epoch);
+            const gen = nat(j.gen);
+            if (!Array.isArray(j.items) || head === undefined || epoch2 === undefined || gen === undefined)
+              return undefined;
+            const items = j.items.flatMap((r): SyncChange[] => {
+              const x = obj(r);
+              const rev = nat(x.rev);
+              return typeof x.uid === 'string' && typeof x.blob === 'string' && rev !== undefined
+                ? [{ uid: x.uid, rev, blob: x.blob, deleted: x.deleted === true }]
+                : [];
+            });
+            return { items, head, more: j.more === true, epoch: epoch2, gen };
+          },
+        },
+      ),
+    /** 항목 묶음 올리기 (최대 200개, 본문 4MB). base 가 서버의 지금 번호와 다르면 그 항목만 conflict */
+    syncPush: (token: string, epoch: number, items: readonly SyncPushItem[]) =>
+      call<SyncPushed>('POST', '/v1/sync/push', {
+        token,
+        body: { epoch, items },
+        max: SYNC_PUSH_REPLY_MAX,
+        read: (j) => {
+          const head = nat(j.head);
+          const epoch2 = nat(j.epoch);
+          const gen = nat(j.gen);
+          if (!Array.isArray(j.results) || head === undefined || epoch2 === undefined || gen === undefined)
+            return undefined;
+          return { results: j.results.flatMap(syncPushResultOf), head, epoch: epoch2, gen };
+        },
+      }),
+    /** 서버 사본과 열쇠를 모두 지운다 (epoch 가 오른다) */
+    syncRemove: (token: string) =>
+      call<{ epoch: number; gen: number }>('DELETE', '/v1/sync', {
+        token,
+        read: (j) => {
+          const epoch = nat(j.epoch);
+          const gen = nat(j.gen);
+          return epoch === undefined || gen === undefined ? undefined : { epoch, gen };
+        },
+      }),
     /** 브라우저로 여는 구글 로그인 주소 */
     startUrl: (port: number, state: string, challenge: string) => {
       const u = new URL(`${base}/auth/google/start`);
@@ -844,6 +946,105 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
     },
   };
 }
+
+/** 기기 간 동기화 (docs/sync-plan.md 5절, server/src/sync.controller.ts). 덩어리는 base64 글자 그대로 둔다 */
+export interface SyncKeyView {
+  salt: string;
+  params: { N: number; r: number; p: number };
+  wrapped: string;
+  gen: number;
+  keyRev: number;
+  epoch: number;
+}
+
+export interface SyncStatusView {
+  on: boolean;
+  items: number;
+  bytes: number;
+  maxItems: number;
+  maxBytes: number;
+  soon: boolean;
+  epoch: number;
+  gen: number;
+}
+
+export interface SyncChange {
+  uid: string;
+  rev: number;
+  blob: string;
+  deleted: boolean;
+}
+
+export interface SyncChanges {
+  items: SyncChange[];
+  head: number;
+  more: boolean;
+  epoch: number;
+  gen: number;
+}
+
+export interface SyncPushItem {
+  uid: string;
+  base: number;
+  blob: string;
+  deleted: boolean;
+}
+
+export type SyncPushResult =
+  | { uid: string; ok: true; rev: number }
+  | { uid: string; ok: false; conflict: { rev: number; blob: string; deleted: boolean } };
+
+export interface SyncPushed {
+  results: SyncPushResult[];
+  head: number;
+  epoch: number;
+  gen: number;
+}
+
+/** 열쇠를 올릴 때 보내는 본문 (PUT /v1/sync/key). gen, keyRev 는 이미 있는 열쇠를 바꿀 때만 */
+export interface SyncKeyBody {
+  epoch: number;
+  salt: string;
+  params: { N: number; r: number; p: number };
+  wrapped: string;
+  gen?: number;
+  keyRev?: number;
+}
+
+/** changes 한 쪽(덩어리 합 4MB, base64 로 5.4MB 남짓)과 push 대답(충돌한 항목의 서버 것 포함)의 본문 상한 */
+export const SYNC_CHANGES_REPLY_MAX = 8 * 1024 * 1024;
+export const SYNC_PUSH_REPLY_MAX = 24 * 1024 * 1024;
+
+const syncKeyOf = (j: Record<string, unknown>): SyncKeyView | undefined => {
+  const p = obj(j.params);
+  const gen = nat(j.gen);
+  const keyRev = nat(j.key_rev);
+  const epoch = nat(j.epoch);
+  if (typeof j.salt !== 'string' || typeof j.wrapped !== 'string') return undefined;
+  if (!nat(p.N) || !nat(p.r) || !nat(p.p) || gen === undefined || keyRev === undefined || epoch === undefined)
+    return undefined;
+  return {
+    salt: j.salt,
+    params: { N: p.N as number, r: p.r as number, p: p.p as number },
+    wrapped: j.wrapped,
+    gen,
+    keyRev,
+    epoch,
+  };
+};
+
+const syncPushResultOf = (r: unknown): SyncPushResult[] => {
+  const x = obj(r);
+  if (typeof x.uid !== 'string') return [];
+  if (x.ok === true) {
+    const rev = nat(x.rev);
+    return rev === undefined ? [] : [{ uid: x.uid, ok: true, rev }];
+  }
+  const c = obj(x.conflict);
+  const rev = nat(c.rev);
+  if (rev === undefined || typeof c.blob !== 'string') return [];
+  return [{ uid: x.uid, ok: false, conflict: { rev, blob: c.blob, deleted: c.deleted === true } }];
+};
 
 export type ServerApi = ReturnType<typeof serverApi>;
 

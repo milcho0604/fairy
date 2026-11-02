@@ -18,6 +18,8 @@ export type GcalOp =
       eventId: number;
       /** 이미 정한 구글 id (없으면 새로 정해 넣는다) */
       googleId: string | null;
+      /** 일정 uid. 새 구글 id 를 이 uid 에서 정해 어느 기기가 보내도 같은 id 가 된다 (기획서 6절). 24판 앞 행은 없다 */
+      uid?: string;
       /** 구글에 들어간 것을 확인했는지 (아니면 넣기부터: 이미 있으면 409 → 고치기) */
       confirmed: boolean;
       calendarId: string;
@@ -43,6 +45,7 @@ interface Row {
   google_cal: string | null;
   google_hash: string | null;
   google_uid: string | null;
+  uid?: string | null;
 }
 
 export class GcalStore {
@@ -63,7 +66,7 @@ export class GcalStore {
     // 줄이 아니라 보낼 것을 BATCH 개 모을 때까지 (start_at, id) 순으로 넘겨 가며 훑는다.
     // 예전에는 이미 보낸 일정 200개가 늘 앞자리를 차지해 그 뒤 새 일정, 고치기, 지우기를 영영 보내지 못했다
     const stmt = this.#db.prepare(
-      `select id, start_at, deleted_at, google_id, google_cal, google_hash, google_uid from event
+      `select id, start_at, deleted_at, google_id, google_cal, google_hash, google_uid, uid from event
        where source = 'local' and (start_at > ? or (start_at = ? and id > ?)) and (
          (deleted_at is null and (google_id is not null or coalesce(end_at, start_at) >= ?))
          or (deleted_at is not null and google_id is not null and coalesce(google_hash, '') != ?)
@@ -110,6 +113,7 @@ export class GcalStore {
         kind: 'upsert',
         eventId: id,
         googleId: r.google_id,
+        ...(r.uid ? { uid: r.uid } : {}),
         confirmed,
         calendarId: at,
         ...(moveTo ? { moveTo } : {}),

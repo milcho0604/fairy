@@ -3,6 +3,7 @@
 // 서버 주소(server-url.ts)가 비면 서버 기능이 모두 꺼진다: 칸이 숨고 어떤 요청도 나가지 않는다.
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import {
   app,
@@ -11,6 +12,7 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
+  powerMonitor,
   shell,
   type WebContents,
 } from 'electron';
@@ -37,6 +39,7 @@ import { SERVER_RESTORE_MARK } from './server-mark.ts';
 import { sealedSecret } from './server-secret.ts';
 import { appServerUrl } from './server-url.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
+import { createSyncEngine, type SyncEngine } from './sync/engine.ts';
 import { memorySecrets } from './test-keychain.ts';
 
 /** 켤 때 처음 맞추기까지, 그 뒤로 이만큼마다 */
@@ -47,6 +50,8 @@ export const SYNC_EVERY_MS = 3 * 60_000;
 /** 장부가 바뀌고 이만큼 조용하면 대기열에 넣고 보낸다 */
 const AFTER_WRITE_MS = 15_000;
 const STATE = 'server-state';
+/** 기기 간 동기화 상태 파일 (켜짐, 기기 번호, 커서, epoch, gen, 계정). 백업에 넣지 않는다 */
+const SYNC_STATE = 'sync-state';
 
 /** 거절된 쓰기의 이름 (펫 말풍선) */
 export function revertedName(reason: string): string {
@@ -94,6 +99,10 @@ export function createServer(o: {
   };
   /** 이 기기가 구글 일정을 연결했나 (#115, main/gcal.ts). 바뀌면 core.calendarChanged() */
   calendarLinked?: () => boolean;
+  /** 다른 프로세스(펫 MCP 서버)가 저장 파일에 쓰면 바뀌는 수 (db.ts dataVersion). 동기화가 보낼 것을 찾는다 */
+  dataVersion?: () => number;
+  /** 다른 기기의 변경을 저장 파일에 적용했다 (패널을 다시 그린다) */
+  onSyncApplied?: () => void;
   /** 친구 일정 공유 (#110): [from, to) 의 시각 일정 (어느 것을 보낼지는 server-friends.ts shareableEvent) */
   friendEvents?: (from: number, to: number) => BusySource[];
   /** 친구 펫 놀러 가기 (#141): 지금 내 펫 카드 (종류 id, 이름, 네 발 서기. 그림은 없다) */
@@ -133,6 +142,8 @@ export function createServer(o: {
     memory && process.env.JJ_TEST_BROWSER === 'fetch'
       ? mainFetch(u).then((r) => void r.body?.cancel())
       : shell.openExternal(u);
+  // 기기 간 동기화 (docs/sync-plan.md): core 가 만들어진 뒤 아래에서 채운다
+  let sync: SyncEngine | undefined;
   const core = createServerCore({
     api: url ? serverApi(url, mainFetch, { appVersion, onGate: (g) => core.gate(g) }) : undefined,
     onServerMin: (m) => o.onServerMin?.(m),
@@ -152,6 +163,8 @@ export function createServer(o: {
     }),
     now: Date.now,
     log: o.log,
+    syncView: () => sync?.view(),
+    onAccountEnd: (why) => sync?.onAccountEnd(why),
     ...(o.calendarLinked ? { calendarLinked: () => calendarOverride ?? o.calendarLinked?.() ?? false } : {}),
     onChange: (s) => send(s),
     onCoins: o.onCoins,
@@ -188,6 +201,25 @@ export function createServer(o: {
           },
         }
       : {}),
+  });
+
+  // 기기 간 동기화: 켜면 메모, 할 일, 일정을 기기에서 잠근 덩어리로 서버에 맞춘다. 데이터 열쇠는 운영체제 열쇠로만 둔다
+  sync = createSyncEngine({
+    db: o.db,
+    call: (f) => core.sessionCall(f),
+    account: () => core.accountCode(),
+    load: () => readJson(SYNC_STATE),
+    save: (s) => writeJson(SYNC_STATE, s),
+    key: secret('sync-key'),
+    secure: () => memory || osCrypto.available(),
+    now: Date.now,
+    deviceName: () =>
+      hostname()
+        .replace(/\.local$/i, '')
+        .slice(0, 40) || 'device',
+    log: o.log,
+    onChange: () => sendStatus(core.status()),
+    ...(o.onSyncApplied ? { onApplied: o.onSyncApplied } : {}),
   });
 
   // 친구 (#110): 서버 모드, 로그인, 서버가 켠 친구 기능일 때만
@@ -237,6 +269,14 @@ export function createServer(o: {
     if (v && !v.isDestroyed()) v.send(FRIENDS.changed, friendsOverride ?? s);
   }
 
+  /** 상태만 설정 창과 큰 창에 보낸다 (친구, 쪽지 같은 딸린 일은 건드리지 않는다: 동기화 상태처럼 자주 바뀌는 것) */
+  function sendStatus(s: ServerStatus) {
+    const w = o.target();
+    if (w && !w.isDestroyed()) w.webContents.send(SERVER.changed, s);
+    const h = o.hub?.();
+    if (h && !h.isDestroyed()) h.send(SERVER.changed, s);
+  }
+
   function send(s: ServerStatus) {
     const w = o.target();
     if (w && !w.isDestroyed()) w.webContents.send(SERVER.changed, s);
@@ -257,11 +297,17 @@ export function createServer(o: {
   const mark = join(dir, SERVER_RESTORE_MARK);
   if (existsSync(mark)) {
     core.afterRestore();
+    // 동기화: 기기 번호를 새로 만들고 커서를 0 으로 돌려 전부 다시 받는다 (되살린 파일은 다른 파일이다)
+    sync.afterRestore();
     rmSync(mark, { force: true });
   }
 
   // 켤 때와 몇 분마다
-  const first = setTimeout(() => void core.run(), FIRST_SYNC_MS);
+  const first = setTimeout(() => {
+    void core.run();
+    // 동기화는 코인 맞추기 뒤에 (계정 코드를 먼저 알아야 한다)
+    setTimeout(() => void sync?.run(), FIRST_SYNC_MS).unref?.();
+  }, FIRST_SYNC_MS);
   const every = setInterval(() => void core.run(), SYNC_EVERY_MS);
   first.unref?.();
   every.unref?.();
@@ -277,6 +323,15 @@ export function createServer(o: {
   friendsEvery.unref?.();
   // 장부에 쓰면 조금 뒤 대기열에 넣고 보낸다 (묶음 안에서 바로 읽지 않는다: 되돌려질 수 있다)
   let soon: ReturnType<typeof setTimeout> | undefined;
+  // 동기화: 이 앱이 쓴 문장과 다른 프로세스(MCP)가 쓴 변화(data_version)를 보고 3초 모아 맞춘다
+  o.onWrite((sql) => sync?.notifyWrite(sql));
+  const versionWatch = o.dataVersion
+    ? setInterval(() => sync?.pollVersion(o.dataVersion?.() ?? -1), 3000)
+    : undefined;
+  versionWatch?.unref?.();
+  // 앱이 잠에서 깨거나 화면 잠금을 풀면 바로 한 번 (닿지 않아 늦추던 것도 처음부터)
+  powerMonitor.on('resume', () => sync?.wake());
+  powerMonitor.on('unlock-screen', () => sync?.wake());
   o.onWrite((sql) => {
     if (!/coin_log/i.test(sql) || !core.allowed()) return;
     clearTimeout(soon);
@@ -286,6 +341,8 @@ export function createServer(o: {
     clearTimeout(first);
     clearInterval(every);
     clearInterval(friendsEvery);
+    clearInterval(versionWatch);
+    sync?.dispose();
     clearTimeout(soon);
   });
 
@@ -467,6 +524,8 @@ export function createServer(o: {
   return {
     core,
     friends,
+    /** 기기 간 동기화 엔진 (켜기, 복구 코드, 끄기. 화면은 다음 PR) */
+    sync: sync as SyncEngine,
     /** 서버 모드라 코인이 서버 정본을 따른다 (백업 되살리기 안내, 코인 초기화) */
     serverCoins: () => core.allowed(),
     beforeRestore: () => core.beforeRestore(),

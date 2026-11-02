@@ -1650,6 +1650,8 @@ ready
       hub: () => home?.contents,
       homeView: () => home?.contents,
       onWrite,
+      dataVersion,
+      onSyncApplied: () => panel.refresh(),
       onCoins: () => {
         panel.refresh();
         // 집 단계가 바뀌었을 수 있다 (거절된 집 사기, 다른 기기에서 산 집)
