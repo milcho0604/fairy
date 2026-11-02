@@ -10,7 +10,13 @@ const ADMIN_TOKEN = 'b'.repeat(20) + randomUUID().replaceAll('-', '');
 const ADMIN_SUB = `admin-sub-${randomUUID()}`;
 let h: Harness;
 /** 시험이 고르는 지금 (정기 지급의 달) */
-let clock = Date.parse('2026-10-15T12:00:00+09:00');
+// 서버 시계는 시험이 정하지만 쪽지 만료 판정은 DB 의 실제 now() 라서, 날짜는 실제 한국 달 기준으로 계산한다 (달이 바뀌어도 깨지지 않게)
+const monthStart = (offset: number): string => {
+  const k = new Date(Date.now() + 9 * 3_600_000);
+  const d = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth() + offset, 1));
+  return d.toISOString().slice(0, 10);
+};
+let clock = Date.parse(`${monthStart(0).slice(0, 8)}15T12:00:00+09:00`);
 const { api, newDevice, session, lastLog } = client(() => h);
 let adminSession = '';
 let adminAccount: { token: string; id: string; code: string };
@@ -264,13 +270,13 @@ describe('정기 지급 (구독처럼)', () => {
     const subs = box.body.items.filter((x: { kind: string }) => x.kind === 'subscription');
     assert.equal(subs.length, 1);
     assert.equal(subs[0].fillTo, 5);
-    assert.equal(subs[0].expiresAt, new Date('2026-11-01T00:00:00+09:00').toISOString());
+    assert.equal(subs[0].expiresAt, new Date(`${monthStart(1)}T00:00:00+09:00`).toISOString());
     // 열면 5장까지 채운다
     const o = await api('POST', `/v1/inbox/${subs[0].id}/open`, { token: fill.token });
     assert.equal(o.status, 200, o.text);
     assert.equal(o.body.chatPasses, 5);
     // 다음 달: 새 쪽지 한 장. 남은 5장이면 채울 것이 없다 (이월 없음)
-    clock = Date.parse('2026-11-01T00:30:00+09:00');
+    clock = Date.parse(`${monthStart(1)}T00:30:00+09:00`);
     await Promise.all(Array.from({ length: 6 }, () => api('GET', '/v1/inbox', { token: fill.token })));
     const nov = (await api('GET', '/v1/inbox', { token: fill.token })).body.items.filter(
       (x: { kind: string }) => x.kind === 'subscription',
@@ -289,10 +295,10 @@ describe('정기 지급 (구독처럼)', () => {
       6,
     );
     const ov = await adminApi(`overview?q=${add.code}`);
-    assert.equal(ov.body.account.ai.subscription.nextFill, '2026-12-01');
+    assert.equal(ov.body.account.ai.subscription.nextFill, monthStart(2));
     // 해지하면 다음 달은 없다
     assert.equal((await adminApi('ai/cancel', { account: add.code, confirm: add.code })).status, 200);
-    clock = Date.parse('2026-12-02T09:00:00+09:00');
+    clock = Date.parse(`${monthStart(2).slice(0, 8)}02T09:00:00+09:00`);
     assert.equal((await api('GET', '/v1/inbox', { token: add.token })).body.items.length, 2);
     const fills = await h.pool.query(
       `SELECT count(*)::int AS n FROM ai_subscription_fill f JOIN ai_subscription s ON s.id = f.subscription_id
