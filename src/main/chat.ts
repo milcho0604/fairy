@@ -30,6 +30,12 @@ import {
   TICKET_PROVIDER_ID,
 } from '../shared/ai/providers.ts';
 import { type Exchange, withHistory } from '../shared/ai/text.ts';
+import {
+  chooseDefault,
+  explicitPick,
+  type TicketBlock,
+  ticketIsDefaultable,
+} from '../shared/ai/ticket-gate.ts';
 import type { AiEvent, AiProvider, ImageAttachment } from '../shared/ai/types.ts';
 import type { AiUsage } from '../shared/ai/usage.ts';
 import { cleanSendImages } from '../shared/capture.ts';
@@ -200,11 +206,35 @@ export function createChat(o: ChatOptions) {
     }),
   ];
   const specOf = (id: AiProvider) => providers().find((p) => p.id === id);
+  /** 채팅 이용권을 못 쓰는 까닭 (없으면 쓸 수 있다). 고르기, 보내기, 다시 묻기가 모두 이것을 본다 */
+  const ticketBlockNow = (): TicketBlock | undefined => {
+    if (!o.ticket) return 'closed';
+    if (o.ticket.block) return o.ticket.block();
+    return o.ticket.available() ? undefined : 'closed';
+  };
+  /** 이용권을 못 쓰게 되면 돌아갈 AI: 기억된 AI 가 있으면 그것, 없으면 자동 선택이 정하기 전까지 claude */
+  const fallbackProvider = (): AiProvider => {
+    const id = (readJson(SETTINGS_FILE) as SavedPick | undefined)?.provider;
+    return id && id !== TICKET_PROVIDER_ID && specOf(id) ? id : 'claude';
+  };
+  /** 기본으로 고를 만큼 쓸 수 있다 (막힘 없음, 남은 장수 1장 이상) */
+  const ticketDefaultable = () => ticketIsDefaultable(ticketBlockNow(), o.ticket?.tickets() ?? null);
 
-  const saved = readJson(SETTINGS_FILE) as { provider?: AiProvider } | undefined;
+  type SavedPick = { provider?: AiProvider; pickedAfterTicket?: boolean };
+  const saved = readJson(SETTINGS_FILE) as SavedPick | undefined;
+  /**
+   * 사용자가 AI 를 직접 골랐다: 고른 AI 와 함께 "채팅 이용권이 생긴 뒤에 골랐다" 표시를 남긴다.
+   * 표시 없는 옛 저장값은 이용권 이전의 고름이라 명시 선택으로 보지 않는다 (기본 선택에서 이용권이 이긴다)
+   */
+  const rememberPick = (provider: AiProvider) =>
+    writeJson(SETTINGS_FILE, { provider, pickedAfterTicket: true } satisfies SavedPick);
   // 사용량은 마지막으로 본 값을 남겨 두었다가 창을 열자마자 보여 준다 (몇 분 전 값인지 같이 표시).
   const savedUsage = usageOf(readJson(USAGE_FILE));
-  const startProvider = saved?.provider && specOf(saved.provider) ? saved.provider : 'claude';
+  // 이용권을 골라 둔 채 못 쓰게 됐으면(장수 0 등) 처음부터 이용권이 아니다
+  const startProvider =
+    saved?.provider && specOf(saved.provider) && !(saved.provider === TICKET_PROVIDER_ID && ticketBlockNow())
+      ? saved.provider
+      : 'claude';
   // 지난번 대화를 이어 보여 준다. 세션도 같이 읽어 다음 질문이 --resume 으로 이어진다
   const history = parseChat(readJson(HISTORY_FILE));
   let state: ChatState = { ...initialChat(startProvider, savedUsage), ...history };
@@ -230,13 +260,15 @@ export function createChat(o: ChatOptions) {
 
   const push = () => {
     const ticketOn = !!o.ticket?.available();
-    // 대화권을 고른 채 로그아웃하거나 나이를 바꾸면 쓸 수 없다: 기본 AI 로 돌린다
-    if (!ticketOn && state.provider === TICKET_PROVIDER_ID && !state.pendingId)
-      state = switchProvider(state, 'claude');
+    const block = ticketBlockNow();
+    // 대화권을 고른 채 로그아웃하거나 나이를 바꾸거나 장수가 0이 되면 쓸 수 없다: 기본 AI 로 돌린다
+    if ((!ticketOn || block) && state.provider === TICKET_PROVIDER_ID && !state.pendingId)
+      state = switchProvider(state, fallbackProvider());
     state = {
       ...state,
       knowsTodos: o.knowsTodos(),
       ticket: ticketOn && o.ticket ? { tickets: o.ticket.tickets(), agreed: o.ticket.agreed() } : undefined,
+      ticketGate: o.ticket ? { ...(block ? { block } : {}), tickets: o.ticket.tickets() } : undefined,
     };
     for (const f of faces()) f.contents.send(CHAT.state, state);
   };
@@ -276,20 +308,47 @@ export function createChat(o: ChatOptions) {
   // 처음(고른 적 없음)이면 자동으로: 설치되고 로그인된 AI 가 있으면 그것, 없으면 무료 AI (v2).
   // 확인하는 몇 초 사이에 사용자가 직접 고르면 그 선택을 따른다
   let userPicked = false;
+  /**
+   * 새 대화와 처음 켤 때의 기본 AI (shared/ai/ticket-gate.ts chooseDefault). 사용자가 직접 골라 기억해 둔 AI 가 쓸 수 있으면
+   * 그것, 아니면(고른 적 없음, 설치 안 됨) 채팅 이용권을 쓸 수 있을 때 이용권. 이 고름은 파일에 남기지 않는다(직접 고른 것만 남는다).
+   * 대화가 이미 있거나 답을 기다리는 중이면 건드리지 않는다
+   */
+  const settleDefault = async () => {
+    if (userPicked || state.pendingId || state.messages.length > 0 || !o.ticket) return;
+    const file = readJson(SETTINGS_FILE) as SavedPick | undefined;
+    const savedId = explicitPick(file) as AiProvider | undefined;
+    const savedSpec = savedId ? specOf(savedId) : undefined;
+    let savedUsable = false;
+    if (savedId && savedSpec) {
+      if (savedId === TICKET_PROVIDER_ID) savedUsable = !ticketBlockNow();
+      else {
+        const st = await checkStatus(savedSpec);
+        savedUsable = !!st.installed;
+      }
+    }
+    // 기다리는 동안 상황이 바뀌었을 수 있다
+    if (userPicked || state.pendingId || state.messages.length > 0) return;
+    const pick = chooseDefault({ ticketUsable: ticketDefaultable(), saved: savedId, savedUsable });
+    const next = pick === 'ticket' ? TICKET_PROVIDER_ID : pick === 'saved' ? savedId : undefined;
+    if (!next || next === state.provider) return;
+    state = switchProvider(state, next);
+    log('chat', 'default provider', pick === 'ticket' ? 'ticket' : 'saved');
+    push();
+  };
   if (!saved?.provider) {
     void (async () => {
       for (const id of ['claude', 'codex', 'cursor', 'gemini']) {
         const spec = specOf(id);
         const st = spec ? await checkStatus(spec) : undefined;
         if (st?.installed && st.loggedIn !== false) {
-          if (userPicked) return;
+          if (userPicked || ticketDefaultable()) return;
           if (id !== state.provider && !state.pendingId) state = switchProvider(state, id);
           log('chat', 'auto provider', id);
           push();
           return;
         }
       }
-      if (userPicked) return;
+      if (userPicked || ticketDefaultable()) return;
       if (!state.pendingId) state = switchProvider(state, 'local');
       log('chat', 'auto provider', 'local');
       push();
@@ -311,7 +370,15 @@ export function createChat(o: ChatOptions) {
   ipcMain.handle(CHAT.status, async (e, refresh: boolean) => {
     if (!fromChat(e)) return [];
     // 대화권 남은 수는 창을 열 때 서버에서 다시 받는다 (기다리지 않는다)
-    if (o.ticket?.available() && o.ticket.refresh) void o.ticket.refresh().then(push, () => {});
+    if (o.ticket?.available() && o.ticket.refresh)
+      void o.ticket.refresh().then(
+        () => {
+          push();
+          void settleDefault();
+        },
+        () => {},
+      );
+    void settleDefault();
     // codex 는 질문 없이도 최근 대화 기록에서 사용량을 읽을 수 있다. 창을 열 때 한 번 갱신한다.
     // 파일에서 읽은 값은 기준 시각이 "지금"이 되므로 저장해 둔 값이 없을 때만 쓴다.
     if (!state.usage.codex) {
@@ -404,6 +471,8 @@ export function createChat(o: ChatOptions) {
     const spec = specOf(provider);
     if (!spec) return false;
     // 대화권은 국외 이전 안내를 읽고 쓰기로 한 뒤에만 보낸다 (화면도 그때까지 보내기를 막는다)
+    // 못 쓰는 사람(로그인 안 함, 장수 0, 나이, 운영자 설정)은 어떤 길로 와도 이용권 공급자로 보내지 않는다
+    if (spec.adapter === 'server' && ticketBlockNow()) return false;
     if (spec.adapter === 'server' && !o.ticket?.agreed()) return false;
     const history = historyFor(state, provider);
     // 기록 남기지 않기: 이어가기 대신 최근 대화를 붙여 보낸다 (claude, codex 만 켤 수 있다).
@@ -705,6 +774,7 @@ export function createChat(o: ChatOptions) {
     // AI 를 안 주면 지금 AI 로 같은 질문을 다시 묻는다 ("다시 묻기", #145)
     const provider = (typeof picked === 'string' ? picked : state.provider) as AiProvider;
     if (!fromChat(e) || state.pendingId || !specOf(provider)) return 'unavailable';
+    if (provider === TICKET_PROVIDER_ID && ticketBlockNow()) return 'unavailable';
     // AI 를 안 준 다시 묻기는 마지막 줄이 오류일 때만 한다 (잘 받은 답 뒤에서는 아무 일도 안 한다)
     if (typeof picked !== 'string' && !endsWithError(state)) return 'unavailable';
     const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
@@ -713,7 +783,7 @@ export function createChat(o: ChatOptions) {
     if (lastUser.images?.length && !original) return 'missing-images';
     userPicked = true;
     state = switchProvider(state, provider);
-    writeJson(SETTINGS_FILE, { provider: state.provider });
+    rememberPick(state.provider);
     push();
     return ask(lastUser.text, original ?? []) ? 'sent' : 'unavailable';
   });
@@ -763,6 +833,7 @@ export function createChat(o: ChatOptions) {
     o.localGame?.reset();
     save(true);
     push();
+    void settleDefault();
   });
   ipcMain.handle(CHAT.undoReset, (e) => {
     if (!fromChat(e) || !cleared || Date.now() - cleared.at > UNDO_RESET_MS) return false;
@@ -800,7 +871,7 @@ export function createChat(o: ChatOptions) {
     if (meta.provider && specOf(meta.provider) && meta.provider !== next.provider) {
       next = switchProvider(next, meta.provider);
       userPicked = true;
-      writeJson(SETTINGS_FILE, { provider: next.provider });
+      rememberPick(next.provider);
     }
     carry.clear();
     // 이어 갈 수 없는 세션(격리 설정이 바뀜, claude 의 오래된 세션)은 빼고 최근 문답을 글로 붙인다
@@ -844,6 +915,7 @@ export function createChat(o: ChatOptions) {
       carry.clear();
       save(true);
       push();
+      void settleDefault();
     }
     return true;
   });
@@ -866,9 +938,10 @@ export function createChat(o: ChatOptions) {
   });
   ipcMain.on(CHAT.provider, (e, provider: AiProvider) => {
     if (!fromChat(e) || !specOf(provider)) return;
+    if (provider === TICKET_PROVIDER_ID && ticketBlockNow()) return;
     userPicked = true;
     state = switchProvider(state, provider);
-    writeJson(SETTINGS_FILE, { provider: state.provider });
+    rememberPick(state.provider);
     push();
   });
 
@@ -1025,7 +1098,10 @@ export function createChat(o: ChatOptions) {
     /** 지금 있는 채팅 면들 */
     faces,
     /** 대화권 상태(남은 수, 쓸 수 있는지)가 바뀌었다. 열린 창에 다시 보낸다 */
-    ticketChanged: () => push(),
+    ticketChanged: () => {
+      push();
+      void settleDefault();
+    },
     /** 말놀이 펫 말을 채팅에 단다 (펫 메뉴에서 끝말잇기 시작). 답을 기다리는 중이면 false */
     sayLocal: (text: string): boolean => {
       if (state.pendingId || o.locked?.()) return false;

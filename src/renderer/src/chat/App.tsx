@@ -428,6 +428,7 @@ export function App() {
   const lastQuestionHasImages = !!state.messages.findLast((m) => m.role === 'user')?.images?.length;
   const alternatives = providers.filter((p) => {
     const st = status[p.id];
+    if (p.id === TICKET_PROVIDER_ID && state.ticketGate?.block) return false;
     return !!st && isReady(st) && (!lastQuestionHasImages || p.images);
   });
 
@@ -592,6 +593,7 @@ export function App() {
           providers={providers}
           status={status}
           current={state.provider}
+          ticketGate={state.ticketGate}
           disabled={pending}
           onPick={(id) => bridge.setProvider(id)}
           onManage={() => setManaging(true)}
@@ -780,7 +782,10 @@ export function App() {
               download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
               isLast={m.id === state.messages.at(-1)?.id}
               onAskAgain={
-                m.id === state.messages.at(-1)?.id && !pending && canAskAgain(state.messages)
+                m.id === state.messages.at(-1)?.id &&
+                !pending &&
+                canAskAgain(state.messages) &&
+                !(m.provider === TICKET_PROVIDER_ID && state.ticketGate?.block)
                   ? askAgain
                   : undefined
               }

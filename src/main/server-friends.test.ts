@@ -8,6 +8,7 @@ import type { ServerStatus } from '../shared/server-account.ts';
 import {
   busyByDay,
   friendCodeFrom,
+  friendsOffReason,
   inviteLink,
   spansWithoutTitles,
   titlesByDay,
@@ -195,6 +196,37 @@ const LIST = {
     today: { coins: 0, passes: 0 },
   },
 };
+
+test('쓸 수 없는 까닭은 먼저 걸리는 것 하나 (서버 없음, 나이, 서버 계정 꺼짐, 로그인, 운영자가 안 엶)', () => {
+  const ok = { enabled: true, age: 'adult', on: true, signedIn: true, features: { friends: true } } as const;
+  assert.equal(friendsOffReason(undefined, false), 'noServer');
+  assert.equal(friendsOffReason({ ...ok, enabled: false }, true), 'noServer');
+  assert.equal(friendsOffReason({ ...ok, age: null }, true), 'age');
+  assert.equal(friendsOffReason({ ...ok, age: 'under14', on: false }, false), 'age');
+  assert.equal(friendsOffReason({ ...ok, on: false }, false), 'serverOff');
+  assert.equal(friendsOffReason(ok, false), 'serverOff');
+  assert.equal(friendsOffReason({ ...ok, signedIn: false }, true), 'signedOut');
+  assert.equal(friendsOffReason({ ...ok, features: { friends: false } }, true), 'featureOff');
+  assert.equal(friendsOffReason({ ...ok, features: null }, true), 'featureOff');
+  assert.equal(friendsOffReason(ok, true), null);
+});
+
+test('state() 는 못 쓰면 까닭을, 쓰면 null 을 준다', () => {
+  const mk = (over: object) => {
+    const f = fakeCore({});
+    Object.assign(f.status, { enabled: true, on: true }, over);
+    return createServerFriends({
+      core: () => f.core,
+      events: () => [],
+      now: () => T0,
+      onChange: () => {},
+      log: () => {},
+    });
+  };
+  assert.equal(mk({}).state().off, null);
+  assert.equal(mk({ signedIn: false }).state().off, 'signedOut');
+  assert.equal(mk({ features: { friends: false } }).state().off, 'featureOff');
+});
 
 test('친구 기능이 꺼졌거나 로그인하지 않았으면 칸을 숨기고 아무것도 보내지 않는다', async () => {
   for (const f of [fakeCore({ features: { friends: false } }), fakeCore({ signedIn: false })]) {

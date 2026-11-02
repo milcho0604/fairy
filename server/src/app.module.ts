@@ -33,6 +33,8 @@ import { type KakaoApi, realKakaoApi } from './kakao';
 import { Login } from './login';
 import { RateLimiter } from './rate-limit';
 import { Rewards } from './rewards';
+import { Sync } from './sync';
+import { SyncController } from './sync.controller';
 
 @Module({})
 export class AppModule {}
@@ -64,6 +66,7 @@ export function appModule(config: Config, deps: AppDeps = {}): DynamicModule {
       BackupController,
       FeaturesController,
       FriendsController,
+      SyncController,
     ],
     providers: [
       { provide: CONFIG, useValue: config },
@@ -91,6 +94,7 @@ export function appModule(config: Config, deps: AppDeps = {}): DynamicModule {
       AiAdmin,
       Inbox,
       Friends,
+      Sync,
       Feeds,
       Rewards,
       Coins,

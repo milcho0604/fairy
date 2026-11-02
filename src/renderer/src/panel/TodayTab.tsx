@@ -544,14 +544,14 @@ export function WeekBox({
           return (
             <span
               key={d.day}
-              className={`week-bar ${d.future ? 'future' : d.done === 0 ? 'zero' : ''} ${d.day === today ? 'today' : ''}`}
+              className={`week-bar ${d.future ? 'future' : d.done === 0 ? 'zero' : ''} ${d.day === today ? 'is-today' : ''}`}
               title={label}
               role="img"
               aria-label={label}
             >
               {/* 막대는 이름표와 따로 높이가 정해진 칸 안에서 잰다 (이름표 몫만큼 큰 막대가 눌려 70% 와 100% 가 같아 보였다) */}
               <span className="week-track">
-                <i style={{ height: `${d.future ? 100 : Math.max(6, (d.done / max) * 100)}%` }} />
+                <i style={d.future ? undefined : { height: `${Math.max(6, (d.done / max) * 100)}%` }} />
               </span>
               <small aria-hidden="true">{labels[i]}</small>
             </span>

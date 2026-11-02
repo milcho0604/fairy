@@ -11,6 +11,29 @@
   color-scheme: light dark;
 }
 
+/*
+ * 덮는 것은 끌기 아님. 머리줄 같은 창 옮기기 자리(-webkit-app-region: drag)는 z-index 와 무관하게 위에 덮인 요소의 마우스를 창 끌기로
+ * 가져간다. 크롬은 문서 순서대로 drag 는 더하고 no-drag 는 빼므로, 머리줄 뒤에 오는 덮개, 시트, 메뉴, 대화상자는 스스로 no-drag 여야
+ * 안의 단추와 입력칸이 눌린다. 새 덮개는 role(dialog, alertdialog, menu, listbox)이나 이름 끝(-veil, -dim, -backdrop, -sheet, -menu)을 따르면
+ * 따로 적을 일이 없다 (drag-overlays.test.ts 가 position: fixed 덮개가 빠지지 않았는지 본다)
+ */
+:where(
+  [role="dialog"],
+  [role="alertdialog"],
+  [role="menu"],
+  [role="listbox"],
+  [aria-modal="true"],
+  [class$="-veil"],
+  [class$="-dim"],
+  [class$="-backdrop"],
+  [class$="-sheet"],
+  [class$="-menu"],
+  .sheet,
+  .lightbox
+) {
+  -webkit-app-region: no-drag;
+}
+
 /* 선택 상자: 맥 기본 화살표는 얇고 오른쪽 끝에 붙어 상자와 어긋나서 직접 그린다.
    높이는 옆 입력칸, 단추(.ghost)와 같게 위아래 6px. 펼친 목록은 운영체제 그대로.
    :where 로 우선순위를 0 으로 두어 창마다 겹쳐 숨기는 규칙(.remind select 등)이 늘 이긴다. */

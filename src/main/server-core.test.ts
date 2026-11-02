@@ -5,6 +5,7 @@ import { spendRule } from '../shared/coin-rules.ts';
 import { type Db, migrate } from '../shared/db-schema.ts';
 import { featureOn, serverView } from '../shared/server-account.ts';
 import { ItemStore } from '../shared/shop.ts';
+import type { SyncView } from '../shared/sync-view.ts';
 import { TodoStore } from '../shared/todo-store.ts';
 import { type FetchLike, serverApi } from './server-api.ts';
 import { refOf, ServerCoins, SYNC_REASON, withPending } from './server-coins.ts';
@@ -67,6 +68,9 @@ function fakeServer() {
     backupFull: false,
     /** 기능 키 coin_reset (#102) */
     coinReset: false,
+    /** 기능 키 읽기가 요청 한도에 걸렸다 (retry_after 초). 호출 수 */
+    featuresLimited: undefined as number | undefined,
+    featureCalls: 0,
     /** 기능 키 calendar_link_hint 와 구글 일정 연결 표시 (#115): 이 기기가 올린 값, 다른 기기에서 연결한 수 */
     calendarHint: true,
     calendarHere: false,
@@ -93,7 +97,10 @@ function fakeServer() {
     const body = init.body && json ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
     const auth = (init.headers as Record<string, string>).authorization?.slice(7);
     if (u.pathname === '/v1/features') {
+      s.featureCalls++;
       if (s.down) throw new TypeError('fetch failed');
+      if (s.featuresLimited !== undefined)
+        return reply(429, { error: 'rate_limited', retry_after: s.featuresLimited });
       return reply(200, {
         features: { coin_reset: s.coinReset, kakao_login: false, calendar_link_hint: s.calendarHint },
       });
@@ -335,7 +342,14 @@ function fakeServer() {
 }
 
 function setup(
-  o: { url?: string; coins?: number; state?: Partial<ServerState>; calendar?: { linked: boolean } } = {},
+  o: {
+    url?: string;
+    coins?: number;
+    state?: Partial<ServerState>;
+    calendar?: { linked: boolean };
+    /** 동기화 상태를 status().sync 로 실어 보낸다 (main/sync/engine.ts 대신 이 값) */
+    syncView?: SyncView;
+  } = {},
 ) {
   const db = new DatabaseSync(':memory:') as unknown as Db;
   migrate(db);
@@ -353,6 +367,8 @@ function setup(
   const reverted: { reason: string; amount: number }[][] = [];
   const inboxCalls: number[] = [];
   const lowered: number[] = [];
+  /** 서버 계정이 이 기기에서 끝난 일 (동기화 열쇠를 지우는 신호) */
+  const ended: string[] = [];
   const opened: string[] = [];
   /** 서버 백업 (#102): 받은 파일로 연 되살리기 확인 칸 */
   const restored: Uint8Array[] = [];
@@ -401,6 +417,8 @@ function setup(
     onReverted: (list) => reverted.push(list),
     onInbox: (n) => inboxCalls.push(n),
     onCoinsLowered: (n) => lowered.push(n),
+    onAccountEnd: (why) => ended.push(why),
+    ...(o.syncView ? { syncView: () => o.syncView } : {}),
     ...(o.calendar ? { calendarLinked: () => o.calendar?.linked ?? false } : {}),
     backupFile: {
       make: async () => backupBytes,
@@ -411,6 +429,7 @@ function setup(
     },
   });
   return {
+    ended,
     restored,
     serverMins,
     setBackupBytes: (b: Uint8Array) => {
@@ -1491,4 +1510,62 @@ test('계정 표식은 토큰이 바뀌어도(기기 계정에서 구글 로그�
   assert.equal(x.core.accountKey(), device, '같은 계정이면 표식이 같다');
   const other = setup({ coins: 10, state: { code: 'F-ZZZZ-ZZZZ' } as Partial<ServerState> });
   assert.notEqual(other.core.accountKey(), device);
+});
+
+test('동기화: 로그아웃과 탈퇴(서버가 계정을 모름)는 동기화 쪽에 알려 열쇠를 지우게 한다', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  await x.core.run();
+  x.setLoop({ kind: 'code', code: 'c' });
+  await x.core.login();
+  assert.deepEqual(x.ended, []);
+  await x.core.logout();
+  assert.deepEqual(x.ended, ['logout']);
+  assert.equal((await x.core.remove()).ok, true);
+  assert.deepEqual(x.ended, ['logout', 'gone']);
+});
+
+test('동기화: 상태(status().sync)와 계정 코드가 실린다, 엔진이 없으면 sync 칸이 빠진다', async () => {
+  const view: SyncView = {
+    phase: 'on',
+    problem: null,
+    lastAt: 5,
+    offline: false,
+    pending: 2,
+    held: 1,
+    usage: { items: 3, bytes: 4, maxItems: 100000, maxBytes: 104857600 },
+    soon: false,
+    running: false,
+  };
+  const x = setup({ coins: 10, syncView: view });
+  assert.deepEqual(x.core.status().sync, view);
+  assert.equal(x.core.accountCode(), undefined, '서버 계정 코드를 아직 모른다');
+  x.core.setAge('adult');
+  await x.core.run();
+  const code = x.core.status().code;
+  assert.match(code ?? '', /^F-/);
+  assert.equal(x.core.accountCode(), code);
+  const y = setup({ coins: 10 });
+  assert.ok(!('sync' in y.core.status()));
+});
+
+test('기능 키 읽기가 429 면 서버가 알려 준 초만큼 쉬고 옛 값을 둔다', async () => {
+  const x = await setup();
+  await x.core.setAge('adult');
+  await x.core.refreshProviders(true);
+  assert.equal(x.core.status().features?.calendar_link_hint, true);
+  x.server.calendarHint = false;
+  x.server.featuresLimited = 90;
+  const n = x.server.featureCalls;
+  await x.core.refreshProviders(true);
+  assert.equal(x.server.featureCalls, n + 1);
+  assert.equal(x.core.status().features?.calendar_link_hint, true, '옛 값 유지');
+  x.server.featuresLimited = undefined;
+  x.tick(60_000);
+  await x.core.refreshProviders(true);
+  assert.equal(x.server.featureCalls, n + 1, '90초 안에는 묻지 않는다');
+  x.tick(31_000);
+  await x.core.refreshProviders(true);
+  assert.equal(x.server.featureCalls, n + 2);
+  assert.equal(x.core.status().features?.calendar_link_hint, false, '쉬고 나면 새 값');
 });

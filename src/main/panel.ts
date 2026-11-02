@@ -30,7 +30,7 @@ import { type FocusState, focusReward, isFocusMinutes } from '../shared/focus.ts
 import { isMonth, monthOf } from '../shared/focus-month.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { fitSavedBounds } from '../shared/geometry.ts';
-import { isPanelView, type PanelView } from '../shared/home-policy.ts';
+import { isPanelView, type PanelView, panelClickAction, shrinkTab } from '../shared/home-policy.ts';
 import { t } from '../shared/i18n/index.ts';
 import { createIdleWatch } from '../shared/idle-watch.ts';
 import {
@@ -39,6 +39,7 @@ import {
   isPanelTab,
   type NoteAiKind,
   type NoteSaveResult,
+  type NoteSummary,
   PANEL,
   type PanelAddResult,
   type PanelState,
@@ -98,6 +99,7 @@ import { readJson, removeJson, writeJson } from './store.ts';
 import type { SurfaceWin } from './surface.ts';
 import { closesPanelFor, originOf, pickSurface } from './surface.ts';
 import { saveBounds, savedBounds } from './window-bounds.ts';
+import { floatingWindowOptions } from './window-options.ts';
 
 /** 날이 바뀌었는지 보는 간격. 자정 뒤 이만큼 안에 패널이 새 날로 바뀐다 */
 const DAY_CHECK_MS = 20_000;
@@ -132,6 +134,8 @@ export interface PanelOptions {
   /** 진행 중으로 표시한 할 일 (펫 머리 위 말풍선, 이슈 #124) */
   doing: DoingSet;
   notes: NoteStore;
+  /** 충돌 사본인 메모 번호들 (기기 간 동기화). 없으면 표시하지 않는다 */
+  noteCopies?: () => ReadonlySet<number>;
   events: EventStore;
   focus: () => FocusState;
   /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로, 할 일 id 를 주면 그 할 일을 하는 집중 */
@@ -203,6 +207,8 @@ export interface PanelOptions {
    * tab 이 없으면 큰 창이 마지막으로 본 구역
    */
   promoteHome?: (tab?: PanelTab) => void;
+  /** 큰 창의 "작게 보기": 큰 창을 숨긴다 (작은 패널은 패널이 연다) */
+  hideHome?: (done: () => void) => void;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
@@ -273,6 +279,20 @@ export function createPanel(o: PanelOptions) {
     return o.doing.ids().filter((id) => ids.has(id));
   }
 
+  /** 큰 창 메모 목록 한 줄 한 줄 (동기화 충돌 사본이면 표시) */
+  function noteRows(): NoteSummary[] {
+    const copies = o.noteCopies?.();
+    return o.notes.list().map((n) => ({
+      id: n.id,
+      title: noteTitle(n),
+      preview: notePreview(n),
+      source: n.source,
+      updatedAt: n.updatedAt,
+      pinnedAt: n.pinnedAt,
+      ...(copies?.has(n.id) ? { conflictCopy: true as const } : {}),
+    }));
+  }
+
   let newNoteRequest = 0;
   let pendingNewNote = false;
   let slotTakenSeq = 0;
@@ -295,14 +315,7 @@ export function createPanel(o: PanelOptions) {
       fullness: Math.round(o.store.fullness(now)),
       hungryBelow: FULLNESS.hungry,
       foodCost: COIN.food,
-      notes: o.notes.list().map((n) => ({
-        id: n.id,
-        title: noteTitle(n),
-        preview: notePreview(n),
-        source: n.source,
-        updatedAt: n.updatedAt,
-        pinnedAt: n.pinnedAt,
-      })),
+      notes: noteRows(),
       events,
       // 안 끝난 시각 일정끼리 (어제부터 이어지는 것 포함). 일정 탭이 보이는 것과 같은 범위
       eventClash: [...clashIds(o.events.timedOverlapping(now, startOfDayAfter(now, 14)))],
@@ -550,9 +563,22 @@ export function createPanel(o: PanelOptions) {
     // 디스크가 가득 차면 저장이 던진다: 오류 글로 답해 화면이 안내하게 한다 (saving)
     saving((e, text: unknown) => {
       if (!ours(e)) return undefined;
+      // 큰 창의 빈 새 메모 칸은 제목과 본문을 그대로 보낸다 (쓰던 공백을 지우지 않는다)
+      const typed =
+        typeof text === 'object' && text !== null ? (text as { title?: unknown; body?: unknown }) : undefined;
       // 찾기 칸에 적은 글로 만들 때는 그 글이 본문 첫 줄 (제목은 첫 줄에서 저절로)
       const body = typeof text === 'string' ? text.trim() : '';
-      const n = o.notes.add(body ? { body } : {}, Date.now());
+      const n = o.notes.add(
+        typed
+          ? {
+              ...(typeof typed.title === 'string' ? { title: typed.title } : {}),
+              ...(typeof typed.body === 'string' ? { body: typed.body } : {}),
+            }
+          : body
+            ? { body }
+            : {},
+        Date.now(),
+      );
       freshNotes.add(n.id);
       push();
       return n;
@@ -1265,6 +1291,19 @@ export function createPanel(o: PanelOptions) {
     o.promoteHome?.(tab);
   });
 
+  // 작게 보기: 큰 창에서 이 구역 그대로 작은 패널로 돌아간다. 펫을 눌러도 패널이 뜨게 패널 보기도 바꾼다
+  ipcMain.on(PANEL.shrink, (e, tab: unknown) => {
+    if (!ours(e) || e.sender !== homeContents() || !isPanelTab(tab)) return;
+    o.setPanelView('compact');
+    // 전체 화면 큰 창은 풀린 뒤에 숨겨진다: 숨겨진 다음에 패널을 연다 (패널이 빈 데스크톱에 뜨지 않게)
+    const open = () => {
+      closePanel();
+      openPanel(shrinkTab(tab));
+    };
+    if (o.hideHome) o.hideHome(open);
+    else open();
+  });
+
   /**
    * 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열 때: 패널에 쓰던 글을 보내고 넘겨 달라고 한다. 열려 있으면 true.
    * 패널이 답이 없으면(멈춤) 잠시 뒤 그냥 큰 창을 연다
@@ -1297,17 +1336,7 @@ export function createPanel(o: PanelOptions) {
 
   function makeWindow(kind: 'panel' | 'quick', bounds: Rectangle, tab?: PanelTab) {
     const win = new BrowserWindow({
-      ...bounds,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      hasShadow: false,
-      alwaysOnTop: true,
-      show: false,
+      ...floatingWindowOptions(bounds),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
         additionalArguments: [`--jj-window=${kind}`, langArg()],
@@ -1416,6 +1445,12 @@ export function createPanel(o: PanelOptions) {
       }
     }
     if (panel && !panel.isDestroyed()) {
+      // 눈에 안 보이는 패널은 앞으로만 낸다 (보이는 패널은 늘 위에 떠 있어 한 번에 닫는다)
+      if (panelClickAction({ visible: panel.isVisible(), minimized: panel.isMinimized() }) === 'raise') {
+        revivers.get(panel)?.();
+        focusWindow(panel);
+        return;
+      }
       closePanel();
       return;
     }

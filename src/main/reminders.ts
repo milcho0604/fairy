@@ -31,6 +31,8 @@ export interface RemindersOptions {
   saved?: unknown;
   /** 미룬 알림이 바뀌었다 (플래너가 저장 파일에 적는다) */
   onSnoozedChange?: () => void;
+  /** 할 일 마감 알림을 말할지 (설정 dueSoonAlert). 끄면 말없이 알린 것으로만 적는다 */
+  todoAlert?: () => boolean;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -76,13 +78,13 @@ export function createReminders(o: RemindersOptions) {
   }
 
   function tick(now: number) {
-    const due: Due[] = [
-      ...o.events.dueReminders(now).map(fromEvent),
-      ...o.todos
-        .dueReminders(now)
-        .map(fromTodo)
-        .filter((d) => d !== undefined),
-    ];
+    const todoDue = o.todos
+      .dueReminders(now)
+      .map(fromTodo)
+      .filter((d) => d !== undefined);
+    const quietTodos = o.todoAlert ? !o.todoAlert() : false;
+    for (const d of quietTodos ? todoDue : []) o.todos.markNotified(d.id, now);
+    const due: Due[] = [...o.events.dueReminders(now).map(fromEvent), ...(quietTodos ? [] : todoDue)];
     for (const d of due) {
       if (d.kind === 'event') o.events.markNotified(d.id, now);
       else o.todos.markNotified(d.id, now);

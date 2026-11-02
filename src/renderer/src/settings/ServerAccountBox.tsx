@@ -356,6 +356,15 @@ export function ServerAccountBox() {
             <>
               <small>{t('server.signedIn', { via: viaText(s.logins) })}</small>
               <div className="action-row">
+                {/* 로그아웃은 맨 앞에 눈에 띄게 */}
+                <button
+                  type="button"
+                  className="ghost logout"
+                  disabled={busy}
+                  onClick={() => void run(() => b.logout())}
+                >
+                  {t('server.logout')}
+                </button>
                 {/* 다른 서비스도 잇기 (21절). 서버가 이 계정에 허락한 것만 (카카오는 기능 키) */}
                 {linkServices.map((x) => (
                   <button
@@ -368,14 +377,6 @@ export function ServerAccountBox() {
                     {t(LINK_KEY[x])}
                   </button>
                 ))}
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={busy}
-                  onClick={() => void run(() => b.logout())}
-                >
-                  {t('server.logout')}
-                </button>
               </div>
             </>
           ) : (

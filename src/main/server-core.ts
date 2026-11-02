@@ -8,6 +8,7 @@
 // - 서버가 꺼져 있어도 앱은 사본 잔액(앱 장부)으로 돈다. 대기열은 파일에 남아 살아나면 보낸다.
 import { createHash, randomBytes } from 'node:crypto';
 import { checkNickname, DEVICE_CODE } from '../shared/account-profile.ts';
+import { type TicketBlock, ticketBlock } from '../shared/ai/ticket-gate.ts';
 import {
   type AccountSummary,
   type AdminLogFilter,
@@ -23,6 +24,7 @@ import {
   type ServerProblem,
   type ServerStatus,
 } from '../shared/server-account.ts';
+import type { SyncView } from '../shared/sync-view.ts';
 import type { GateNeed } from '../shared/update-levels.ts';
 import type {
   AiChatBody,
@@ -266,6 +268,13 @@ export interface ServerCoreDeps {
    * 연결이 바뀌면 메인이 calendarChanged() 를 부른다
    */
   calendarLinked?: () => boolean;
+  /** 기기 간 동기화 상태 (main/sync/engine.ts). 없으면 status().sync 가 빠진다 */
+  syncView?: () => SyncView | undefined;
+  /**
+   * 서버 계정이 이 기기에서 끝났다: logout(로그아웃), gone(탈퇴, 서버가 계정을 모름).
+   * 동기화 열쇠와 커서를 지운다 (같은 컴퓨터의 다른 사람이 로그인해도 앞사람 메모가 올라가지 않게)
+   */
+  onAccountEnd?: (why: 'logout' | 'gone') => void;
 }
 
 const b64url = (b: Uint8Array) => Buffer.from(b).toString('base64url');
@@ -310,6 +319,16 @@ export function createServerCore(d: ServerCoreDeps) {
   const aiEligible = () => allowed() && st.age === 'adult' && !!d.session.get();
   /** 채팅 이용권을 쓸 수 있는가: 위에 더해 운영자가 열어 두었다 (#101, 모르면 아직 아님) */
   const aiAvailable = () => aiEligible() && st.aiAccess === 'ok';
+  /** 채팅 이용권을 못 쓰는 까닭 (AI 고르기에 보인다). 쓸 수 있으면 undefined (shared/ai/ticket-gate.ts) */
+  const aiBlock = (): TicketBlock | undefined =>
+    ticketBlock({
+      enabled: enabled(),
+      age: st.age,
+      serverReady: allowed(),
+      signedIn: !!d.session.get(),
+      access: st.aiAccess,
+      tickets: st.tickets,
+    });
   /** 운영자 계정인가 (#101): 세션이 있고 서버가 운영자라고 했다 */
   const isAdmin = () => allowed() && !!d.session.get() && st.admin;
 
@@ -329,6 +348,7 @@ export function createServerCore(d: ServerCoreDeps) {
 
   function status(): ServerStatus {
     const device = !!d.device.get();
+    const sync = d.syncView?.();
     return {
       enabled: enabled(),
       age: st.age,
@@ -366,6 +386,7 @@ export function createServerCore(d: ServerCoreDeps) {
             }
           : null,
       calendarHint: calendarHint(),
+      ...(sync ? { sync } : {}),
     };
   }
 
@@ -429,6 +450,7 @@ export function createServerCore(d: ServerCoreDeps) {
     calendar = null;
     st.coins.queue = [];
     save();
+    d.onAccountEnd?.('gone');
   }
 
   /** 맞추기에 쓸 토큰: 세션이 먼저, 없으면 기기 */
@@ -825,6 +847,7 @@ export function createServerCore(d: ServerCoreDeps) {
   }
 
   /** 지금 쓸 수 있는 로그인 서비스를 서버에 묻는다 (#102, 기능 키에 따라 카카오가 들고 난다) */
+  let featuresRestUntil = 0;
   async function refreshProviders(force = false): Promise<void> {
     const t = token();
     if (!d.api || !allowed()) return;
@@ -836,9 +859,18 @@ export function createServerCore(d: ServerCoreDeps) {
       providers = r.data;
       providersAt = d.now();
     } else d.log('server', '로그인 서비스 목록을 못 받음', r.status, r.error);
-    const f = await d.api.features(t);
-    if (f.ok) features = f.data;
-    else d.log('server', '기능 키를 못 받음', f.status, f.error);
+    // 429 면 서버가 알려 준 만큼 쉬고 옛 값을 둔다 (모르면 1분)
+    if (d.now() >= featuresRestUntil) {
+      const f = await d.api.features(t);
+      if (f.ok) features = f.data;
+      else {
+        if (f.status === 429) {
+          const sec = Number(f.body.retry_after);
+          featuresRestUntil = d.now() + (Number.isFinite(sec) && sec > 0 ? Math.min(sec, 3600) : 60) * 1000;
+        }
+        d.log('server', '기능 키를 못 받음', f.status, f.error);
+      }
+    }
     // 바뀌었으면 설정 창에 바로 (맞추기 밖에서 불렸을 때: 설정 창을 열 때)
     if (JSON.stringify([providers, features]) !== before) changed();
   }
@@ -1146,6 +1178,8 @@ export function createServerCore(d: ServerCoreDeps) {
      * 이 기기가 지금 쓰는 계정의 짧은 표식(서버가 준 계정 코드의 해시 앞부분). 계정이 바뀌어야만 바뀐다(같은 계정이 다시
      * 로그인해도 같다). 서버가 아직 코드를 안 줬으면 undefined
      */
+    /** 서버가 준 계정 코드 (F-XXXX-XXXX). 동기화 암호화가 계정에 묶는 값. 아직 모르면 undefined */
+    accountCode: (): string | undefined => (st.code && wanted() ? st.code : undefined),
     accountKey: (): string | undefined =>
       st.code ? createHash('sha256').update(st.code).digest('hex').slice(0, 16) : undefined,
     isAdmin,
@@ -1249,6 +1283,7 @@ export function createServerCore(d: ServerCoreDeps) {
     login: startLogin,
     cancelLogin,
     aiAvailable,
+    aiBlock,
     /** 남은 대화권 사본 (쓸 수 없으면 null) */
     tickets: () => (aiAvailable() ? st.tickets : null),
     aiAgreed: () => st.aiAgreed,
@@ -1276,6 +1311,7 @@ export function createServerCore(d: ServerCoreDeps) {
       // 다른 기기의 구글 일정 연결 안내는 로그인한 동안만 (이 기기 표시는 기기 계정에 남는다)
       calendar = null;
       save();
+      d.onAccountEnd?.('logout');
       if (t && d.api) {
         const r = await d.api.logout(t);
         if (!r.ok) d.log('server', '서버 세션 못 지움', r.status, r.error);

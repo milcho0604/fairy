@@ -274,25 +274,27 @@
   margin: 8px 0 2px;
 }
 
+/* 오늘 표시는 is-today (전역 .today 는 오늘 탭 본문의 안쪽 여백이라 클래스 이름을 겹치면 오늘 칸만 떠오른다) */
+/* 막대 칸(위)과 요일 글자(아래)를 두 줄로 고정해 모든 요일 글자가 같은 기준선에 선다. 막대는 칸 바닥에서 올라온다 */
 .week-bar {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
   gap: 2px;
   height: 100%;
 }
 
 .week-track {
-  display: flex;
-  flex: 1;
-  align-items: flex-end;
-  justify-content: center;
+  position: relative;
   width: 100%;
   min-height: 0;
 }
 
 .week-bar i {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
   display: block;
   width: 100%;
   max-width: 22px;
@@ -306,6 +308,7 @@
 }
 
 .week-bar.future i {
+  height: 6px;
   background: none;
   border: 1px dashed var(--line);
 }
@@ -315,7 +318,7 @@
   color: var(--muted);
 }
 
-.week-bar.today small {
+.week-bar.is-today small {
   color: var(--ink);
   font-weight: 700;
 }

@@ -14,7 +14,7 @@
 //     열고 닫기를 빠르게 되풀이해도 오류 없이 끝난다. 아이콘이 실제로 뜨고 지는지는 scripts/dev/dock-probe.mjs 가 잰다
 //   전체 화면: 큰 창이 전체 화면이 되면 펫의 "모든 데스크톱, 전체 화면 위" 설정을 다시 걸고, 풀리면 원래대로 건다 (창 호출을 가로채 확인.
 //     진짜 전체 화면은 쓰는 사람의 화면에 새 데스크톱을 만들어 시험에서는 켜지 않는다)
-//   화면: 폭 760/1100/1440 x 밝음/어두움 찍기와 가로 넘침, 구역마다, 사이드바(구역, 채팅과 친구는 따로 창, 설정), 단축키(Cmd+1~, Cmd+, Cmd+W),
+//   화면: 폭 760/1100/1440 x 밝음/어두움 찍기와 가로 넘침, 구역마다, 사이드바(구역, 채팅은 창 안에, 친구는 본문 칸에, 설정은 따로 창), 단축키(Cmd+1~, Cmd+, Cmd+W),
 //     빠른 입력으로 넣은 할 일이 큰 창에 바로 보임, 사이드바 체크와 설정 칸이 같은 panelView 를 바꿈
 //   ko/en: 영어 화면에 한글 없음, "모드" 라는 낱말 없음
 //   오늘과 일정의 넓은 배치 (이슈 #162): 구간별(작은 패널 320/360/560, 큰 창 760/1100/1440) 찍기와 넘침, 오늘 첫 화면 순서(일정, 다음 할 일, 마감이 맨 위),
@@ -63,7 +63,7 @@ mkdirSync(data, { recursive: true });
 mkdirSync(homeDir, { recursive: true });
 writeFileSync(
   join(data, 'settings.json'),
-  JSON.stringify({ onboarded: true, osNotify: false, lang: LANG, petName: tx('콩', 'Mochi'), wander: false }),
+  JSON.stringify({ onboarded: true, osNotify: false, lang: LANG, petName: tx('콩', 'Mochi'), wander: false, dockIcon: false }),
 );
 writeFileSync(join(data, 'day-plan.json'), JSON.stringify({ prefs: { auto: false, fromMinute: 480 } }));
 const app = spawn(electronPath, [`--inspect=${INSPECT}`, '.', `--remote-debugging-port=${PAGE}`], {
@@ -653,7 +653,7 @@ const body = async () => {
     };
 
     const noteLayout = await wh.ev(`document.querySelector('.note-layout')?.className ?? ''`);
-    check('1100 메모: 나란히 보기 (.split) 이고 아직 안 골랐으면 안내 글', noteLayout.includes('split') && (await shown('.note-pane-empty')) && !(await shown('.note-editor')), noteLayout);
+    check('1100 메모: 나란히 보기 (.split) 이고 아직 안 골랐으면 빈 새 메모 칸', noteLayout.includes('split') && (await shown('.note-draft')) && !(await shown('.note-editor:not(.note-draft)')), noteLayout);
     await openNote(nA);
     const lp = await pos('.note-list-pane');
     const ed = await pos('.note-editor');
@@ -704,7 +704,7 @@ const body = async () => {
     check('(d) 고치다 할 일 탭으로 바꾸면 고친 글이 저장된다', (await noteBody(N.b)).endsWith(' +H1 +T1'), JSON.stringify(await noteBody(N.b)));
     await tab('note');
     await sleep(700);
-    check('(d) 메모 탭으로 돌아오면 목록이고, 그 메모를 열면 고친 글이 그대로 있다', !(await shown('.note-editor')) && (await shown('.note-list-pane')), '');
+    check('(d) 메모 탭으로 돌아오면 목록이고, 그 메모를 열면 고친 글이 그대로 있다', !(await shown('.note-editor:not(.note-draft)')) && (await shown('.note-list-pane')), '');
     await openNote(nB);
     check('(d) 다시 연 메모에 고친 글이 들어 있다', (await editorBody()) === (await noteBody(N.b)), JSON.stringify(await editorBody()));
 
@@ -799,13 +799,13 @@ const body = async () => {
     const n0 = await countNotes();
     await wh.click(`document.querySelector('.note-list-pane .add.row .primary')`);
     await sleep(700);
-    check('새 메모를 누르면 목록은 그대로 두고 오른쪽에 빈 편집기가 열린다', (await countNotes()) === n0 + 1 && (await shown('.note-editor')) && (await editorBody()) === '' && (await wh.ev(`document.querySelectorAll('li.note-row').length`)) >= 4);
+    check('새 메모를 누르면 목록은 그대로 두고 오른쪽에 빈 새 메모 칸이 열린다 (메모는 아직 안 만든다)', (await countNotes()) === n0 && (await shown('.note-editor')) && (await editorBody()) === '' && (await wh.ev(`document.querySelectorAll('li.note-row').length`)) >= 4);
     await openNote(nA);
     await sleep(500);
     check('빈 새 메모를 두고 다른 메모를 누르면 빈 메모가 소리 없이 사라진다 (목록에 빈 메모가 안 남는다)', (await countNotes()) === n0, `${await countNotes()} vs ${n0}`);
     await wh.click(`document.querySelector('.note-editor .link.danger')`);
     await sleep(700);
-    check('지우기를 누르면 편집기가 닫혀 안내 글이 돌아오고 목록에서 빠진다', (await countNotes()) === n0 - 1 && (await shown('.note-pane-empty')));
+    check('지우기를 누르면 편집기가 닫혀 빈 새 메모 칸이 돌아오고 목록에서 빠진다', (await countNotes()) === n0 - 1 && (await shown('.note-draft')));
     await wh.ev(`document.querySelector('.toast .undo')?.click(); 1`);
     await sleep(600);
     check('지운 메모를 되돌리면 돌아온다', (await countNotes()) === n0);
@@ -857,9 +857,9 @@ const body = async () => {
     check('줄인 뒤 쓰던 글이 저장된다', (await noteBody(N.b)).endsWith('+NARROW'));
     await wh.click(`document.querySelector('.note-bar .back')`);
     await sleep(500);
-    check('760 에서 뒤로를 누르면 예전처럼 목록 하나', (await shown('.note-list-pane')) && !(await shown('.note-editor')) && !(await shown('.note-pane-empty')));
+    check('760 에서 뒤로를 누르면 예전처럼 목록 하나', (await shown('.note-list-pane')) && !(await shown('.note-editor')) && !(await shown('.note-draft')));
     await setBounds(1100);
-    check('다시 1100 으로 넓히면 나란히 + 안내 글', (await shown('.note-list-pane')) && (await shown('.note-pane-empty')));
+    check('다시 1100 으로 넓히면 나란히 + 빈 새 메모 칸', (await shown('.note-list-pane')) && (await shown('.note-draft')));
 
     // 폭별 찍기와 넘침
     for (const w of [760, 1100, 1440]) {
@@ -936,7 +936,7 @@ const body = async () => {
       await pp.shot(`lists-panel-todo-w${w}`);
       await main("__jj.panel.openTab('note'); 1");
       await sleep(500);
-      check(`${mark} 메모: 한 열 (나란히 아님), 목록이 보인다`, !(await pp.ev(`document.querySelector('.note-layout').classList.contains('split')`)) && (await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-pane-empty')?.offsetParent`)));
+      check(`${mark} 메모: 한 열 (나란히 아님), 목록이 보인다`, !(await pp.ev(`document.querySelector('.note-layout').classList.contains('split')`)) && (await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-draft')?.offsetParent`)));
       await pp.click(`[...document.querySelectorAll('li.note-row')][0]?.querySelector('button')`);
       await sleep(500);
       check(`${mark} 메모: 열면 편집기 하나, 목록은 사라지고 뒤로 단추가 있다`, (await pp.ev(`!!document.querySelector('.note-editor')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && (await pp.ev(`!!document.querySelector('.note-bar .back')?.offsetParent`)));
@@ -1232,6 +1232,13 @@ const body = async () => {
   let st = await dockStats();
   check('처음: 큰 창 없음, 패널 없음', !(await homeAlive()) && !(await panelAlive()));
   check('처음: Dock 은 안 불렀다 (show 0, hide 0, 부르려 한 횟수 0)', st.shows === 0 && st.hides === 0 && st.triedShow === 0, JSON.stringify(st));
+  // 설정 dockIcon: 켜면 Dock 을 "부르려 했다"만 늘고(시험 실행이라 show 0), 끄면 원하는 상태가 꺼진다
+  await main('__jj.settings.set({ dockIcon: true }); 1');
+  st = await dockStats();
+  check('dockIcon 켬: 부르려 한 횟수 1, show 0, 원하는 상태 켜짐', st.triedShow === 1 && st.shows === 0 && st.want === true && st.pinned === true, JSON.stringify(st));
+  await main('__jj.settings.set({ dockIcon: false }); 1');
+  st = await dockStats();
+  check('dockIcon 끔: 원하는 상태 꺼짐, hide 0', st.want === false && st.hides === 0 && st.pinned === false, JSON.stringify(st));
   check('처음: 설정 panelView 는 compact', (await main('__jj.settings.get().panelView')) === 'compact');
   check('처음: 큰 창 열기 단축키는 비어 있다', (await main('__jj.settings.get().shortcuts.home')) === '');
 
@@ -1446,8 +1453,8 @@ const body = async () => {
   h = await page('home');
   const navNames = await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
   check(
-    '사이드바 구역 순서 (친구는 꺼져 있으면 없음)',
-    navNames === tx('오늘|할 일|메모|일정|채팅|상점|기록|쪽지함', 'Today|To-dos|Notes|Events|Chat|Shop|Records|Mailbox'),
+    '사이드바 구역 순서 (친구는 늘 마지막에 보임)',
+    navNames === tx('오늘|할 일|메모|일정|채팅|상점|기록|쪽지함|친구', 'Today|To-dos|Notes|Events|Chat|Shop|Records|Mailbox|Friends'),
     navNames,
   );
   check('사이드바 머리: 이름, 코인, 배부름 줄', await h.ev(`!!document.querySelector('.home-head strong') && !!document.querySelector('.home-head .coins') && !!document.querySelector('.home-fullness .track')`));
@@ -1485,7 +1492,7 @@ const body = async () => {
   check('Cmd+7 은 기록', (await sectionNow(h)) === 'ptab-records');
   await h.ev(keyEvent({ ...mod, key: '8', code: 'Digit8' }));
   await sleep(300);
-  check('Cmd+8 은 친구가 꺼져 있으면 아무 일도 없다', (await sectionNow(h)) === 'ptab-records');
+  check('Cmd+8 은 친구 구역 (본문 칸에 열리고 설정 창은 안 뜬다)', (await sectionNow(h)) === 'ptab-friends' && !(await main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed()')));
 
   // 채팅은 큰 창 안(본문 칸 자리에 view, 이슈 #165, 자세한 시험은 home-chat.mjs), 설정은 따로 창, 큰 창은 그대로
   await h.click(`document.getElementById('ptab-chat')`);
@@ -1500,15 +1507,10 @@ const body = async () => {
   await main('__jj.settingsWindow.window?.close(); 1');
   await sleep(400);
 
-  // 친구: 서버 모드, 로그인, 기능 키가 켜졌을 때만 보인다 (메인의 friendsAvailable 을 손잡이로 켠다)
-  await main('__jj.debugFriendsOn(true); 1');
-  check('친구 기능이 켜지면 사이드바에 "친구" 가 생긴다 (여덟째)', await h.until(async () => (await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).at(-1)`)) === tx('친구', 'Friends'), 4000));
-  await h.ev(keyEvent({ ...mod, key: '8', code: 'Digit8' }));
-  check('Cmd+8 은 친구: 설정 창의 친구 칸을 연다 (큰 창은 그대로)', (await waitFor(async () => main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed()'))) && (await homeAlive()));
-  await main('__jj.settingsWindow.window?.close(); 1');
-  await sleep(400);
-  await main('__jj.debugFriendsOn(false); 1');
-  check('친구 기능이 꺼지면 다시 사라진다', await h.until(async () => !(await h.ev(`[...document.querySelectorAll('.home-nav button .name')].some((e) => e.textContent === ${JSON.stringify(tx('친구', 'Friends'))})`)), 4000));
+  // 친구: 구역은 늘 보이고 쓸 수 없으면 까닭을 보인다 (자세한 화면은 friends-list.mjs)
+  check('친구 구역 제목줄과 안내 (서버 없는 시험 판은 까닭을 보인다)', (await h.ev(`document.querySelector('.home-bar h2').textContent`)) === tx('친구', 'Friends') && (await h.until(async () => (await h.ev(`document.querySelector('.fp[data-state="off"]')?.textContent?.length > 0`)) === true, 4000)));
+  await h.click(`document.getElementById('ptab-records')`);
+  await sleep(300);
 
   // 빠른 입력으로 넣은 할 일이 큰 창에 바로 보인다
   await h.click(`document.getElementById('ptab-todo')`);

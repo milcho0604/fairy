@@ -2,14 +2,17 @@
 // 브라우저 열기, 몇 분마다 맞추기, 장부가 바뀌면 대기열에 넣기, 백업 되살리기 표시.
 // 서버 주소(server-url.ts)가 비면 서버 기능이 모두 꺼진다: 칸이 숨고 어떤 요청도 나가지 않는다.
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
   type BrowserWindow,
   clipboard,
+  dialog,
+  type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
+  powerMonitor,
   shell,
   type WebContents,
 } from 'electron';
@@ -23,6 +26,7 @@ import { isLoginService, type RewardOutcome, SERVER, type ServerStatus } from '.
 import { FRIENDS, type FriendsState, inviteLink } from '../shared/server-friends.ts';
 import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.ts';
 import { EVENT_ID, normalizeCoupon } from '../shared/site-events.ts';
+import { SYNC, type SyncReply } from '../shared/sync-view.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import { isVersion } from '../shared/update-levels.ts';
 import { startLoopback } from './gcal-auth.ts';
@@ -36,6 +40,8 @@ import { SERVER_RESTORE_MARK } from './server-mark.ts';
 import { sealedSecret } from './server-secret.ts';
 import { appServerUrl } from './server-url.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
+import { formatRecoveryCode, normalizeRecoveryCode } from './sync/crypto.ts';
+import { createSyncEngine, type SyncEngine } from './sync/engine.ts';
 import { memorySecrets } from './test-keychain.ts';
 
 /** 켤 때 처음 맞추기까지, 그 뒤로 이만큼마다 */
@@ -46,6 +52,8 @@ export const SYNC_EVERY_MS = 3 * 60_000;
 /** 장부가 바뀌고 이만큼 조용하면 대기열에 넣고 보낸다 */
 const AFTER_WRITE_MS = 15_000;
 const STATE = 'server-state';
+/** 기기 간 동기화 상태 파일 (켜짐, 기기 번호, 커서, epoch, gen, 계정). 백업에 넣지 않는다 */
+const SYNC_STATE = 'sync-state';
 
 /** 거절된 쓰기의 이름 (펫 말풍선) */
 export function revertedName(reason: string): string {
@@ -66,7 +74,12 @@ export function createServer(o: {
   todos: TodoStore;
   shop: ItemStore;
   isSettings: (wc: WebContents) => boolean;
+  /** 큰 창 비서 구역 (캘린더 칸의 "다른 기기에서 연결했어" 안내만 읽고 끈다) */
+  isHub?: (wc: WebContents) => boolean;
+  hub?: () => WebContents | undefined;
   target: () => BrowserWindow | undefined;
+  /** 큰 창 본문 화면 (친구 구역이 설정 창의 친구 칸과 같은 IPC 를 쓴다). 없으면 undefined */
+  homeView?: () => WebContents | undefined;
   onWrite: (listener: (sql: string) => void) => void;
   /** 맞추기로 잔액이나 물건이 바뀌었다 */
   onCoins: () => void;
@@ -88,6 +101,10 @@ export function createServer(o: {
   };
   /** 이 기기가 구글 일정을 연결했나 (#115, main/gcal.ts). 바뀌면 core.calendarChanged() */
   calendarLinked?: () => boolean;
+  /** 다른 프로세스(펫 MCP 서버)가 저장 파일에 쓰면 바뀌는 수 (db.ts dataVersion). 동기화가 보낼 것을 찾는다 */
+  dataVersion?: () => number;
+  /** 다른 기기의 변경을 저장 파일에 적용했다 (패널을 다시 그린다) */
+  onSyncApplied?: () => void;
   /** 친구 일정 공유 (#110): [from, to) 의 시각 일정 (어느 것을 보낼지는 server-friends.ts shareableEvent) */
   friendEvents?: (from: number, to: number) => BusySource[];
   /** 친구 펫 놀러 가기 (#141): 지금 내 펫 카드 (종류 id, 이름, 네 발 서기. 그림은 없다) */
@@ -127,6 +144,8 @@ export function createServer(o: {
     memory && process.env.JJ_TEST_BROWSER === 'fetch'
       ? mainFetch(u).then((r) => void r.body?.cancel())
       : shell.openExternal(u);
+  // 기기 간 동기화 (docs/sync-plan.md): core 가 만들어진 뒤 아래에서 채운다
+  let sync: SyncEngine | undefined;
   const core = createServerCore({
     api: url ? serverApi(url, mainFetch, { appVersion, onGate: (g) => core.gate(g) }) : undefined,
     onServerMin: (m) => o.onServerMin?.(m),
@@ -146,6 +165,8 @@ export function createServer(o: {
     }),
     now: Date.now,
     log: o.log,
+    syncView: () => sync?.view(),
+    onAccountEnd: (why) => sync?.onAccountEnd(why),
     ...(o.calendarLinked ? { calendarLinked: () => calendarOverride ?? o.calendarLinked?.() ?? false } : {}),
     onChange: (s) => send(s),
     onCoins: o.onCoins,
@@ -184,6 +205,22 @@ export function createServer(o: {
       : {}),
   });
 
+  // 기기 간 동기화: 켜면 메모, 할 일, 일정을 기기에서 잠근 덩어리로 서버에 맞춘다. 데이터 열쇠는 운영체제 열쇠로만 둔다
+  sync = createSyncEngine({
+    db: o.db,
+    call: (f) => core.sessionCall(f),
+    account: () => core.accountCode(),
+    load: () => readJson(SYNC_STATE),
+    save: (s) => writeJson(SYNC_STATE, s),
+    key: secret('sync-key'),
+    secure: () => memory || osCrypto.available(),
+    now: Date.now,
+    log: o.log,
+    onChange: () => sendStatus(core.status()),
+    ...(o.onSyncApplied ? { onApplied: o.onSyncApplied } : {}),
+  });
+  const syncApi: SyncEngine = sync;
+
   // 친구 (#110): 서버 모드, 로그인, 서버가 켠 친구 기능일 때만
   const friends = createServerFriends({
     core: () => core,
@@ -204,14 +241,46 @@ export function createServer(o: {
   });
   let friendsWas = false;
 
+  /** 시험 손잡이: 큰 창 친구 구역이 보는 상태를 대신 정한다 (서버 없이 목록 모양을 보려고). null 이면 실제 상태 */
+  let friendsOverride: FriendsState | null = null;
+  const friendsNow = (): FriendsState => friendsOverride ?? friends.state();
+  const homeIsSender = (wc: WebContents) => {
+    const v = o.homeView?.();
+    return !!v && !v.isDestroyed() && v === wc;
+  };
+
+  /** 앱 페이지(파일, 개발 서버)의 맨 위 틀에서 온 요청인가 */
+  const appFrame = (e: IpcMainInvokeEvent | IpcMainEvent): boolean => {
+    const f = e.senderFrame;
+    if (!f || f !== e.sender.mainFrame) return false;
+    try {
+      const u = new URL(f.url);
+      return u.protocol === 'file:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    } catch {
+      return false;
+    }
+  };
+
   function sendFriends(s: FriendsState) {
     const w = o.target();
-    if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, s);
+    if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, friendsOverride ?? s);
+    const v = o.homeView?.();
+    if (v && !v.isDestroyed()) v.send(FRIENDS.changed, friendsOverride ?? s);
+  }
+
+  /** 상태만 설정 창과 큰 창에 보낸다 (친구, 쪽지 같은 딸린 일은 건드리지 않는다: 동기화 상태처럼 자주 바뀌는 것) */
+  function sendStatus(s: ServerStatus) {
+    const w = o.target();
+    if (w && !w.isDestroyed()) w.webContents.send(SERVER.changed, s);
+    const h = o.hub?.();
+    if (h && !h.isDestroyed()) h.send(SERVER.changed, s);
   }
 
   function send(s: ServerStatus) {
     const w = o.target();
     if (w && !w.isDestroyed()) w.webContents.send(SERVER.changed, s);
+    const h = o.hub?.();
+    if (h && !h.isDestroyed()) h.send(SERVER.changed, s);
     o.onStatus?.();
     // 친구 칸이 새로 보이게 됐으면(로그인, 기능 켬) 목록을 받는다. 숨게 됐으면 칸에 알린다
     const now = friends.available();
@@ -227,11 +296,17 @@ export function createServer(o: {
   const mark = join(dir, SERVER_RESTORE_MARK);
   if (existsSync(mark)) {
     core.afterRestore();
+    // 동기화: 기기 번호를 새로 만들고 커서를 0 으로 돌려 전부 다시 받는다 (되살린 파일은 다른 파일이다)
+    sync.afterRestore();
     rmSync(mark, { force: true });
   }
 
   // 켤 때와 몇 분마다
-  const first = setTimeout(() => void core.run(), FIRST_SYNC_MS);
+  const first = setTimeout(() => {
+    void core.run();
+    // 동기화는 코인 맞추기 뒤에 (계정 코드를 먼저 알아야 한다)
+    setTimeout(() => void sync?.run(), FIRST_SYNC_MS).unref?.();
+  }, FIRST_SYNC_MS);
   const every = setInterval(() => void core.run(), SYNC_EVERY_MS);
   first.unref?.();
   every.unref?.();
@@ -247,6 +322,15 @@ export function createServer(o: {
   friendsEvery.unref?.();
   // 장부에 쓰면 조금 뒤 대기열에 넣고 보낸다 (묶음 안에서 바로 읽지 않는다: 되돌려질 수 있다)
   let soon: ReturnType<typeof setTimeout> | undefined;
+  // 동기화: 이 앱이 쓴 문장과 다른 프로세스(MCP)가 쓴 변화(data_version)를 보고 3초 모아 맞춘다
+  o.onWrite((sql) => sync?.notifyWrite(sql));
+  const versionWatch = o.dataVersion
+    ? setInterval(() => sync?.pollVersion(o.dataVersion?.() ?? -1), 3000)
+    : undefined;
+  versionWatch?.unref?.();
+  // 앱이 잠에서 깨거나 화면 잠금을 풀면 바로 한 번 (닿지 않아 늦추던 것도 처음부터)
+  powerMonitor.on('resume', () => sync?.wake());
+  powerMonitor.on('unlock-screen', () => sync?.wake());
   o.onWrite((sql) => {
     if (!/coin_log/i.test(sql) || !core.allowed()) return;
     clearTimeout(soon);
@@ -256,12 +340,16 @@ export function createServer(o: {
     clearTimeout(first);
     clearInterval(every);
     clearInterval(friendsEvery);
+    clearInterval(versionWatch);
+    sync?.dispose();
     clearTimeout(soon);
   });
 
   const ok = (e: IpcMainInvokeEvent) => o.isSettings(e.sender);
+  /** 큰 창은 상태 읽기와 캘린더 안내 끄기만 */
+  const okOrHub = (e: IpcMainInvokeEvent) => ok(e) || !!o.isHub?.(e.sender);
   ipcMain.handle(SERVER.status, (e) => {
-    if (!ok(e)) return undefined;
+    if (!okOrHub(e)) return undefined;
     // 설정 창을 열 때 로그인 서비스와 기능 키를 다시 묻는다 (운영자가 바꾼 스위치, 바뀌면 상태를 다시 보낸다)
     void core.refreshProviders().catch(() => undefined);
     return core.status();
@@ -336,6 +424,89 @@ export function createServer(o: {
   });
   ipcMain.handle(SERVER.merge, (e, yes: unknown) => (ok(e) ? core.merge(yes === true) : undefined));
   ipcMain.handle(SERVER.remove, async (e) => (ok(e) ? core.remove() : { ok: false, status: undefined }));
+  // 기기 간 동기화 (docs/sync-plan.md 7절): 설정 창만. 복구 코드는 답으로 한 번 나가고 메인은 어디에도 두지 않는다
+  const syncReply = (r: { ok: boolean; kind?: string; code?: string; error?: string }): SyncReply =>
+    r.ok
+      ? {
+          ok: true,
+          ...(r.kind ? { kind: r.kind as 'created' | 'needCode' | 'on' } : {}),
+          ...(r.code ? { code: r.code } : {}),
+        }
+      : { ok: false, error: r.error ?? 'failed', ...(r.code ? { code: r.code } : {}) };
+  const syncRefused: SyncReply = { ok: false, error: 'refused' };
+  ipcMain.handle(
+    SYNC.enable,
+    async (e): Promise<SyncReply> => (ok(e) ? syncReply(await syncApi.enable()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.enterCode,
+    async (e, code: unknown): Promise<SyncReply> =>
+      ok(e) && typeof code === 'string' && code.length <= 200
+        ? syncReply(await syncApi.enterCode(code))
+        : syncRefused,
+  );
+  ipcMain.handle(
+    SYNC.uploadLocal,
+    (e): SyncReply => (ok(e) ? syncReply(syncApi.uploadLocal()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.downloadOnly,
+    (e): SyncReply => (ok(e) ? syncReply(syncApi.downloadOnly()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.newCode,
+    async (e): Promise<SyncReply> => (ok(e) ? syncReply(await syncApi.newCode()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.rotateKey,
+    async (e): Promise<SyncReply> => (ok(e) ? syncReply(await syncApi.rotateKey()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.disable,
+    async (e, wipe: unknown): Promise<SyncReply> =>
+      ok(e) && typeof wipe === 'boolean' ? syncReply(await syncApi.disable(wipe)) : syncRefused,
+  );
+  /** 화면이 보낸 글이 정말 복구 코드 모양일 때만 다룬다 (다른 글을 클립보드나 파일로 보내는 길이 되지 않게) */
+  const codeText = (v: unknown): string | null => {
+    const norm = typeof v === 'string' && v.length <= 200 ? normalizeRecoveryCode(v) : null;
+    return norm ? formatRecoveryCode(norm) : null;
+  };
+  ipcMain.handle(SYNC.copyCode, (e, code: unknown) => {
+    const text = ok(e) ? codeText(code) : null;
+    if (!text) return false;
+    clipboard.writeText(text);
+    return true;
+  });
+  // 복구 코드가 화면에 있는 동안 설정 창을 캡처와 화면 공유에서 가린다
+  ipcMain.on(SYNC.protect, (e, on: unknown) => {
+    const w = o.target();
+    if (ok(e) && typeof on === 'boolean' && w && !w.isDestroyed()) w.setContentProtection(on);
+  });
+  ipcMain.handle(SYNC.saveCode, async (e, code: unknown) => {
+    const text = ok(e) ? codeText(code) : null;
+    if (!text) return { ok: false };
+    const win = o.target();
+    const opts = {
+      defaultPath: join(app.getPath('documents'), t('sync.codeFile')),
+      filters: [{ name: 'Text', extensions: ['txt'] }],
+    };
+    try {
+      const r = await (win && !win.isDestroyed()
+        ? dialog.showSaveDialog(win, opts)
+        : dialog.showSaveDialog(opts));
+      if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+      writeFileSync(r.filePath, `${t('sync.codeFileBody', { code: text })}\n`, {
+        encoding: 'utf8',
+        mode: 0o600,
+      });
+      // 이미 있던 파일을 덮어쓰면 mode 가 적용되지 않으니 권한을 다시 건다
+      chmodSync(r.filePath, 0o600);
+      return { ok: true };
+    } catch (err) {
+      o.log('server', '복구 코드 파일 저장 실패', String(err));
+      return { ok: false };
+    }
+  });
   // 서버 백업 (#102)
   const backupId = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0);
   ipcMain.handle(SERVER.backupList, async (e) => {
@@ -354,7 +525,7 @@ export function createServer(o: {
     ok(e) ? core.backupDelete(backupId(id)) : { ok: false },
   );
   // 다른 기기의 구글 일정 연결 안내 거절 (#115)
-  ipcMain.handle(SERVER.calendarHintNo, (e) => (ok(e) ? core.calendarHintNo() : undefined));
+  ipcMain.handle(SERVER.calendarHintNo, (e) => (okOrHub(e) ? core.calendarHintNo() : undefined));
 
   // 친구 (#110): 설정 창에서만. 코드 모양은 메인이 한 번 더 본다
   const code = (v: unknown) =>
@@ -363,58 +534,80 @@ export function createServer(o: {
   const amount = (v: unknown, max: number) =>
     typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : -1;
   const refused = { ok: false as const, error: 'invalid' };
+  /**
+   * 친구 IPC 는 설정 창이나 큰 창 본문의 앱 페이지(맨 위 틀)가 보낸 것만 받는다. 하위 틀이나 밖의 주소에서 온 것은 받지 않는다.
+   * createServer 의 isSettings 는 넓히지 않는다 (나이, 로그인, 탈퇴 IPC 가 같이 열린다)
+   */
+  const friendsOk = (e: IpcMainInvokeEvent | IpcMainEvent) =>
+    (o.isSettings(e.sender) || homeIsSender(e.sender)) && appFrame(e);
   ipcMain.handle(FRIENDS.state, (e) => {
-    if (!ok(e)) return undefined;
-    void friends.refresh();
-    return friends.state();
+    if (!friendsOk(e)) return undefined;
+    if (!friendsOverride) void friends.refresh();
+    return friendsNow();
   });
   ipcMain.handle(FRIENDS.refresh, async (e) => {
-    if (!ok(e)) return undefined;
-    await friends.refresh();
-    return friends.state();
+    if (!friendsOk(e)) return undefined;
+    if (!friendsOverride) await friends.refresh();
+    return friendsNow();
   });
-  ipcMain.handle(FRIENDS.request, (e, text: unknown) => (ok(e) ? friends.request(text) : refused));
-  ipcMain.handle(FRIENDS.accept, (e, v: unknown) => (ok(e) && id(v) ? friends.accept(id(v)) : refused));
-  ipcMain.handle(FRIENDS.decline, (e, v: unknown) => (ok(e) && id(v) ? friends.decline(id(v)) : refused));
-  ipcMain.handle(FRIENDS.cancel, (e, v: unknown) => (ok(e) && id(v) ? friends.cancel(id(v)) : refused));
-  ipcMain.handle(FRIENDS.remove, (e, v: unknown) => (ok(e) && code(v) ? friends.remove(code(v)) : refused));
-  ipcMain.handle(FRIENDS.block, (e, v: unknown) => (ok(e) && code(v) ? friends.block(code(v)) : refused));
-  ipcMain.handle(FRIENDS.unblock, (e, v: unknown) => (ok(e) && code(v) ? friends.unblock(code(v)) : refused));
+  ipcMain.handle(FRIENDS.request, (e, text: unknown) => (friendsOk(e) ? friends.request(text) : refused));
+  ipcMain.handle(FRIENDS.accept, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.accept(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.decline, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.decline(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.cancel, (e, v: unknown) =>
+    friendsOk(e) && id(v) ? friends.cancel(id(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.remove, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.remove(code(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.block, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.block(code(v)) : refused,
+  );
+  ipcMain.handle(FRIENDS.unblock, (e, v: unknown) =>
+    friendsOk(e) && code(v) ? friends.unblock(code(v)) : refused,
+  );
   ipcMain.handle(FRIENDS.gift, (e, to: unknown, coins: unknown, passes: unknown) => {
     const c = amount(coins, 500);
     const p = amount(passes, 5);
-    if (!ok(e) || !code(to) || c < 0 || p < 0 || c + p === 0) return refused;
+    if (!friendsOk(e) || !code(to) || c < 0 || p < 0 || c + p === 0) return refused;
     return friends.gift(code(to), c, p);
   });
   ipcMain.handle(FRIENDS.share, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
   );
   ipcMain.handle(FRIENDS.shareTitle, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.shareTitle(code(to), on) : refused,
   );
   ipcMain.handle(FRIENDS.visit, (e, to: unknown, on: unknown) =>
-    ok(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
+    friendsOk(e) && code(to) && typeof on === 'boolean' ? friends.visit(code(to), on) : refused,
   );
-  ipcMain.handle(FRIENDS.busy, (e, to: unknown) => (ok(e) && code(to) ? friends.busy(code(to)) : refused));
+  ipcMain.handle(FRIENDS.busy, (e, to: unknown) =>
+    friendsOk(e) && code(to) ? friends.busy(code(to)) : refused,
+  );
   ipcMain.handle(FRIENDS.copyCode, (e) => {
-    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    const me = friendsOk(e) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(me);
     return true;
   });
   ipcMain.handle(FRIENDS.copyLink, (e) => {
-    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    const me = friendsOk(e) ? friends.state().list?.me.code : undefined;
     if (!me) return false;
     clipboard.writeText(inviteLink(me));
     return true;
   });
   ipcMain.on(FRIENDS.clearPrefill, (e) => {
-    if (o.isSettings(e.sender)) friends.clearPrefill();
+    if (friendsOk(e)) friends.clearPrefill();
   });
 
   return {
     core,
     friends,
+    /** 기기 간 동기화 엔진 (켜기, 복구 코드, 끄기. 화면은 다음 PR) */
+    sync: syncApi,
     /** 서버 모드라 코인이 서버 정본을 따른다 (백업 되살리기 안내, 코인 초기화) */
     serverCoins: () => core.allowed(),
     beforeRestore: () => core.beforeRestore(),
@@ -432,6 +625,16 @@ export function createServer(o: {
      * 시험용 (JJ_TEST_SECRETS=memory 일 때만, #115): 이 기기의 구글 일정 연결 상태를 흉내 낸다 (undefined 면 진짜 상태로).
      * 진짜 구글은 부르지 않는다 (scripts/dev/calendar-link.mjs)
      */
+    /**
+     * 시험용 (JJ_TEST_SECRETS=memory 일 때만): 큰 창과 설정 창 친구 칸이 보는 상태를 대신 정한다. null 이면 진짜 상태로
+     * (서버 없이 0명, 여러 명, 못 쓰는 까닭을 본다, scripts/dev/friends-list.mjs)
+     */
+    debugFriendsView(next: FriendsState | null): boolean {
+      if (!memory) return false;
+      friendsOverride = next;
+      sendFriends(friends.state());
+      return true;
+    },
     async debugCalendarLinked(linked: boolean | undefined): Promise<boolean> {
       if (!memory) return false;
       calendarOverride = linked;

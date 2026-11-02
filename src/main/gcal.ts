@@ -144,6 +144,8 @@ export function createGcal(o: {
   isSettings: (wc: WebContents) => boolean;
   /** 상태를 보낼 설정 창 */
   target: () => BrowserWindow | undefined;
+  /** 같은 변화를 같이 받을 화면 (큰 창의 비서 구역) */
+  also?: () => WebContents | undefined;
   /** 연결이 끝났다 (구글에서 거둠, 시험판 앱 7일). 펫이 알린다 */
   onLost: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
@@ -204,6 +206,8 @@ export function createGcal(o: {
   function broadcast() {
     const w = o.target();
     if (w && !w.isDestroyed()) w.webContents.send(GCAL.changed, status());
+    const extra = o.also?.();
+    if (extra && !extra.isDestroyed()) extra.send(GCAL.changed, status());
   }
 
   function setPrefs(patch: Partial<Prefs>) {

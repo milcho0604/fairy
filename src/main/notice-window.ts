@@ -75,6 +75,7 @@ export function createNoticeWindow(o: {
       fullscreenable: false,
       title: t('notice.window'),
       show: false,
+      acceptFirstMouse: true,
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),

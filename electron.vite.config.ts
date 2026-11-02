@@ -28,6 +28,32 @@ function ortWasmOnDemand(): Plugin {
   };
 }
 
+/**
+ * 큰 창의 페어리, 비서 구역은 설정 창의 화면 조각을 그대로 쓴다. 설정 창 CSS 는 body, header, button 같은 전역 규칙을 가져서
+ * 그대로 들이면 큰 창이 깨진다. hub/hub.css 만 모든 규칙을 .hub 아래로 가둔다 (@import 가 인라인된 뒤에 돈다)
+ */
+function scopeHubCss() {
+  const scope = (sel: string): string => {
+    const s = sel.trim();
+    if (/^(html|body|#root|:root)$/.test(s)) return '.hub';
+    if (s === '*') return '.hub *';
+    if (s.startsWith('.mac ')) return `.hub.mac ${s.slice(5)}`;
+    return `.hub ${s.replace(/^(html|body)\s+/, '')}`;
+  };
+  return {
+    postcssPlugin: 'jj-scope-hub-css',
+    Once(root: import('postcss').Root, { result }: { result: import('postcss').Result }) {
+      if (!(result.opts.from ?? '').replaceAll('\\', '/').endsWith('/hub/hub.css')) return;
+      root.walkRules((rule) => {
+        const parent = rule.parent;
+        if (parent?.type === 'atrule' && /keyframes$/i.test((parent as import('postcss').AtRule).name))
+          return;
+        rule.selectors = rule.selectors.map(scope);
+      });
+    },
+  };
+}
+
 const pkgVersion = (JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as { version: string }).version;
 
 export default defineConfig({
@@ -68,6 +94,7 @@ export default defineConfig({
   renderer: {
     // 펫 창은 가볍게 두려고 React 없이 만든다 (L6). 채팅 창과 패널은 React.
     plugins: [react(), ortWasmOnDemand()],
+    css: { postcss: { plugins: [scopeHubCss()] } },
     build: {
       rollupOptions: {
         input: {

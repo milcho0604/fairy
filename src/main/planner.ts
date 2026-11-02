@@ -155,6 +155,7 @@ export function createPlanner(o: PlannerOptions) {
     openUrl: o.openUrl,
     openToday: o.openToday,
     saved: saved?.snoozed,
+    todoAlert: () => settings.get().dueSoonAlert,
     onSnoozedChange: () => {
       store();
       soon();

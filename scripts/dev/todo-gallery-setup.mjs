@@ -106,9 +106,9 @@ try{
  await main('globalThis.closing146=__jj.home.window; __jj.home.close(); 1');
  await until(()=>main('closing146.isDestroyed()'),'home closed');await sleep(100);
  await check('큰 창 닫기 뒤 파괴된 화면 참조 오류 없음',async()=>assert.equal(logs.includes('[error] uncaught'),false,logs));
- await main('__jj.settingsWindow.open(); 1');
- const settings=await page('settings');await until(()=>settings.ev('!!document.querySelector("#tab-pet")'),'settings');
- await settings.ev('document.querySelector("#tab-pet").click()');
+ await main("__jj.home.open('pet'); 1");
+ const settings=await page('home');await until(()=>settings.ev('!!document.querySelector("#ptab-pet")'),'home');
+ await settings.ev('document.querySelector("#ptab-pet").click()');
  const galleryOpen=lang==='ko'?'페어리 갤러리 열기':'Open the fairy gallery';
  await settings.ev(`[...document.querySelectorAll('button')].find(e=>e.textContent===${JSON.stringify(galleryOpen)}).click()`);
  await until(()=>settings.ev('document.querySelectorAll(".gallery-card").length===3'),'gallery fixture');

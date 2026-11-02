@@ -14,8 +14,14 @@
   min-height: 420px;
 }
 
-/* 작은 패널 덮개: 패널 본문 전체를 덮는다 */
+/*
+ * 작은 패널 덮개: 패널 본문 전체를 덮는다.
+ * 패널 머리, 탭 줄, 아래 단추 줄은 창 옮기기 자리(-webkit-app-region: drag)고, 이 자리는 z-index 와 무관하게 위에 덮인 요소의
+ * 마우스를 창 끌기로 가져간다. 덮개가 그 위를 덮으니 닫기, 찾기 칸, 칩이 눌리지 않았다. 덮개 전체를 끌기 아님으로 덮어 빼 준다
+ * (크롬은 문서 순서대로 drag 를 더하고 no-drag 를 빼며, 덮개는 패널 뒤에 그려진다)
+ */
 .mail-sheet {
+  -webkit-app-region: no-drag;
   position: absolute;
   inset: 0;
   z-index: 40;

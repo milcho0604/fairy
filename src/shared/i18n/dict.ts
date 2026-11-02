@@ -23,6 +23,7 @@ import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
 import * as home from './home.ts';
+import * as hub from './hub.ts';
 import * as idle from './idle.ts';
 import * as keep from './keep.ts';
 import * as linesMore from './lines-more.ts';
@@ -110,6 +111,7 @@ export const ko = {
   ...friends.ko,
   ...keep.ko,
   ...home.ko,
+  ...hub.ko,
   ...rows.ko,
   ...linesMore.ko,
   ...voiceMore.ko,
@@ -169,6 +171,7 @@ export const en: Translation<typeof ko> = {
   ...friends.en,
   ...keep.en,
   ...home.en,
+  ...hub.en,
   ...rows.en,
   ...linesMore.en,
   ...voiceMore.en,

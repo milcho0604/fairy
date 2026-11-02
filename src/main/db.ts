@@ -14,6 +14,8 @@ import type { MissedMsg } from '../shared/missed-msg.ts';
 import { NoteStore } from '../shared/note-store.ts';
 import { PetLife } from '../shared/pet-life.ts';
 import { ItemStore } from '../shared/shop.ts';
+import { clearStaleApplying } from '../shared/sync-quiet.ts';
+import { repairDerivedEventUids } from '../shared/sync-uid.ts';
 import { TodoStore } from '../shared/todo-store.ts';
 import { copyDbFile, openDbFile, type StoreTrouble } from './db-open.ts';
 import type { JsonTrouble } from './json-file.ts';
@@ -56,6 +58,14 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, 'jjakkung.db');
   const { db, memory, trouble } = openDbFile(file, log);
+  // 동기화 적용 중 표식이 남아 있으면 지운다 (남으면 이후 편집이 영영 보내지 않는 쪽으로 기록된다)
+  try {
+    if (clearStaleApplying(db as unknown as Db)) log('db', '낡은 동기화 적용 표식 지움');
+    const rehashed = repairDerivedEventUids(db as unknown as Db);
+    if (rehashed > 0) log('db', '반복 회차 uid 정함', rehashed);
+  } catch (err) {
+    log('db', '동기화 표식 정리 못 함', err instanceof Error ? err.message : String(err));
+  }
   // 읽을 때마다 던지는 일정 시각(너무 큰 수)을 먼저 고친다. 못 고쳐도 켜기는 멈추지 않는다
   try {
     const fixed = repairEventTimes(db as unknown as Db, Date.now());

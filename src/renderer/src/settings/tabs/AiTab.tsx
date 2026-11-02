@@ -6,30 +6,28 @@ import { RULES_MAX, type Settings } from '../../../../shared/settings.ts';
 import { AiSupportBox } from '../AiSupportBox.tsx';
 import { Section, type TabProps, Toggle } from '../ui.tsx';
 
-/** AI 탭: 대화(말투, 할 일 알기, 도구), 짝꿍 규칙, 기억, 모델, 다른 AI 에서 쓰기(MCP) */
+/** AI 연결 탭: 찾은 AI, 모델 고르기, 격리와 내 도구, 다른 AI 앱에서 쓰기(MCP). 규칙, 기억, 할 일 알기는 큰 창의 비서 구역 */
 export function AiTab({ snap, update, flash }: TabProps) {
   const s = snap.settings;
   return (
     <>
+      {/* 이 컴퓨터에서 찾은 AI와 AI마다 되는 일, 읽기 전용 안내 (이슈 #126) */}
+      <Section title={t('support.ai.title')}>
+        <AiSupportBox />
+      </Section>
+
+      <Section title={t('settings.models')}>
+        <ModelPicker
+          snap={snap}
+          onChange={(provider, id) => {
+            const next = { ...s.aiModels };
+            if (id) next[provider] = id;
+            else delete next[provider];
+            update({ aiModels: next });
+          }}
+        />
+      </Section>
       <Section title={t('settings.ai')}>
-        <Toggle
-          label={t('settings.aiKnowsTodos')}
-          hint={t('settings.aiKnowsTodosHint')}
-          on={s.aiKnowsTodos}
-          onChange={(v) => update({ aiKnowsTodos: v })}
-        />
-        <Toggle
-          label={t('settings.aiPetTools')}
-          hint={t('settings.aiPetToolsHint')}
-          on={s.aiPetTools}
-          onChange={(v) => update({ aiPetTools: v })}
-        />
-        <Toggle
-          label={t('settings.diaryAi')}
-          hint={t('settings.diaryAiHint')}
-          on={s.diaryAi}
-          onChange={(v) => update({ diaryAi: v })}
-        />
         {/* 격리를 꺼야 내 MCP 도구를 쓸 수 있어 켜는 조건(격리)을 먼저 둔다 */}
         <Toggle
           label={t('settings.aiIsolation')}
@@ -48,53 +46,6 @@ export function AiTab({ snap, update, flash }: TabProps) {
         />
       </Section>
 
-      {/* 이 컴퓨터에서 찾은 AI와 AI마다 되는 일, 읽기 전용 안내 (이슈 #126) */}
-      <Section title={t('support.ai.title')}>
-        <AiSupportBox />
-      </Section>
-
-      <Section title={t('settings.rules')}>
-        <RulesEditor
-          value={s.petRules}
-          onSave={(petRules) => update({ petRules }, t('settings.rules.saved'))}
-        />
-      </Section>
-
-      <Section title={t('settings.memory')}>
-        {/* 짝꿍이 아는 것 창: 출처와 날짜, 생일과 좋아하는 것, 모두 잊기 (knows/KnowsApp.tsx) */}
-        <div className="action-row">
-          <small className="grow">{t('bond.knows.fromSettings')}</small>
-          <button type="button" className="ghost" onClick={() => window.jjakkungBond?.openKnows()}>
-            {t('bond.knows.open')}
-          </button>
-        </div>
-        <MemoryEditor list={s.petMemory} onChange={(petMemory, message) => update({ petMemory }, message)} />
-        {s.petMemoryPending.length > 0 && (
-          <PendingMemory
-            list={s.petMemory}
-            pending={s.petMemoryPending}
-            onChange={(patch, message, warn) => {
-              if (warn) {
-                flash(message, true);
-                return;
-              }
-              void update(patch, message);
-            }}
-          />
-        )}
-      </Section>
-
-      <Section title={t('settings.models')}>
-        <ModelPicker
-          snap={snap}
-          onChange={(provider, id) => {
-            const next = { ...s.aiModels };
-            if (id) next[provider] = id;
-            else delete next[provider];
-            update({ aiModels: next });
-          }}
-        />
-      </Section>
       <Section title={t('settings.mcpSection')}>
         <details className="advanced-setup">
           <summary>{t('settings.mcp.summary')}</summary>
@@ -226,7 +177,7 @@ function ModelPicker({
 }
 
 /** 짝꿍 규칙: 한 줄에 하나. 칸을 떠나면 저장 */
-function RulesEditor({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+export function RulesEditor({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [text, setText] = useState(value);
   // 칸에서 나가지 않고 창을 닫아도 쓴 규칙을 잃지 않게: 쓰다 멈추면 저장하고, 닫을 때도 저장한다.
   // 고치는 중에는 저장 응답(value)으로 칸을 덮지 않는다 (왕복 사이에 친 글자가 지워진다)
@@ -276,7 +227,7 @@ function RulesEditor({ value, onSave }: { value: string; onSave: (v: string) => 
  * 짝꿍이 기억하는 것: 보고, 잊고, 더한다. 기본은 비어 있고 사용자가 넣은 것만 질문과 같이 간다.
  * 잊기는 한 번 더 눌러야 (친구 집에 보내기와 같다)
  */
-function MemoryEditor({
+export function MemoryEditor({
   list,
   onChange,
 }: {
@@ -359,7 +310,7 @@ function MemoryEditor({
  * AI 도구(MCP remember)가 기억하자고 한 것. 허락해야 기억이 된다 (리뷰 MED: 다른 글에 숨은 지시로
  * AI 가 기억을 넣으면 질문마다 그 글이 같이 갔다). 버리면 기다리는 데서만 지운다
  */
-function PendingMemory({
+export function PendingMemory({
   list,
   pending,
   onChange,

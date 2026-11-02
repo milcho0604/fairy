@@ -1,6 +1,7 @@
 // AI 대화권으로 묻기 (기획서 8절, 이슈 #100). 앱은 API 키를 모르고 페어리 서버가 Claude 를 중계한다.
 // 이어가기 세션이 없어 최근 문답 몇 개를 붙여 보낸다(서버 상한 안으로). Electron 없이 돌아 시험에서 그대로 부른다.
 import type { Exchange } from '../../shared/ai/text.ts';
+import type { TicketBlock } from '../../shared/ai/ticket-gate.ts';
 import type { AiError, AiEvent } from '../../shared/ai/types.ts';
 import { type Lang, t } from '../../shared/i18n/index.ts';
 import type { AiChatBody, AiChatOutcome } from '../server-api.ts';
@@ -23,6 +24,8 @@ export interface TicketHooks {
   /** 서버 모드, 만 18세 이상, 구글 로그인 */
   available(): boolean;
   tickets(): number | null;
+  /** 못 쓰는 까닭 (AI 고르기에 보인다). 쓸 수 있으면 undefined. 없으면 available() 로만 본다 */
+  block?(): TicketBlock | undefined;
   /** 국외 이전 안내를 읽고 쓰기로 했다 */
   agreed(): boolean;
   agree(): void;

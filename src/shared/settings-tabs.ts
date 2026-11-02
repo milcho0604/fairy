@@ -1,9 +1,10 @@
-// 설정 창 탭 (설정 창 재구성 2026-10-10). 칸이 스무 개 가까이 한 줄로 길어서 탭 여섯으로 나눈다.
+// 설정 창 탭 (설정 창 재구성 2026-10-10). 설정에는 계정, 데이터, 앱 일반, AI 연결, 정보만 둔다.
+// 페어리 꾸미기와 비서 기능은 큰 창 구역으로 옮겼다 (shared/hub-index.ts).
 // 탭마다 어떤 칸이 들어가는지는 화면(settings/tabs/*.tsx)이 정하고, 여기는 탭 이름과 순서, 옮기기만 둔다.
 import type { SettingsSection } from './ipc.ts';
 
-/** 늘어놓는 순서. 펫, 비서와 알림, AI 와 대화, 편의(단축키, 언어, 시작), 데이터와 저장 공간, 정보와 베타 */
-export const SETTINGS_TABS = ['pet', 'assist', 'ai', 'ease', 'data', 'about'] as const;
+/** 늘어놓는 순서. 데이터와 계정(로그인, 로그아웃, 백업), 일반(알림, 언어, 시작, 단축키), AI 연결, 정보와 베타 */
+export const SETTINGS_TABS = ['data', 'ease', 'ai', 'about'] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export const isSettingsTab = (v: unknown): v is SettingsTab =>
@@ -51,7 +52,7 @@ export function tabKeyStep(key: string, vertical: boolean): -1 | 1 | 'first' | '
 }
 
 /**
- * 창 어디서나 듣는 탭 키: Cmd/Ctrl+[ ] 앞뒤 탭, Cmd/Ctrl+1~6 그 탭 (패널의 Cmd+1~5 와 같은 꼴).
+ * 창 어디서나 듣는 탭 키: Cmd/Ctrl+[ ] 앞뒤 탭, Cmd/Ctrl+1~4 그 탭 (패널의 Cmd+1~5 와 같은 꼴).
  * mod 는 맥이면 Cmd, 아니면 Ctrl 이 눌렸는지. Option/Alt, Shift 가 같이 눌렸으면 다른 조합이라 넘긴다
  */
 export function globalTabKey(

@@ -126,3 +126,157 @@ test('운영자 개요 요청은 찾기 칸을 서버 주소에 싣는다 (#155)
   await api.adminOverview('fs_t', 'q1', { user: 'u', action: 'ai.block' });
   assert.equal(urls[0], 'http://x/v1/admin/overview?q=q1&user=u&action=ai.block');
 });
+
+test('동기화 요청: 길, 본문, 대답 읽기가 서버(server/src/sync.controller.ts)와 같다', async () => {
+  const seen: { method: string; url: string; body: unknown; auth: string | null }[] = [];
+  const replies: Record<string, unknown> = {
+    'GET /v1/sync/key': {
+      salt: 's',
+      params: { N: 32768, r: 8, p: 1 },
+      wrapped: 'w',
+      gen: 2,
+      key_rev: 3,
+      epoch: 9,
+    },
+    'PUT /v1/sync/key': { epoch: 9, gen: 2, key_rev: 4, created: false },
+    'GET /v1/sync/status': {
+      on: true,
+      items: 5,
+      bytes: 100,
+      maxItems: 100000,
+      maxBytes: 104857600,
+      soon: true,
+      epoch: 9,
+      gen: 2,
+    },
+    'GET /v1/sync/changes': {
+      items: [{ uid: 'u1', rev: 7, blob: 'AAAA', deleted: false }, { uid: 5 }],
+      head: 7,
+      more: true,
+      epoch: 9,
+      gen: 2,
+    },
+    'POST /v1/sync/push': {
+      results: [
+        { uid: 'a', ok: true, rev: 8 },
+        { uid: 'b', ok: false, conflict: { rev: 6, blob: 'BBBB', deleted: true } },
+        { ok: true },
+      ],
+      head: 8,
+      epoch: 9,
+      gen: 2,
+    },
+    'DELETE /v1/sync': { epoch: 10, gen: 0 },
+  };
+  const raw = async (url: string, init: RequestInit) => {
+    const u = new URL(url);
+    seen.push({
+      method: init.method ?? 'GET',
+      url: u.pathname + u.search,
+      body: init.body ? JSON.parse(String(init.body)) : undefined,
+      auth: new Headers(init.headers).get('authorization'),
+    });
+    return new Response(JSON.stringify(replies[`${init.method} ${u.pathname}`] ?? {}), { status: 200 });
+  };
+  const api = serverApi('http://x', raw);
+  const key = await api.syncKeyGet('fs_t');
+  assert.deepEqual(key.ok && key.data, {
+    salt: 's',
+    params: { N: 32768, r: 8, p: 1 },
+    wrapped: 'w',
+    gen: 2,
+    keyRev: 3,
+    epoch: 9,
+  });
+  const put = await api.syncKeyPut('fs_t', {
+    epoch: 9,
+    salt: 's',
+    params: { N: 32768, r: 8, p: 1 },
+    wrapped: 'w',
+    gen: 2,
+    keyRev: 3,
+  });
+  assert.deepEqual(put.ok && put.data, { epoch: 9, gen: 2, keyRev: 4, created: false });
+  assert.deepEqual(seen[1]?.body, {
+    epoch: 9,
+    salt: 's',
+    params: { N: 32768, r: 8, p: 1 },
+    wrapped: 'w',
+    gen: 2,
+    key_rev: 3,
+  });
+  await api.syncKeyPut('fs_t', { epoch: 0, salt: 's', params: { N: 32768, r: 8, p: 1 }, wrapped: 'w' });
+  assert.deepEqual(
+    Object.keys(seen[2]?.body as object).sort(),
+    ['epoch', 'params', 'salt', 'wrapped'],
+    '처음이면 gen, key_rev 를 보내지 않는다',
+  );
+  const st = await api.syncStatus('fs_t');
+  assert.deepEqual(st.ok && st.data, {
+    on: true,
+    items: 5,
+    bytes: 100,
+    maxItems: 100000,
+    maxBytes: 104857600,
+    soon: true,
+    epoch: 9,
+    gen: 2,
+  });
+  const ch = await api.syncChanges('fs_t', 3, 500, 9);
+  assert.equal(seen[4]?.url, '/v1/sync/changes?since=3&limit=500&epoch=9');
+  assert.deepEqual(ch.ok && ch.data, {
+    items: [{ uid: 'u1', rev: 7, blob: 'AAAA', deleted: false }],
+    head: 7,
+    more: true,
+    epoch: 9,
+    gen: 2,
+  });
+  const push = await api.syncPush('fs_t', 9, [{ uid: 'a', base: 0, blob: 'QQ==', deleted: false }]);
+  assert.deepEqual(seen[5]?.body, { epoch: 9, items: [{ uid: 'a', base: 0, blob: 'QQ==', deleted: false }] });
+  assert.deepEqual(push.ok && push.data.results, [
+    { uid: 'a', ok: true, rev: 8 },
+    { uid: 'b', ok: false, conflict: { rev: 6, blob: 'BBBB', deleted: true } },
+  ]);
+  const rm = await api.syncRemove('fs_t');
+  assert.deepEqual(rm.ok && rm.data, { epoch: 10, gen: 0 });
+  for (const s of seen) assert.equal(s.auth, 'Bearer fs_t');
+});
+
+test('동기화 요청: 오류 대답은 까닭과 본문(epoch, gen)을 그대로 준다', async () => {
+  const raw = async () =>
+    new Response(JSON.stringify({ error: 'epoch', epoch: 12, gen: 1 }), { status: 409 });
+  const r = await serverApi('http://x', raw).syncChanges('fs_t', 0, 500, 3);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.status, 409);
+    assert.equal(r.error, 'epoch');
+    assert.equal(r.body.epoch, 12);
+  }
+  const off = await serverApi('http://x', async () => Promise.reject(new TypeError('fetch failed'))).syncPush(
+    't',
+    1,
+    [],
+  );
+  assert.deepEqual(off.ok === false && [off.status, off.error], [0, 'offline']);
+});
+
+test('동기화 changes 와 push 대답은 1MB 를 넘어도 읽는다 (덩어리 합 4MB 쪽)', async () => {
+  const big = 'A'.repeat(2_000_000);
+  const raw = async () =>
+    new Response(
+      JSON.stringify({
+        items: [{ uid: 'u', rev: 1, blob: big, deleted: false }],
+        head: 1,
+        more: false,
+        epoch: 1,
+        gen: 1,
+      }),
+      {
+        status: 200,
+      },
+    );
+  const r = await serverApi('http://x', raw).syncChanges('t', 0, 500, 1);
+  assert.equal(r.ok, true);
+  const other = await serverApi('http://x', raw).syncStatus('t');
+  assert.equal(other.ok, false, '다른 요청은 기존 상한(1MB)을 지킨다');
+});

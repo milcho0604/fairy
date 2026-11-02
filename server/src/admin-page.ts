@@ -882,6 +882,7 @@ const FEATURE_KO: Record<string, string> = {
   friend_calendar: '친구에게 바쁜 시간 보여 주기',
   friend_visit: '친구 펫 놀러 가기',
   friend_gift_passes: '친구에게 채팅 이용권 선물',
+  sync: '기기 간 동기화 (메모, 할 일, 일정)',
 };
 
 /** 결과 글에 쓰는 짧은 이름 (표의 긴 이름 말고) */
@@ -895,6 +896,7 @@ const SWITCH_SHORT: Record<string, string> = {
   friend_calendar: '친구에게 바쁜 시간 보여 주기',
   friend_visit: '친구 펫 놀러 가기',
   friend_gift_passes: '친구에게 채팅 이용권 선물',
+  sync: '기기 간 동기화',
 };
 const SWITCH_VALUE_KO: Record<string, string> = { off: '끔', allowlist: '허용 목록만', everyone: '모두' };
 /** 받침에 따라 을/를, 로/으로 (ㄹ 받침은 로) */
@@ -928,6 +930,7 @@ const FEATURE_HINT: Record<string, string> = {
     '보내는 사람과 받는 사람 모두 켜져 있어야 해요. 친구마다 따로 켜고 기본은 꺼짐이에요. 서버에는 펫 종류, 이름, 네 발 서기 여부만 올라오고 사진이나 그림 파일은 받지 않아요. 만 14~17세끼리, 성인끼리만. 끄거나 친구를 끊으면 바로 지워요.',
   friend_gift_passes:
     '보내는 사람과 받는 사람이 모두 허용돼야 해요(허용 목록만이면 둘 다 목록이나 운영자 계정). 지금 이용권은 모두 운영자 지급분이라 이 스위치가 운영자 지급분 선물 여부까지 정해요. 받는 사람은 만 18세 이상이고 채팅 이용권을 쓸 수 있어야 해요.',
+  sync: '로그인한 계정이 메모, 할 일, 일정을 여러 컴퓨터에서 맞춰 써요. 서버에는 기기에서 잠근 덩어리만 올라와 운영자도 내용을 볼 수 없어요. 허용 목록만이면 운영자 계정도 켜져요. 끄면 앱은 맞추지 않고, 서버 사본은 그대로 남아요.',
 };
 
 /** 표에 보일 한 줄 설명 (긴 설명은 "자세히" 안에 둔다) */
@@ -941,6 +944,7 @@ const FEATURE_SHORT: Record<string, string> = {
   friend_calendar: '친구에게 바쁜 시간 보여 주기',
   friend_visit: '친구 펫이 서로 화면에 놀러 가기',
   friend_gift_passes: '친구에게 채팅 이용권 선물',
+  sync: '여러 컴퓨터에서 메모, 할 일, 일정 맞추기',
 };
 
 /** 채팅 이용권(ai_chat)의 긴 설명 */

@@ -416,6 +416,8 @@ const body = async () => {
   p = await page('panel');
   await p.click(`document.querySelector('.focus-month summary')`);
   check('집중 달력이 열림', await p.until(() => p.ev(`!!document.querySelector('.fm-cell')`)));
+  // 칸 아래 분 숫자는 기본 숨김이라 "자세히 보기"로 펼친 뒤 본다
+  await p.ev(`const b = document.querySelector('.fm-detail-toggle'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); 1`);
   const cellInfo = (day) =>
     p.ev(
       `(() => { const c = document.querySelector('.fm-cell[data-day="${day}"]'); return c ? { cls: c.className, text: c.innerText.replace(/\\s+/g, ' ').trim(), title: c.title, label: c.getAttribute('aria-label') } : null; })()`,
@@ -603,7 +605,7 @@ const body = async () => {
   await sleep(800);
   hw = await page('home');
   const nav = await hw.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
-  check('사이드바에 기록 항목 (상점 다음, 쪽지함 앞)', nav.split('|').at(-2) === rec(['기록', 'Records']) && nav.split('|').at(-3) === rec(['상점', 'Shop']), nav);
+  check('사이드바에 기록 항목 (상점 다음, 쪽지함과 친구 앞)', nav.split('|').at(-3) === rec(['기록', 'Records']) && nav.split('|').at(-4) === rec(['상점', 'Shop']), nav);
   check('기록 항목이 지금 구역으로 표시되고 본문 이름표가 맞음', await hw.ev(`document.getElementById('ptab-records').getAttribute('aria-current') === 'page' && document.getElementById('ptab-panel').getAttribute('aria-labelledby') === 'ptab-records'`));
   check('구역 제목줄이 기록', (await hw.ev(`document.querySelector('.home-bar h2').textContent`)) === rec(['기록', 'Records']));
   check('집중 월간 잔디가 펼쳐져 있다 (.focus-month[open] .fm-cell)', await hw.until(() => hw.ev(`!!document.querySelector('.focus-month[open] .fm-cell')`)));
@@ -622,6 +624,7 @@ const body = async () => {
 
   // --- 위 1~2번과 같은 선택자로 같은 동작 (회귀) ---
   const cell = (day) => hw.ev(`(() => { const c = document.querySelector('.fm-cell[data-day="${day}"]'); return c ? { cls: c.className, text: c.innerText.replace(/\s+/g, ' ').trim(), title: c.title } : null; })()`);
+  await hw.ev(`const b = document.querySelector('.fm-detail-toggle'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); 1`);
   await hw.until(async () => (await cell(todayStr2))?.cls.includes('lv3'));
   const hc = await cell(todayStr2);
   check('큰 창 잔디: 오늘 칸 75분은 3단계, 숫자 75, 툴팁', !!hc?.cls.includes('lv3') && hc.text.includes('75') && !!hc.title, JSON.stringify(hc));

@@ -236,6 +236,8 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
         env.FEATURE_FRIEND_GIFT_PASSES,
         'allowlist',
       ),
+      // 기기 간 동기화: 비면 allowlist
+      sync: readFeature('FEATURE_SYNC', env.FEATURE_SYNC, 'allowlist'),
     },
   };
 }

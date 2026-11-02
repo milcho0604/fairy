@@ -31,6 +31,7 @@ export const HELP_FLAGS = [
   'updateCheck',
   'lookAtCursor',
   'launchAtLogin',
+  'dockIcon',
   'readAloud',
   'urlScheme',
 ] as const satisfies readonly (keyof Settings)[];

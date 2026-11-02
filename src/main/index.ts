@@ -6,6 +6,7 @@ import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
+import { blockOf } from '../shared/ai/ticket-gate.ts';
 import { cutText } from '../shared/cut-text.ts';
 import { plusDays } from '../shared/day.ts';
 import { aiEventFilter } from '../shared/event-store.ts';
@@ -108,6 +109,7 @@ import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { watchSiteEvents } from './site-events.ts';
 import { onJsonTrouble, readJson, renameJson, writeJson } from './store.ts';
+import { copyNoteIds } from './sync/rows.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { testKeychainSwitches } from './test-keychain.ts';
 import { createTogether } from './together.ts';
@@ -255,15 +257,27 @@ app.on('web-contents-created', (_e, wc) => {
 });
 
 // 잠금이 없으면 ready 를 기다리지 않는다 (곧 끝난다). 시작 일 전체를 if 로 감싸지 않으려고 약속으로 막는다
+// 시험 실행(JJ_NO_FOCUS)은 dock.show 를 부르지 않는다. JJ_DOCK_PROBE=1 이 함께 있을 때만 진짜로 부른다 (scripts/dev/dock-*.mjs)
+/** 끝내는 중 (before-quit 뒤). Dock 아이콘 누르기가 큰 창을 새로 열지 않게 */
+let appQuitting = false;
+/** 앱이 준비된 때. 맥은 처음 켤 때도 activate 를 보내니 그 직후는 Dock 누르기로 보지 않는다 */
+let readyAt = Number.POSITIVE_INFINITY;
+const DOCK_ACTIVATE_GRACE_MS = 4000;
+const dockTestRun = !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE;
 const ready = primary ? app.whenReady() : new Promise<void>(() => {});
 ready
   .then(() => {
     // 웹 권한은 복사하기 말고 모두 거절한다 (permissions.ts)
     denyPermissionsByDefault(session.defaultSession, log);
+    readyAt = Date.now();
     // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
     confineTestDisplay();
     // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
-    if (process.platform === 'darwin') app.dock?.hide();
+    // 설정 dockIcon 이 켜져 있으면 숨기지 않는다(아래 dock.pin 이 보인다). 시험 실행은 show 를 못 부르니 늘 숨긴다.
+    // JJ_DOCK_PROBE_LSUI=1 (scripts/dev/dock-pinned.mjs): 설치본처럼 Dock 없는 앱으로 시작한 뒤 보이게 하는 길을 흉내 낸다
+    if (process.platform === 'darwin') {
+      if (!settings.get().dockIcon || dockTestRun || process.env.JJ_DOCK_PROBE_LSUI) app.dock?.hide();
+    }
     // 윈도우, 리눅스는 테두리 있는 창(시작 안내, 설정, 채팅, 만들기, 아는 것)마다 기본 메뉴 막대(File Edit View Window)가 붙었다.
     // 앱 메뉴를 없앤다. 입력 칸의 Ctrl+C, V, X, A, Z 는 메뉴 없이도 된다. 맥은 기본 앱 메뉴(편집 ⌘C, ⌘V)가 있어야 해서 그대로 둔다
     else Menu.setApplicationMenu(null);
@@ -294,6 +308,7 @@ ready
       ticket: {
         available: () => !!serverCore?.aiAvailable(),
         tickets: () => serverCore?.tickets() ?? null,
+        block: () => blockOf(serverCore),
         agreed: () => !!serverCore?.aiAgreed(),
         agree: () => serverCore?.agreeAi(),
         ask: (body, onText, signal) =>
@@ -394,6 +409,10 @@ ready
         addNote: () => panel.newNote(),
         openPanel: () => panel.openTab(),
         openHome: openHomeFromMenu,
+        openHub: (tab) => {
+          panel.closePanel();
+          home?.open(tab);
+        },
         feed: () => feedPet(),
         makePet: () => maker.open(),
         petted: () => {
@@ -657,10 +676,7 @@ ready
         sendStatus();
         friends.resendStatus();
       },
-      fromSettings: (sender) => {
-        const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === sender;
-      },
+      fromSettings: (sender) => settingsWindow.owns(sender),
       log,
     });
     // 저장 파일이 깨졌거나 새 판이었으면 펫이 화면에 뜬 뒤 알린다 (버그잡이 6차)
@@ -999,17 +1015,21 @@ ready
           })
           .then(openCalendarSettings);
       },
-      // 설정 창을 보고 있으면 알리지 않는다 (거기 결과 글이 이미 있다)
+      // 설정 창이나 큰 창의 비서 구역(캘린더 연결 칸)을 보고 있으면 알리지 않는다 (거기 결과 글이 이미 있다)
       quiet: () => {
         const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.isVisible();
+        return (!!w && !w.isDestroyed() && w.isVisible()) || home?.visibleSection() === 'assist';
       },
       // 구글 캘린더로 보낸 짝꿍 일정, 구글에서 이미 읽어 온 일정이 같은 캘린더를 가져올 때 또 오면 거른다 (둘씩 보이지 않게)
       skipUids: () => gcal.skipUids(),
       log,
     });
     function openCalendarSettings(a: string | undefined) {
-      if (a === 'settings') settingsWindow.open();
+      // 캘린더 연결은 큰 창의 비서 구역으로 옮겼다
+      if (a === 'settings') {
+        panel.closePanel();
+        home?.open('assist');
+      }
     }
     // 백업을 되살리기 전에 지금 코인 장부를 서버 대기열에 넣어 둔다 (서버 모드, server.ts)
     const backup = createBackup({ vacuumInto, log, beforeSwap: () => server.beforeRestore() });
@@ -1108,6 +1128,7 @@ ready
       store,
       doing,
       notes,
+      noteCopies: () => copyNoteIds(db),
       events,
       focus: () => planner.focus,
       focusUndoAvailable: () => planner.focusUndoAvailable(),
@@ -1215,6 +1236,7 @@ ready
         return true;
       },
       promoteHome: (tab) => home?.promote(tab),
+      hideHome: (done) => (home ? home.hide(done) : done()),
       lookTogether: () => look.start(),
       missed: () => pet.missed(),
       diary: () => diary.entries(Date.now()),
@@ -1226,7 +1248,7 @@ ready
     // 큰 창이 열린 동안만 Dock 에 보인다. 시험 실행(JJ_NO_FOCUS)은 dock.show 를 부르지 않는다
     // JJ_DOCK_PROBE=1 (scripts/dev/dock-probe.mjs 만): 시험 실행에서도 진짜로 부른다. 사용자의 Dock 에 아이콘이 뜬다
     const dock = createDock({
-      test: !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE,
+      test: dockTestRun,
       // 앱 종류가 바뀐 뒤에도 펫이 모든 데스크톱과 (큰 창이 전체 화면이면) 그 위에 남도록 다시 건다
       reassert: () => {
         reassertSpaces();
@@ -1234,7 +1256,15 @@ ready
       },
       log,
     });
-    app.on('before-quit', () => dock.quit());
+    app.on('before-quit', () => {
+      appQuitting = true;
+      dock.quit();
+    });
+    // 설정 dockIcon: 시작부터 Dock 에 아이콘을 두고, 켜고 끌 때 바로 맞춘다 (끌 때 큰 창이 열려 있으면 닫힐 때까지 남는다)
+    dock.pin(settings.get().dockIcon);
+    settings.onChange((next, prev) => {
+      if (next.dockIcon !== prev.dockIcon) dock.pin(next.dockIcon);
+    });
     home = createHome({
       registerSurface: (win, hidden) => panel.registerHome(win, hidden),
       chat,
@@ -1256,6 +1286,19 @@ ready
     });
     // 큰 창이 보이는 중이면 채팅 열기 요청은 그 안의 채팅 구역이 받는다 (채팅 면은 한 번에 하나, 이슈 #165)
     chat.setHost({ open: () => home?.openChat() ?? false });
+    // Dock 아이콘 우클릭 메뉴 (맥). 끝내기는 맥이 기본으로 붙여 주고 Cmd+Q 와 같은 길(before-quit)을 탄다
+    const buildDockMenu = () =>
+      Menu.buildFromTemplate([
+        { label: t('dock.panel'), click: () => panel.openTab() },
+        { label: t('dock.home'), click: () => openHomeFromMenu() },
+        { label: t('dock.settings'), click: () => settingsWindow.open() },
+      ]);
+    if (process.platform === 'darwin') {
+      app.dock?.setMenu(buildDockMenu());
+      settings.onChange((next, prev) => {
+        if (next.lang !== prev.lang) app.dock?.setMenu(buildDockMenu());
+      });
+    }
     /** 패널 밖(펫 우클릭)에서 밥 주기 */
     function feedPet() {
       const r = store.feed(Date.now());
@@ -1469,6 +1512,13 @@ ready
       scale: () => pet.scale(),
       setScale: (n) => pet.setScale(n),
       openMaker: (target) => maker.open(target),
+      hub: () => home?.contents,
+      hubWindow: () => home?.window,
+      // 설정에서 꺼낸 페어리, 비서 구역: 열려 있는 작은 패널은 닫고 큰 창의 그 구역으로
+      openHome: (tab) => {
+        panel.closePanel();
+        home?.open(tab);
+      },
       remakeBody: (gait) => maker.remake(gait),
       cancelRemake: () => maker.cancelRemake(),
       stats,
@@ -1556,11 +1606,9 @@ ready
         panel.refresh();
         planner.check();
       },
-      isSettings: (wc) => {
-        const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === wc;
-      },
+      isSettings: (wc) => settingsWindow.owns(wc),
       target: () => settingsWindow.window,
+      also: () => home?.contents,
       onLost: () => {
         void pet
           .say({
@@ -1600,7 +1648,12 @@ ready
         return !!w && !w.isDestroyed() && w.webContents === wc;
       },
       target: () => settingsWindow.window,
+      isHub: (wc) => !!home?.contents && wc === home.contents,
+      hub: () => home?.contents,
+      homeView: () => home?.contents,
       onWrite,
+      dataVersion,
+      onSyncApplied: () => panel.refresh(),
       onCoins: () => {
         panel.refresh();
         // 집 단계가 바뀌었을 수 있다 (거절된 집 사기, 다른 기기에서 산 집)
@@ -1654,19 +1707,19 @@ ready
       awaySec: () => powerMonitor.getSystemIdleTime(),
       eventBetween: (from, to) => events.timedOverlapping(from, to).length > 0,
       wear: () => wear.friendLook(),
+      // 놀러 가기 스위치와 "오늘은 그만" 은 설정 창의 친구 칸과 큰 창 친구 구역이 부른다
       isSettings: (wc) => {
         const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === wc;
+        return (
+          (!!w && !w.isDestroyed() && w.webContents === wc) || (!!home?.contents && home.contents === wc)
+        );
       },
       log,
     });
     app.on('before-quit', () => visitors?.stop());
     // ---- 펫 대사 고치기 (#125, main/lines.ts) ----
     registerLines({
-      isSettings: (wc) => {
-        const w = settingsWindow.window;
-        return !!w && !w.isDestroyed() && w.webContents === wc;
-      },
+      isSettings: (wc) => settingsWindow.owns(wc),
       petName,
       log,
     });
@@ -1971,7 +2024,16 @@ ready
       bringBack: (why) => {
         // Dock 아이콘을 눌렀다(맥 activate): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살린다
         // 큰 창을 앞으로 한 다음 숨은 펫, 집에 들어간 펫도 부른다
-        if (home && reopenTarget(why, home.look()) === 'home') home.open();
+        // 시작 안내 중, 끝내는 중, 막 켜진 때(처음 켤 때의 activate)는 큰 창을 열지 않는다
+        const onboardingOpen = !!onboarding.window && !onboarding.window.isDestroyed();
+        if (
+          home &&
+          !appQuitting &&
+          !onboardingOpen &&
+          Date.now() - readyAt > DOCK_ACTIVATE_GRACE_MS &&
+          reopenTarget(why, home.look(), settings.get().dockIcon) === 'home'
+        )
+          openHomeFromMenu();
         log('pet', '다시 열기로 부름', why);
         pet.setHidden('user', false);
         friends.setHidden('user', false);

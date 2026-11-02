@@ -93,14 +93,14 @@ const labels = {
 };
 
 async function openAssist(a) {
-  await a.main('__jj.settingsWindow.open(); 1');
+  await a.main("__jj.home.open('assist'); 1");
   await sleep(2200);
-  const st = await a.page('settings');
-  await st.ev(`document.getElementById('tab-assist').click()`);
+  const st = await a.page('home');
+  await st.ev(`document.getElementById('ptab-assist').click()`);
   await sleep(500);
   return st;
 }
-/** 말풍선 빈도 단추 줄 (설정 > 비서의 첫 묶음) */
+/** 말풍선 빈도 단추 줄 (큰 창 비서 구역의 첫 묶음) */
 const BUBBLES = `[...document.querySelectorAll('fieldset.segmented')].find((f) => [...f.querySelectorAll('button')].some((b) => b.textContent.trim() === ${JSON.stringify(labels.chatty)}))`;
 const pressed = (st) =>
   st.ev(`[...(${BUBBLES}).querySelectorAll('button')].filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent.trim()).join('|')`);
@@ -109,7 +109,7 @@ const pressed = (st) =>
 if (SHOTS_ONLY) {
   const a = await launch({ petName: tx('콩', 'Mochi'), chatter: 'normal' });
   const st = await openAssist(a);
-  await a.main('__jj.settingsWindow.window.setSize(480, 640); 1');
+  await a.main('__jj.home.window.setSize(760, 760); 1');
   await sleep(500);
   for (const dark of [false, true]) {
     await st.dark(dark);
@@ -142,19 +142,24 @@ if (SHOTS_ONLY) {
   const hint = await st.ev(`(${BUBBLES}).nextElementSibling?.textContent ?? ''`);
   check('가끔 한마디 설명이 보인다', hint.length > 10 && !/\{/.test(hint), hint);
 
-  // 말 안 하는 시간
-  check('처음엔 시간 칸이 없다', (await st.ev(`document.querySelectorAll('.quiet-times').length`)) === 0);
+  // 말 안 하는 시간 (설정 > 일반 > 알림과 소리로 옮겼다)
+  await a.main('__jj.settingsWindow.open(); 1');
+  await sleep(2200);
+  const ss = await a.page('settings');
+  await ss.ev(`document.getElementById('tab-ease').click()`);
+  await sleep(500);
+  check('처음엔 시간 칸이 없다', (await ss.ev(`document.querySelectorAll('.quiet-times').length`)) === 0);
   // Toggle 은 aria-label 이 줄 이름인 스위치
-  await st.ev(`document.querySelector('[role=switch][aria-label=${JSON.stringify(tx('시간을 정해 쉬기', 'Rest at set times'))}]')?.click()`);
+  await ss.ev(`document.querySelector('[role=switch][aria-label=${JSON.stringify(tx('시간을 정해 쉬기', 'Rest at set times'))}]')?.click()`);
   await sleep(500);
-  check('켜면 시작, 끝 시간 칸이 나온다', (await st.ev(`document.querySelectorAll('.quiet-times input[type=time]').length`)) === 2);
+  check('켜면 시작, 끝 시간 칸이 나온다', (await ss.ev(`document.querySelectorAll('.quiet-times input[type=time]').length`)) === 2);
   check('설정에 켜짐이 저장된다', (await a.main('__jj.settings.get().quietHours.on')) === true);
-  await st.ev(`(() => { const [from, to] = document.querySelectorAll('.quiet-times input[type=time]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(from, '22:00'); from.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await ss.ev(`(() => { const [from, to] = document.querySelectorAll('.quiet-times input[type=time]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(from, '22:00'); from.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await sleep(500);
-  await st.ev(`(() => { const [, to] = document.querySelectorAll('.quiet-times input[type=time]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(to, '08:30'); to.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await ss.ev(`(() => { const [, to] = document.querySelectorAll('.quiet-times input[type=time]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(to, '08:30'); to.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await sleep(500);
   check('시간이 저장된다 (22:00 ~ 08:30)', (await a.main('JSON.stringify(__jj.settings.get().quietHours)')) === JSON.stringify({ on: true, from: 1320, to: 510, weekend: false }), await a.main('JSON.stringify(__jj.settings.get().quietHours)'));
-  await st.ev(`document.querySelector('[role=switch][aria-label=${JSON.stringify(tx('주말에는 하루 종일 쉬기', 'Stay quiet all day on weekends'))}]')?.click()`);
+  await ss.ev(`document.querySelector('[role=switch][aria-label=${JSON.stringify(tx('주말에는 하루 종일 쉬기', 'Stay quiet all day on weekends'))}]')?.click()`);
   await sleep(400);
   check('주말 쉬기가 저장된다', (await a.main('__jj.settings.get().quietHours.weekend')) === true);
 
@@ -168,7 +173,7 @@ if (SHOTS_ONLY) {
 
   // 넘침: 설정 창 폭 줄이기
   for (const [w, h] of [[480, 700], [360, 700], [320, 700]]) {
-    await a.main(`__jj.settingsWindow.window.setSize(${w}, ${h}); 1`);
+    await a.main(`__jj.home.window.setSize(Math.max(760, ${w}), ${h}); 1`);
     await sleep(500);
     const over = await st.ev(`[...document.querySelectorAll('.segmented button, .quiet-times *, .segmented')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > innerWidth + 1 || e.scrollWidth > e.clientWidth + 1); }).map((e) => e.tagName + '.' + e.className).slice(0, 4).join(',')`);
     const w2 = await st.ev('innerWidth');

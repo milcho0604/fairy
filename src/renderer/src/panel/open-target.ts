@@ -37,3 +37,26 @@ export function onOpenNote(fn: () => void): () => void {
   window.addEventListener(NOTE_EVENT, fn);
   return () => window.removeEventListener(NOTE_EVENT, fn);
 }
+
+// 큰 창에서 메모 구역을 골랐다: 빈 새 메모 칸이 커서를 받아도 된다는 한 번짜리 신호.
+// 구역을 고르며 맡겨 두면 칸이 그릴 때 가져가고, 이미 떠 있으면 알림을 듣는다. 오래 묵은 신호는 버린다
+const NOTE_FOCUS_EVENT = 'jj:focus-note-draft';
+const NOTE_FOCUS_TTL_MS = 1500;
+let noteFocusAt: number | undefined;
+
+export function requestNoteFocus(): void {
+  noteFocusAt = Date.now();
+  window.dispatchEvent(new Event(NOTE_FOCUS_EVENT));
+}
+
+/** 맡겨 둔 커서 신호를 한 번만 가져간다 */
+export function takeNoteFocus(now = Date.now()): boolean {
+  const at = noteFocusAt;
+  noteFocusAt = undefined;
+  return at !== undefined && now - at < NOTE_FOCUS_TTL_MS;
+}
+
+export function onNoteFocus(fn: () => void): () => void {
+  window.addEventListener(NOTE_FOCUS_EVENT, fn);
+  return () => window.removeEventListener(NOTE_FOCUS_EVENT, fn);
+}

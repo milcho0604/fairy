@@ -2,7 +2,7 @@
 // 갤러리에는 레포 주인이 고른 공식 펫만 있다. 사용자끼리는 .jjpet 파일을 직접 주고받는다
 // 받기와 검사는 gallery.ts, 데려오기는 .jjpet 가져오기와 같은 adoptPet (backup.ts).
 // 갤러리 주소를 바꾸는 JJ_GALLERY_URL 은 패키지 안 된 앱(개발 실행, 시험)에서만, 내 컴퓨터 주소만 받는다
-import { app, type BrowserWindow } from 'electron';
+import { app, type BaseWindow } from 'electron';
 import { galleryBase } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import { cleanAuthor, DEFAULT_LICENSE, isPetLicense } from '../shared/pet-share.ts';
@@ -38,7 +38,7 @@ export function galleryHandlers(log: (tag: string, ...rest: unknown[]) => void) 
       }
     },
     /** 친구에게 보낼 .jjpet 판 2 를 만든 사람, 사용 허락과 함께 저장한다 (갤러리에 올리지 않는다) */
-    async share(meta: unknown, win?: BrowserWindow): Promise<{ ok: boolean; message: string }> {
+    async share(meta: unknown, win?: BaseWindow): Promise<{ ok: boolean; message: string }> {
       const m = typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {};
       const author = cleanAuthor(m.author);
       const license = isPetLicense(m.license) ? m.license : DEFAULT_LICENSE;

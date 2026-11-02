@@ -50,7 +50,7 @@ try {
   if (!baseline) {
     await main('__jj.settingsWindow.open(); 1');
     const settings = await page('settings');
-    await until(() => settings.ev('!!document.querySelector("#tab-pet")'), 'settings');
+    await until(() => settings.ev('!!document.querySelector("#tab-data")'), 'settings');
     await check('설정 창 최소 높이는 520px', async () => assert.equal((await main('__jj.settingsWindow.window.getMinimumSize()'))[1], 520));
     // 제품의 최소 폭(360)보다 좁은 320 경계도 실제로 검사한다. 시험 창에만 하한을 낮춘다.
     await main('__jj.settingsWindow.window.setMinimumSize(320,520); 1');
@@ -70,15 +70,15 @@ try {
       await main(`__jj.settingsWindow.window.setSize(${width},620); 1`); await sleep(200);
       assert.equal(await main('__jj.settingsWindow.window.getBounds().width'), width);
       const saved={};
-      for (const [i,id] of ['pet','assist','ai','ease','data','about'].entries()) {await tab(id); saved[id]=await scroll(210+i*63);}
-      for (const id of ['pet','ai','about','assist','data','ease','pet']) {
+      for (const [i,id] of ['data','ease','ai','about'].entries()) {await tab(id); saved[id]=await scroll(210+i*63);}
+      for (const id of ['data','ai','about','ease','data']) {
         await tab(id);
         await check(`${width}: ${id} 탭 위치 복원`, async () => assert.ok(Math.abs(await pos()-saved[id])<=1, `${id}: ${await pos()} / ${saved[id]}`));
       }
       await tab('ai');
       await settings.ev('document.querySelector("#tab-ai").focus()');
       await key('ArrowRight');
-      await check(`${width}: 방향키 탭 전환 위치 복원`, async () => assert.ok(Math.abs(await pos()-saved.ease)<=1));
+      await check(`${width}: 방향키 탭 전환 위치 복원`, async () => assert.ok(Math.abs(await pos()-saved.about)<=1));
       const mod=process.platform==='darwin'?4:2;
       await key('3','Digit3',mod);
       await check(`${width}: Cmd/Ctrl+3 위치 복원`, async () => assert.ok(Math.abs(await pos()-saved.ai)<=1));
@@ -86,11 +86,11 @@ try {
       await check(`${width}: 검색은 위에서 시작`, async () => assert.equal(await pos(),0));
       await query('');
       await check(`${width}: 검색 해제 뒤 원래 탭 위치`, async () => assert.ok(Math.abs(await pos()-saved.ai)<=1));
-      await tab('pet');
+      await tab('data');
       // scroll 이벤트가 오기 전에 탭을 옮겨도 마지막 위치를 잃지 않아야 한다.
       await settings.ev('document.querySelector("main").scrollTop=333; document.querySelector("#tab-ai").click()');
       await sleep(100);
-      await tab('pet');
+      await tab('data');
       await check(`${width}: 스크롤 직후 빠른 탭 전환`, async () => assert.ok(Math.abs(await pos()-333)<=1));
     }
     for (const [q,expected] of [
@@ -106,7 +106,7 @@ try {
     }
     await query('없는설정zzzz');
     await query('');
-    await tab('pet');
+    await tab('data');
     const original=await scroll(400);
     await query('삭제');
     await settings.ev('document.querySelector("input[type=search]").focus()');

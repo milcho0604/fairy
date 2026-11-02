@@ -95,7 +95,7 @@ export function notePreview(n: Pick<Note, 'title' | 'body'>): string {
  * 창의 글 끝에 그 덧붙인 부분을 잇는다. 그 밖에 둘 다 고쳤으면 창의 글 (보고 있는 글이 남는다)
  */
 /** theirs 는 base 뒤에 덧붙인 글인가 (끝의 빈 칸은 무시) */
-function appendsTo(base: string, theirs: string): boolean {
+export function appendsTo(base: string, theirs: string): boolean {
   const head = base.replace(/\s+$/, '');
   return theirs.length > head.length && theirs.startsWith(head);
 }

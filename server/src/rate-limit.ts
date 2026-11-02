@@ -20,6 +20,10 @@ export const LIMITS = {
   deviceAll: { max: 500, windowMs: 3_600_000 },
   /** 구글 로그인 시작, 돌아오기, 세션 바꾸기: 같은 곳에서 10분 30번 */
   loginByIp: { max: 30, windowMs: 600_000 },
+  /** 기능 키 읽기(GET /v1/features), 토큰이 있을 때: 계정마다 1분 120번 (설정 창이 30초마다 묻고, 회사나 학교 공유 IP 에서도 막히지 않게) */
+  featuresByAccount: { max: 120, windowMs: 60_000 },
+  /** 기능 키 읽기, 토큰이 없을 때: 같은 곳에서 10분 600번 (공유 IP 를 넉넉히 두되 무토큰 폭주는 막는다) */
+  featuresByIp: { max: 600, windowMs: 600_000 },
   /** 토큰을 든 요청: 계정마다 1분 120번 (맞추기는 몇 분에 한 번) */
   account: { max: 120, windowMs: 60_000 },
   /** AI 대화권 질문과 신고: 계정마다 1분 10번 (하루 상한은 따로 DB 로 센다) */
@@ -28,6 +32,16 @@ export const LIMITS = {
   backupPut: { max: 10, windowMs: 3_600_000 },
   /** 서버 백업 받기: 계정마다 한 시간 20번 */
   backupGet: { max: 20, windowMs: 3_600_000 },
+  /**
+   * 동기화 읽기(changes, status, key 받기): 계정마다 1분 100번. 기기 세 대가 1분마다 맞춰도 한 대 두세 번이라 10번 안팎이고,
+   * 처음 받는 기기가 500개씩 이어 받는 동안(10만 개면 200쪽)을 위해 넉넉히 둔다. 토큰 요청 전체 상한(account, 120)이 더 바깥에서 막는다
+   */
+  syncRead: { max: 100, windowMs: 60_000 },
+  /**
+   * 동기화 쓰기(push, key 올리기, 지우기): 계정마다 1분 60번. 앱은 바뀐 것을 3초 모아 한 번 보내므로 기기 한 대가 많아야 1분에
+   * 20번이고 세 대면 60번. 처음 올릴 때 200개씩 10만 개(500번)는 10분 안에 끝난다
+   */
+  syncWrite: { max: 60, windowMs: 60_000 },
   /** 토큰이 틀린 요청: 같은 곳에서 1분 30번 */
   badTokenByIp: { max: 30, windowMs: 60_000 },
   /** 선물 받기: 계정마다 1분 20번 */
@@ -94,7 +108,16 @@ export class RateLimiter implements OnModuleDestroy {
   /** take 가 false 면 429 */
   check(key: string, limit: Limit): void {
     if (!this.take(key, limit))
-      throw new HttpException({ error: 'rate_limited' }, HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        { error: 'rate_limited', retry_after: this.retryAfter(key) },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+  }
+
+  /** 창이 풀릴 때까지 남은 초 (앱이 그만큼 쉬게). 모르면 60 */
+  retryAfter(key: string): number {
+    const w = this.#windows.get(key);
+    return w ? Math.max(1, Math.ceil((w.start + w.windowMs - this.now()) / 1000)) : 60;
   }
 
   sweep(): void {

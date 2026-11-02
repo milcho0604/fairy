@@ -82,6 +82,10 @@ test('앱을 다시 열면(Dock 아이콘): 열려 있거나 내려간 큰 창�
   assert.equal(reopenTarget('activate', shown), 'home');
   assert.equal(reopenTarget('activate', none), 'pet');
   assert.equal(reopenTarget('activate', tucked), 'pet');
+  // Dock 아이콘을 늘 두는 설정이면 어느 때든 큰 창
+  assert.equal(reopenTarget('activate', none, true), 'home');
+  assert.equal(reopenTarget('activate', tucked, true), 'home');
+  assert.equal(reopenTarget('second-instance', none, true), 'pet');
   // 다시 실행(윈도우, 리눅스)은 늘 펫
   assert.equal(reopenTarget('second-instance', shown), 'pet');
 });

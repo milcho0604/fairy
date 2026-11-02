@@ -91,6 +91,8 @@ import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import { focusWindow, stealFocus } from './focus.ts';
 import { hideHintDelivery, hideHintFor } from './hide-hint.ts';
 import { langArg } from './lang.ts';
+import { createHoverGuard } from './pet-hover.ts';
+import { markPetPress } from './pet-press.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 import { watchSystem } from './system-watch.ts';
@@ -135,6 +137,8 @@ export interface PetActions {
   openPanel?(): void;
   /** 큰 창으로 열기 (큰 창 설계 #159). 없으면 우클릭 메뉴에 항목이 없다 */
   openHome?(): void;
+  /** 큰 창의 페어리, 비서 구역으로 열기 (설정에서 꺼낸 것) */
+  openHub?(tab: 'pet' | 'assist'): void;
   feed(): void;
   makePet(): void;
   /** 집중 타이머가 도는지 (메뉴 글자를 바꾼다) */
@@ -566,6 +570,8 @@ export function createPetWindow({
   let dragTimer: NodeJS.Timeout | undefined;
   let saveTimer: NodeJS.Timeout | undefined;
   let overPet = false;
+  /** 펫이 움직이거나 모양이 바뀔 때 부른다 (아래에서 채운다. 그 전에 부르는 배치는 아무것도 안 한다) */
+  let recheckHover: () => boolean = () => false;
   let passWheelUntil = 0;
   let walkTimer: NodeJS.Timeout | undefined;
   /** 지금 떠 있는 말풍선. size 는 화면이 재서 알려 준 크기 */
@@ -617,9 +623,40 @@ export function createPetWindow({
     }
   }
 
+  // 마우스가 가만히 있는 채 펫이 걸어 비켜 가면 화면은 움직임을 못 받아 "펫 위" 표시가 남고, 투명한 창이 아래 패널의 클릭을 먹는다.
+  // 펫이 움직이거나 모양이 바뀔 때(창 이동과 크기, 말풍선 변화) 커서를 다시 재서 펫과 말풍선 근처가 아니면 통과로 돌린다.
+  recheckHover = createHoverGuard({
+    isOver: () => overPet && !win.isDestroyed(),
+    busy: () => Boolean(dragTimer) || Boolean(looking) || Date.now() < passWheelUntil,
+    cursor: () => screen.getCursorScreenPoint(),
+    pet: () => pet,
+    // 화면이 펫 위로 치는 말풍선은 가벼운 안내(ambient)도 포함한다
+    bubble: () =>
+      bubble && win.isVisible()
+        ? bubbleRectOf(
+            pet,
+            bubble.size ?? BUBBLE_GUESS,
+            screen.getDisplayMatching(pet).workArea,
+            bubbleAnchor,
+          )
+        : undefined,
+    release: () => {
+      overPet = false;
+      setShortcuts(false);
+      win.setIgnoreMouseEvents(true, { forward: true });
+      win.webContents.send(IPC.hoverReset);
+    },
+  });
+  win.on('move', recheckHover);
+  win.on('resize', recheckHover);
+
   const onGesture = (e: IpcMainEvent, raw: unknown) => {
     if (!fromThisWindow(e) || !isGesture(raw)) return;
     const event = raw;
+    if (event.type === 'down') {
+      markPetPress();
+      return;
+    }
     log('pet', event.type);
     if (event.type === 'click') {
       actions.click(pet);
@@ -769,6 +806,12 @@ export function createPetWindow({
             },
           ]
         : []),
+      ...(actions.openHub
+        ? [
+            { label: t('pet.menu.openPet'), click: () => actions.openHub?.('pet') },
+            { label: t('pet.menu.openAssist'), click: () => actions.openHub?.('assist') },
+          ]
+        : []),
       ...(actions.openMailbox
         ? [
             {
@@ -916,6 +959,7 @@ export function createPetWindow({
     const w = layout.window;
     if (now.x !== w.x || now.y !== w.y || now.width !== w.width || now.height !== w.height) win.setBounds(w);
     win.webContents.send(IPC.layout, layout);
+    recheckHover();
   }
 
   function setChatter(level: ChatterLevel) {

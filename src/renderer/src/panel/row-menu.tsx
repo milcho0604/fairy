@@ -17,6 +17,8 @@ export interface MenuItem {
   /** 이 항목 위에 가는 선 */
   sepBefore?: boolean;
   onSelect: () => void;
+  /** 있으면 누를 수 없는 작은 글 한 줄 (메뉴 맨 아래 풀이). 이때 label, onSelect 는 쓰지 않는다 */
+  note?: string;
 }
 
 interface At {
@@ -169,27 +171,33 @@ export function useMenu(label: string, items: () => MenuItem[]) {
           e.stopPropagation();
         }}
       >
-        {list.map((item) => (
-          <div key={item.key} role="none" className={item.sepBefore ? 'menu-sep' : undefined}>
-            <button
-              type="button"
-              role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
-              {...(item.checked === undefined ? {} : { 'aria-checked': item.checked })}
-              className={item.danger ? 'danger' : undefined}
-              disabled={item.disabled}
-              onClick={() => {
-                close(true);
-                item.onSelect();
-              }}
-            >
-              <span className="menu-icon" aria-hidden="true">
-                {item.checked ? '✓' : item.icon}
-              </span>
-              <span className="menu-label">{item.label}</span>
-              {item.hint && <small>{item.hint}</small>}
-            </button>
-          </div>
-        ))}
+        {list.map((item) =>
+          item.note ? (
+            <div key={item.key} role="none" className="menu-note">
+              {item.note}
+            </div>
+          ) : (
+            <div key={item.key} role="none" className={item.sepBefore ? 'menu-sep' : undefined}>
+              <button
+                type="button"
+                role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                {...(item.checked === undefined ? {} : { 'aria-checked': item.checked })}
+                className={item.danger ? 'danger' : undefined}
+                disabled={item.disabled}
+                onClick={() => {
+                  close(true);
+                  item.onSelect();
+                }}
+              >
+                <span className="menu-icon" aria-hidden="true">
+                  {item.checked ? '✓' : item.icon}
+                </span>
+                <span className="menu-label">{item.label}</span>
+                {item.hint && <small>{item.hint}</small>}
+              </button>
+            </div>
+          ),
+        )}
       </div>
     </Overlay>
   ) : null;

@@ -9,7 +9,7 @@ import {
   initialDock,
 } from '../shared/dock-policy.ts';
 
-// 맥 Dock 아이콘을 큰 창이 열린 동안만 보인다. 정함은 shared/dock-policy.ts (순수 함수), 여기는 Electron 에 잇는 얇은 껍데기.
+// 맥 Dock 아이콘을 큰 창이 열린 동안, 또는 설정 dockIcon 이 켜져 있으면 늘 보인다. 정함은 shared/dock-policy.ts (순수 함수), 여기는 Electron 에 잇는 얇은 껍데기.
 //
 // 순서 (앱 종류가 바뀌는 때를 한 곳에 모은다):
 //  열기: open → dock.show() (앱이 Dock 있는 보통 앱이 됨) → 끝나면 reassert → 그제야 큰 창을 띄운다 (ready())
@@ -34,6 +34,8 @@ export interface Dock {
   open(): void;
   /** 큰 창이 닫혔거나 숨었다 */
   close(): void;
+  /** 설정 dockIcon: 켜면 큰 창과 상관없이 늘 Dock 에 둔다, 끄면 큰 창이 열린 동안만 (열려 있으면 닫힐 때까지 남는다) */
+  pin(on: boolean): void;
   /** 앱이 끝나는 중 */
   quit(): void;
   /** 가장 나중 show 가 끝나면 풀린다 (이미 보이거나 시험 실행이면 바로) */
@@ -41,6 +43,7 @@ export interface Dock {
   /** 시험 손잡이 (__jj.home.dock) */
   stats(): {
     want: boolean;
+    pinned: boolean;
     shown: boolean;
     pendingHide: boolean;
     /** 시험 실행에서 show 를 부르려 한 횟수 (부르지는 않았다) */
@@ -119,6 +122,7 @@ export function createDock(o: DockOptions): Dock {
   return {
     open: () => feed('open'),
     close: () => feed('close'),
+    pin: (on) => feed(on ? 'pin' : 'unpin'),
     quit: () => {
       clearTimeout(timer);
       clearTimeout(verifyTimer);
@@ -127,6 +131,7 @@ export function createDock(o: DockOptions): Dock {
     ready: () => readyP,
     stats: () => ({
       want: state.want,
+      pinned: state.pinned,
       shown: state.shown,
       pendingHide: state.pendingHide,
       triedShow: state.triedShow,

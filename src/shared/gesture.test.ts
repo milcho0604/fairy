@@ -79,6 +79,7 @@ test('쓰다듬기: 너무 느리거나 너무 작게 움직이면 아니다', (
 
 test('isGesture: 모양이 맞는 알림만 받는다', () => {
   assert.equal(isGesture({ type: 'click' }), true);
+  assert.equal(isGesture({ type: 'down' }), true);
   assert.equal(isGesture({ type: 'drag-start', offset: { x: 1, y: 2 } }), true);
   for (const bad of [
     undefined,

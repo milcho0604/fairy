@@ -231,12 +231,12 @@ const T = {
   en: { hint: 'You connected Google Calendar on another device. Connect this one too?', connect: 'Connect Google account', no: "No thanks, don't ask again" },
 }[LANG];
 
-/** 설정 창을 열고 비서 탭으로, 구글 캘린더 칸까지 내린다 */
+/** 큰 창을 비서 구역으로 열고 구글 캘린더 칸까지 내린다 (설정에서 꺼낸 구역) */
 async function openAssist(h) {
-  await main(h, '__jj.settingsWindow.open(); 1');
-  const s = await page(h, 'settings');
-  await until('설정 화면', () => s.ev(`!!document.querySelector('#tab-assist')`));
-  await s.ev(`document.querySelector('#tab-assist').click(); 1`);
+  await main(h, "__jj.home.open('assist'); 1");
+  const s = await page(h, 'home');
+  await until('큰 창 화면', () => s.ev(`!!document.querySelector('#ptab-assist')`));
+  await s.ev(`document.querySelector('#ptab-assist').click(); 1`);
   await until('구글 캘린더 칸', () =>
     s.ev(`[...document.querySelectorAll('h2')].some((x) => /구글 캘린더|Google Calendar/.test(x.textContent))`),
   );
@@ -247,7 +247,7 @@ async function openAssist(h) {
 }
 const hintShown = (s) => s.ev(`!!document.querySelector('.gcal-link-hint')`);
 const closeSettings = (h) =>
-  main(h, '(() => { const w = __jj.settingsWindow.window; if (w && !w.isDestroyed()) w.close(); return 1; })()');
+  main(h, '(() => { const w = __jj.home.window; if (w && !w.isDestroyed()) w.close(); return 1; })()');
 
 /** 서버 모드(만 18세 이상) → 기기 계정이 생길 때까지 */
 async function serverOn(h) {

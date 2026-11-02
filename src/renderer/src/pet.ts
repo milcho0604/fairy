@@ -1474,6 +1474,7 @@ function cancelPeekPress(status: 'released' | 'cancelled' = 'cancelled'): boolea
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !hitTest(e.clientX, e.clientY)) return;
   petClicks.press();
+  bridge.gesture({ type: 'down' });
   canvas.setPointerCapture(e.pointerId);
   gesture.down(e.button, e.clientX, e.clientY);
   pressAt = { x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY, px: petBox.x, py: petBox.y };
@@ -1655,6 +1656,13 @@ bridge.onBubble((b) => {
   const r = bubbleEl.getBoundingClientRect();
   bridge.bubbleSize(b.id, r.width + BUBBLE_MARGIN * 2, r.height + BUBBLE_MARGIN * 2);
   if (!b.ambient) setInputs({ talkingUntil: performance.now() + b.ttlMs + 60_000 });
+});
+
+// 펫이 커서 아래를 비켜 가면 메인이 통과로 돌리고 알린다. 마우스가 안 움직여도 펫 위 표시가 남지 않게 (남으면 다음에 펫 위로 와도 알리지 않는다)
+bridge.onHoverReset(() => {
+  overPet = false;
+  // 말풍선 위에 있던 것으로 남으면 사라질 시간이 멈춘 채 남는다
+  setBubbleHover(false);
 });
 
 bridge.onLayout((layout) => {

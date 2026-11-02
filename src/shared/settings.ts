@@ -68,6 +68,8 @@ export interface Settings {
   aiPetTools: boolean;
   /** 컴퓨터를 켜면 같이 켜기 (설치한 앱에서만 동작) */
   launchAtLogin: boolean;
+  /** 맥 Dock 에 아이콘을 늘 둔다. 끄면 큰 창이 열린 동안만 (main/dock.ts). 맥이 아니면 쓰이지 않는다 */
+  dockIcon: boolean;
   /** 숨기기 전 안내를 보여 준 횟수 (P1-10) */
   hideHints: number;
   /** 사진 펫 그림 파일 이름 (사용자 데이터 폴더의 pets/ 안). 없으면 기본 펫. gif, webp 면 움직이는 그림 (v1) */
@@ -119,6 +121,8 @@ export interface Settings {
   review: boolean;
   /** 펫이 안 보일 때(전체 화면, 숨김, 발표) 일정 알림을 운영체제 알림으로도 한 번 */
   osNotify: boolean;
+  /** 할 일 마감 임박 알림 (시각이 있으면 마감 전, 날짜만이면 마감 전날 저녁). 끄면 말없이 넘긴다 */
+  dueSoonAlert: boolean;
   /** 전역 단축키 (v2 단축키 바꾸기) */
   shortcuts: Record<ShortcutId, string>;
   /** 쉬운 키 묶음을 켜기 직전의 키. 끄면 이 값으로 돌린다 (없으면 기본 키) */
@@ -484,6 +488,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aiKnowsTodos: false,
   aiPetTools: false,
   launchAtLogin: false,
+  dockIcon: true,
   hideHints: 0,
   petKind: 'kong',
   pet3d: true,
@@ -498,6 +503,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reviewMinute: 18 * 60,
   review: true,
   osNotify: true,
+  dueSoonAlert: true,
   shortcuts: { ...SHORTCUT_DEFAULTS },
   shortcutsKept: null,
   myMcp: false,
@@ -717,6 +723,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     aiKnowsTodos: bool(r.aiKnowsTodos, base.aiKnowsTodos),
     aiPetTools: bool(r.aiPetTools, base.aiPetTools),
     launchAtLogin: bool(r.launchAtLogin, base.launchAtLogin),
+    dockIcon: bool(r.dockIcon, base.dockIcon),
     hideHints:
       typeof r.hideHints === 'number' && Number.isFinite(r.hideHints)
         ? Math.max(0, Math.floor(r.hideHints))
@@ -750,6 +757,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
         : base.reviewMinute,
     review: typeof r.review === 'boolean' ? r.review : r.chatter === 'quiet' ? false : base.review,
     osNotify: bool(r.osNotify, base.osNotify),
+    dueSoonAlert: bool(r.dueSoonAlert, base.dueSoonAlert),
     shortcuts: shortcutsOf(r.shortcuts, base.shortcuts),
     shortcutsKept:
       typeof r.shortcutsKept === 'object' && r.shortcutsKept !== null

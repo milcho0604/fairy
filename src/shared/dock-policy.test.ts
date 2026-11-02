@@ -246,3 +246,97 @@ test('검출력: 열자마자 닫는 경우 hide 가 즉시 나가면 안 된다
   ]);
   assert.equal(late.calls.includes('hide'), true);
 });
+
+// ---- 설정 dockIcon (pin, unpin) ----
+const TEST: DockEnv = { platform: 'darwin', test: true };
+
+test('설정 켬(pin): 큰 창이 없어도 show 를 한 번 부르고, 큰 창을 열고 닫아도 숨기지 않는다', () => {
+  const r = play([
+    ['pin', 0],
+    ['open', 5000],
+    ['close', 9000],
+    ['tick', 12000],
+  ]);
+  assert.deepEqual(r.calls, ['show']);
+  assert.equal(r.state.want, true);
+  assert.equal(r.state.shown, true);
+});
+
+test('설정 끔(unpin) x 큰 창 닫힘: 간격이 찬 뒤 hide', () => {
+  const r = play([
+    ['pin', 0],
+    ['unpin', DOCK_GAP_MS],
+  ]);
+  assert.deepEqual(r.calls, ['show', 'hide']);
+  assert.equal(r.state.want, false);
+});
+
+test('설정 끔(unpin) x 큰 창 열림: 아이콘은 큰 창이 닫힐 때까지 남고 닫으면 숨는다', () => {
+  const r = play([
+    ['pin', 0],
+    ['open', 1000],
+    ['unpin', 3000],
+  ]);
+  assert.deepEqual(r.calls, ['show']);
+  assert.equal(r.state.want, true);
+  const c = dockStep(r.state, 'close', 6000, MAC);
+  assert.deepEqual(
+    c.effects.map((e) => e.do),
+    ['hide'],
+  );
+});
+
+test('설정 끔 x 큰 창 닫힘 x 처음부터: 켜 둔 적 없으면 아무 일도 없다 (기존 동작 그대로)', () => {
+  const r = play([['unpin', 0]]);
+  assert.deepEqual(r.calls, []);
+  assert.equal(r.state.want, false);
+});
+
+test('설정 켬 직후 곧 끔(1초 안): hide 는 간격이 찰 때까지 미룬다', () => {
+  const r = play([
+    ['pin', 0],
+    ['unpin', 200],
+  ]);
+  assert.deepEqual(r.calls, ['show', 'wait']);
+  assert.equal(r.state.pendingHide, true);
+});
+
+test('설정 켬 -> 끔 -> 켬: 기다리던 hide 는 취소되고 show 는 다시 부르지 않는다', () => {
+  const r = play([
+    ['pin', 0],
+    ['unpin', 200],
+    ['pin', 400],
+  ]);
+  assert.deepEqual(r.calls, ['show', 'wait']);
+  assert.equal(r.state.pendingHide, false);
+  assert.equal(r.state.want, true);
+});
+
+test('시험 모드: 설정이 켜져 있어도 show 는 0, 부르려 했다만 센다 (끄고 큰 창 열고 닫아도 hide 0)', () => {
+  const r = play(
+    [
+      ['pin', 0],
+      ['open', 100],
+      ['close', 5000],
+      ['unpin', 9000],
+    ],
+    TEST,
+  );
+  assert.deepEqual(r.calls, []);
+  assert.equal(r.state.triedShow, 2);
+  assert.equal(r.state.shown, false);
+});
+
+test('맥이 아니면 pin 도 아무것도 하지 않는다', () => {
+  const r = play([['pin', 0]], { platform: 'win32', test: false });
+  assert.deepEqual(r.calls, []);
+});
+
+test('검출력: 설정이 켜져 있는데 큰 창이 닫혀 hide 가 나가면 안 된다 (pinned 를 want 에 넣지 않으면 깨진다)', () => {
+  const r = play([
+    ['pin', 0],
+    ['open', 100],
+    ['close', 4000],
+  ]);
+  assert.ok(!r.calls.includes('hide'));
+});

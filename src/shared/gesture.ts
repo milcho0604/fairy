@@ -2,6 +2,7 @@
 // 왼쪽 버튼만 클릭과 드래그로 본다. 우클릭은 contextmenu 로 따로 받는다 (L3).
 
 export type GestureEvent =
+  | { type: 'down' }
   | { type: 'click' }
   | { type: 'double-click' }
   | { type: 'drag-start'; offset: { x: number; y: number }; petRelative?: boolean }
@@ -13,7 +14,8 @@ const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFi
 export function isGesture(v: unknown): v is GestureEvent {
   if (typeof v !== 'object' || v === null) return false;
   const g = v as Record<string, unknown>;
-  if (g.type === 'click' || g.type === 'double-click' || g.type === 'drag-end') return true;
+  if (g.type === 'down' || g.type === 'click' || g.type === 'double-click' || g.type === 'drag-end')
+    return true;
   if (g.type !== 'drag-start') return false;
   const o = g.offset as Record<string, unknown> | null | undefined;
   return typeof o === 'object' && o !== null && finite(o.x) && finite(o.y);

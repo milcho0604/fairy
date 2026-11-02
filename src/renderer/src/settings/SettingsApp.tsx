@@ -1,10 +1,8 @@
 import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CODEX_ZIP_MAX_BYTES } from '../../../shared/codex-pet.ts';
-import { saveErrorText } from '../../../shared/download-error.ts';
+import { movedHits } from '../../../shared/hub-index.ts';
 import { t } from '../../../shared/i18n/index.ts';
-import type { SettingsSnapshot } from '../../../shared/ipc.ts';
 import { SHARE_MAX_BYTES } from '../../../shared/pet-share.ts';
-import { lookKey, type Settings } from '../../../shared/settings.ts';
 import { groupRows, type RowKind, searchSettings } from '../../../shared/settings-search.ts';
 import {
   globalTabKey,
@@ -19,25 +17,20 @@ import { isCodexPetFileName, isImportFileName } from '../../../shared/url-scheme
 import { escClosesWindow } from '../panel/keys.ts';
 import { useLanguageUpdates } from '../use-language.ts';
 import { HELP_OPEN_EVENT, isHelpKey } from './HelpBox.tsx';
+import { MovedHits } from './MovedHits.tsx';
 import { AboutTab } from './tabs/AboutTab.tsx';
 import { AiTab } from './tabs/AiTab.tsx';
-import { AssistTab } from './tabs/AssistTab.tsx';
 import { DataTab } from './tabs/DataTab.tsx';
 import { EaseTab } from './tabs/EaseTab.tsx';
-import { PetTab } from './tabs/PetTab.tsx';
-import { bridge, type TabProps } from './ui.tsx';
+import { bridge } from './ui.tsx';
+import { useSettingsSnap } from './use-snap.ts';
 
 /** 이 너비부터 탭을 왼쪽에 세로로 (settings.css 의 @media 와 같은 값) */
 const SIDE_NAV = '(min-width: 640px)';
 
 export function SettingsApp() {
   useLanguageUpdates();
-  const [snap, setSnap] = useState<SettingsSnapshot>();
-  const [saved, setSaved] = useState('');
-  // 실패나 막힘 안내는 빨간 글씨 (성공 안내와 같은 초록이면 된 것처럼 읽힌다)
-  const [savedError, setSavedError] = useState(false);
-  const libraryKey = useRef('');
-  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { snap, saved, savedError, props, flash } = useSettingsSnap();
 
   // Esc 로 창을 닫는다 (패널과 같게). 찾기 칸이 먼저 글을 비우고(preventDefault), 한글 조합 중 Esc 는 조합만 끝낸다
   useEffect(() => {
@@ -49,27 +42,6 @@ export function SettingsApp() {
   }, []);
 
   useEffect(() => {
-    bridge.get().then(setSnap);
-    bridge.onChanged((settings) => {
-      // 펫 만들기 창에서 새 펫을 저장하면 보관함과 지금 그림이 바뀐다. 그때만 다시 받는다
-      // 몸을 다시 만들면(걸음새) 설계도 파일만 바뀐다. 그때도 지금 펫 카드와 몸 모양을 다시 받는다
-      // 밀크, 초코의 네 발 피규어를 켜고 끌 때도 (사진이 피규어로 바뀐다, #28)
-      const key = lookKey(settings);
-      if (key !== libraryKey.current) {
-        libraryKey.current = key;
-        // 설정과 보관함을 한 번에 바꾼다. 설정만 먼저 바꾸면 잠깐 새 지금 펫과 옛 보관함이 섞여 카드가 사라졌다 나타났다
-        void bridge
-          .get()
-          .then((next) =>
-            setSnap(
-              (s) => s && { ...s, settings: next.settings, library: next.library, current: next.current },
-            ),
-          );
-        return;
-      }
-      setSnap((s) => s && { ...s, settings });
-    });
-    bridge.onPower((onBattery) => setSnap((s) => s && { ...s, onBattery }));
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
   }, []);
 
@@ -192,7 +164,7 @@ export function SettingsApp() {
   });
   const hits = hitKey ? hitKey.split(',').map(Number) : [];
 
-  // Cmd/Ctrl+F 로 찾기 칸에, Cmd/Ctrl+[ ] 와 1~6 으로 탭 옮기기
+  // Cmd/Ctrl+F 로 찾기 칸에, Cmd/Ctrl+[ ] 와 1~4 로 탭 옮기기
   const tabNow = useRef(tab);
   tabNow.current = tab;
   const searchingNow = useRef(searching);
@@ -241,12 +213,7 @@ export function SettingsApp() {
   // 페어리 파일(.fairy, .jjpet)이나 Codex 펫 파일(.codex-pet.zip)을 창에 끌어 놓으면 페어리 가져오기와 같이 데려온다.
   // 다른 파일(그림, 글)은 그냥 둔다 (창이 그 파일을 열어 페이지가 바뀌지 않게 놓기만 막는다)
   useEffect(() => {
-    const say = (message: string, error: boolean) => {
-      setSaved(message);
-      setSavedError(error);
-      clearTimeout(flashTimer.current);
-      flashTimer.current = setTimeout(() => setSaved(''), 2400);
-    };
+    const say = flash;
     const over = (e: DragEvent) => e.preventDefault();
     const drop = async (e: DragEvent) => {
       e.preventDefault();
@@ -269,40 +236,14 @@ export function SettingsApp() {
       window.removeEventListener('dragover', over);
       window.removeEventListener('drop', drop);
     };
-  }, []);
+  }, [flash]);
 
-  if (!snap) return <div className="loading">{t('settings.loading')}</div>;
+  if (!snap || !props) return <div className="loading">{t('settings.loading')}</div>;
   const mac = snap.platform === 'darwin';
   const mod = mac ? 'Cmd' : 'Ctrl';
+  // 설정에서 큰 창으로 옮긴 항목 중 찾는 말에 맞는 것 (찾기 결과 아래에 가는 길을 보인다)
+  const moved = searching ? movedHits(query, composing) : [];
 
-  // 앞 안내의 지우기 타이머가 새 안내를 일찍 지우지 않게 하나만 둔다 (빈 이름 안내 뒤 "이름을 바꿨어"가 바로 사라졌다)
-  const flash = (message: string, error = false) => {
-    setSaved(message);
-    setSavedError(error);
-    clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setSaved(''), 2400);
-  };
-
-  const update = async (patch: Partial<Settings>, message = t('settings.saved')) => {
-    let next: Settings;
-    try {
-      next = await bridge.set(patch);
-    } catch (err) {
-      // 저장 공간이 없거나 폴더에 쓸 수 없으면 바뀌지 않았다고 알린다 (예전에는 말없이 원래대로 돌아갔다)
-      console.warn('settings save failed', err);
-      flash(saveErrorText(err), true);
-      return snap.settings;
-    }
-    setSnap((v) => v && { ...v, settings: next });
-    // 언어를 바꾸면 화면이 새 말로 다시 그려진다. 옛 말로 만든 안내가 남지 않게 숨긴다
-    if (patch.lang !== undefined) {
-      clearTimeout(flashTimer.current);
-      setSaved('');
-    } else flash(message);
-    return next;
-  };
-
-  const props: TabProps = { snap, setSnap, update, flash };
   const onTabKey = (e: KeyboardEvent<HTMLButtonElement>) => {
     const step = tabKeyStep(e.key, side);
     if (!step) return;
@@ -403,7 +344,8 @@ export function SettingsApp() {
             scrollPositions.current[scrollView.current] = e.currentTarget.scrollTop;
           }}
         >
-          {noHit && (
+          <MovedHits hits={moved} />
+          {noHit && moved.length === 0 && (
             <p className="search-empty" role="status">
               {t('settings.search.empty', { q: query.trim() })}
             </p>
@@ -420,8 +362,6 @@ export function SettingsApp() {
             >
               {/* 찾는 중에는 어느 탭의 칸인지 머리말로 */}
               {searching && <h3 className="tab-head">{t(`settings.tab.${id}.hint`)}</h3>}
-              {id === 'pet' && <PetTab {...props} />}
-              {id === 'assist' && <AssistTab {...props} />}
               {id === 'ai' && <AiTab {...props} />}
               {id === 'ease' && <EaseTab {...props} />}
               {id === 'data' && <DataTab {...props} />}
