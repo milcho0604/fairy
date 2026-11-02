@@ -1,6 +1,8 @@
 // 동기화 엔진 시험 4: 검토(PR 295)에서 나온 문제의 재현. 열쇠 보관 실패, 낡은 기기, 계정 바뀜, 보류
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, migrate } from '../../shared/db-schema.ts';
@@ -301,8 +303,9 @@ test('K11 백업을 되살리면 그 뒤 다른 기기가 영구 삭제한 메�
   assert.ok((await b.engine.enterCode(e.kind === 'created' ? e.code : '')).ok);
   const n = a.notes.add({ title: '지울 메모', body: '비밀' }, Date.now());
   for (const d of [a, b, a]) await d.engine.run(true);
-  const path = `${process.env.TMPDIR ?? '/tmp'}/hunt-295-backup-${process.pid}.db`;
+  const path = join(tmpdir(), `sync-backup-${process.pid}.db`);
   a.db.exec(`vacuum into '${path}'`);
+  let restored: Db | undefined;
   try {
     const bid = (b.db.prepare('select id from note').get() as { id: number }).id;
     await new Promise((r) => setTimeout(r, 5));
@@ -311,7 +314,7 @@ test('K11 백업을 되살리면 그 뒤 다른 기기가 영구 삭제한 메�
     for (const d of [b, a]) await d.engine.run(true);
     assert.equal(num(a.db, 'select count(*) as n from note'), 0);
     // A 가 옛 백업을 되살린다 (앱을 다시 켠 것처럼 같은 상태 파일, 새 엔진)
-    const restored = new DatabaseSync(path) as unknown as Db;
+    restored = new DatabaseSync(path) as unknown as Db;
     const a2 = flakyDevice(server, () => ACCOUNT, { db: restored, stored: a.stored(), secret: a.secret() });
     a2.engine.afterRestore();
     for (const d of [a2, b, a2]) await d.engine.run(true);
@@ -319,6 +322,8 @@ test('K11 백업을 되살리면 그 뒤 다른 기기가 영구 삭제한 메�
     assert.equal(num(b.db, 'select count(*) as n from note'), 0, 'B 에 지운 메모가 되살아났다');
     void n;
   } finally {
+    // 윈도에서는 열린 파일을 지울 수 없다
+    (restored as unknown as DatabaseSync | undefined)?.close();
     (await import('node:fs')).rmSync(path, { force: true });
   }
 });
