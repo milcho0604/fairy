@@ -16,7 +16,7 @@
 // 컨테이너는 jj-synctwo-pg-<무작위> 이름으로만 만들고 `docker rm -f -v` 로 지운다. 포트는 9800~9999 에서 lsof 로 빈 것을 고른다.
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import electronPath from 'electron';
@@ -429,11 +429,15 @@ try {
   check('서버가 기능 키 sync 를 내려 준다 (앱 features.sync)', (await status(A)).features?.sync === true);
   // 클립보드와 저장 대화상자를 바꿔 끼운다 (사용자 클립보드와 진짜 대화상자를 건드리지 않는다)
   const savedFile = join(scratch, 'saved-code.txt');
+  // 이미 있던 느슨한 권한의 파일에 덮어써도 600 이 되어야 한다
+  writeFileSync(savedFile, 'old');
+  chmodSync(savedFile, 0o644);
   await main(
     A,
     `(() => { const e = process.getBuiltinModule('module').createRequire(process.cwd() + '/')('electron'); e.clipboard.writeText = (v) => { globalThis.__clip = v; }; __jj.dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(savedFile)} }); return 1; })()`,
   );
   const pa = await openSettings(A);
+  await main(A, `(() => { const w = __jj.settingsWindow.window; const o = w.setContentProtection.bind(w); w.setContentProtection = (v) => { globalThis.__prot = v; o(v); }; return 1; })()`);
   await until('A 동기화 칸', () => pa.ev(`!!document.querySelector('.sync-box')`));
   check('A 꺼짐 칸: 한 줄 설명과 켜기 단추', (await boxText(pa)).includes(T.lede) && (await boxText(pa)).includes(T.turnOn), await boxMode(pa));
   await pa.matrix('sync-1-off');
@@ -443,6 +447,7 @@ try {
   await until('A 복구 코드 칸', () => pa.ev(`!!document.querySelector('.sync-reveal')`));
   const code = await readCode(pa);
   check('복구 코드 25글자, 5묶음', /^[0-9A-Z]{5}(-[0-9A-Z]{5}){4}$/.test(code), `${code.length}자`);
+  check('코드가 보이는 동안 설정 창은 화면 캡처에서 가려진다', (await main(A, 'globalThis.__prot')) === true);
   check('엔진은 켜졌고(on) 칸은 코드를 먼저 보인다', (await view(A)).phase === 'on' && (await boxMode(pa)) === 'code');
   await pa.matrix('sync-2-code');
   check('적어 뒀어 전에는 닫기가 막혀 있다', !(await press(pa, T.done)) && (await pa.ev(`!!document.querySelector('.sync-reveal')`)));
@@ -464,12 +469,22 @@ try {
   await sleep(150);
   check('체크하면 닫기가 열린다', await press(pa, T.done));
   await sleep(300);
+  await sleep(300);
+  check('닫으면 캡처 가림이 풀린다', (await main(A, 'globalThis.__prot')) === false);
   check('닫으면 코드는 화면에서 사라진다', !(await pa.ev(`!!document.querySelector('.sync-reveal')`)) && !(await boxText(pa)).includes(code.slice(0, 5)));
   check('켜짐 칸 (방금 맞췄어)', (await boxMode(pa)) === 'on');
   await runSync(A);
   await sleep(500);
   await pa.matrix('sync-3-on');
   check('사용량 상한이 100MB 로 보인다 (서버 상한과 같은 1024 기준)', /\/ 100MB/.test(await boxText(pa)), (await boxText(pa)).split('\n').find((x) => x.includes('MB')));
+  // 기능 키가 꺼져도 켜 둔 기기는 "쓸 수 없어"와 끄기만 보인다. 설정 창이 열려 있으면 30초 안에 스스로 다시 물어 바뀐다
+  sql(`INSERT INTO feature_flag (key, mode) VALUES ('sync', 'off') ON CONFLICT (key) DO UPDATE SET mode = 'off'`);
+  await until('A 쓸 수 없음 칸 (창이 스스로 다시 물음)', async () => (await boxText(pa)).includes(T.unavailable), 60_000);
+  check('키가 꺼졌어도 켜 둔 기기: 쓸 수 없다는 한 줄과 끄기 단추만', !(await boxText(pa)).includes(T.newCode) && (await boxText(pa)).includes(T.local));
+  await pa.shot('sync-3b-unavailable');
+  sql(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'sync'`);
+  await until('A 켜짐 칸 복귀 (창이 스스로 다시 물음)', async () => (await boxText(pa)).includes(T.newCode), 60_000);
+  check('키가 다시 켜지면 평소 켜짐 칸으로', (await boxMode(pa)) === 'on');
   const needle = [Buffer.from(code), Buffer.from(code.replaceAll('-', ''))];
   const leaks = dataHas(A.data, needle);
   check('A 앱 폴더 어디에도 복구 코드 글자가 없다', leaks.length === 0, leaks.join(','));
@@ -686,15 +701,6 @@ try {
   check('다시 시작한 곳의 새 코드를 A 가 넣으면 이어서 맞춘다', (await view(A)).phase === 'on' && (await view(A)).problem === null);
   await pa.shot('sync-20-a-resumed');
 
-  // 기능 키가 꺼져도 켜 둔 기기는 "쓸 수 없어"와 끄기만 보인다
-  sql(`INSERT INTO feature_flag (key, mode) VALUES ('sync', 'off') ON CONFLICT (key) DO UPDATE SET mode = 'off'`);
-  await until('A 기능 키 꺼짐', async () => {
-    await main(A, '__jj.server.core.refreshProviders(true).then(() => 1)');
-    return (await status(A)).features?.sync === false;
-  }, 20_000);
-  await until('A 쓸 수 없음 칸', async () => (await boxText(pa)).includes(T.unavailable), 15_000);
-  check('키가 꺼졌어도 켜 둔 기기: 쓸 수 없다는 한 줄과 끄기 단추만', !(await boxText(pa)).includes(T.newCode) && (await boxText(pa)).includes(T.local));
-  await pa.shot('sync-3b-unavailable');
   // 가로 넘침, 영어 화면에 한글, 줄표
   const allText = await boxText(pa);
   check('긴 줄표와 가운뎃점이 없다', !/[\u2014\u00b7]/.test(allText));

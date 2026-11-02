@@ -420,6 +420,7 @@ if (kind === 'settings' || kind === 'home') {
         disable: (wipeServer) => ipcRenderer.invoke(SYNC.disable, wipeServer),
         copyCode: (code) => ipcRenderer.invoke(SYNC.copyCode, code),
         saveCode: (code) => ipcRenderer.invoke(SYNC.saveCode, code),
+        protect: (on) => ipcRenderer.send(SYNC.protect, on),
       },
     };
     contextBridge.exposeInMainWorld('jjakkungServer', server);

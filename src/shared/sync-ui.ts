@@ -14,7 +14,8 @@ export function syncShown(s: ServerStatus | null | undefined): boolean {
 
 /** 서버 기능 키가 꺼졌는데 이 기기는 켜 둔 상태: "지금은 동기화를 쓸 수 없어" 와 끄기만 보인다 */
 export function syncUnavailable(s: ServerStatus | null | undefined): boolean {
-  return !!s && !featureOn(s, 'sync') && !!s.sync && s.sync.phase !== 'off';
+  // 서버에 아직 못 물었으면(features 가 null) 모름이지 꺼짐이 아니다
+  return !!s && !!s.features && !featureOn(s, 'sync') && !!s.sync && s.sync.phase !== 'off';
 }
 
 /** 서버 상한(100MB)과 같은 1024 기준 크기 글 ("100MB", "1.5MB", "12KB") */
@@ -105,6 +106,10 @@ export function syncErrorKey(error: string): I18nKey {
   switch (error) {
     case 'login':
       return 'sync.err.login';
+    case 'feature_off':
+      return 'sync.problem.feature';
+    case 'update_required':
+      return 'sync.problem.update';
     case 'secure':
       return 'sync.err.secure';
     case 'offline':

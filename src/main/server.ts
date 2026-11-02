@@ -2,7 +2,7 @@
 // 브라우저 열기, 몇 분마다 맞추기, 장부가 바뀌면 대기열에 넣기, 백업 되살리기 표시.
 // 서버 주소(server-url.ts)가 비면 서버 기능이 모두 꺼진다: 칸이 숨고 어떤 요청도 나가지 않는다.
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -477,6 +477,11 @@ export function createServer(o: {
     clipboard.writeText(text);
     return true;
   });
+  // 복구 코드가 화면에 있는 동안 설정 창을 캡처와 화면 공유에서 가린다
+  ipcMain.on(SYNC.protect, (e, on: unknown) => {
+    const w = o.target();
+    if (ok(e) && typeof on === 'boolean' && w && !w.isDestroyed()) w.setContentProtection(on);
+  });
   ipcMain.handle(SYNC.saveCode, async (e, code: unknown) => {
     const text = ok(e) ? codeText(code) : null;
     if (!text) return { ok: false };
@@ -494,6 +499,8 @@ export function createServer(o: {
         encoding: 'utf8',
         mode: 0o600,
       });
+      // 이미 있던 파일을 덮어쓰면 mode 가 적용되지 않으니 권한을 다시 건다
+      chmodSync(r.filePath, 0o600);
       return { ok: true };
     } catch (err) {
       o.log('server', '복구 코드 파일 저장 실패', String(err));

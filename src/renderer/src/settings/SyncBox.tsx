@@ -24,6 +24,8 @@ type Why = 'created' | 'new' | 'rotate' | 'kept';
 interface Reveal {
   code: string;
   why: Why;
+  /** 코드를 받은 때의 서버 계정 코드 (계정이 바뀌거나 로그아웃하면 버린다) */
+  acct: string | null;
 }
 
 /**
@@ -49,18 +51,37 @@ export function SyncBox() {
   const [near, flash, clearNear] = useNear();
   // "방금 맞췄어"가 시간이 가면 "몇 시에 맞춤"으로 바뀌게 가끔 다시 그린다
   const [, tick] = useState(0);
+  // 설정 창이 열려 있는 동안 30초마다 기능 키와 상태를 다시 묻는다 (창이 닫히면 이 칸도 사라져 멈춘다)
   useEffect(() => {
-    const id = setInterval(() => tick((n) => n + 1), 30_000);
+    const id = setInterval(() => {
+      tick((n) => n + 1);
+      void server()
+        ?.status()
+        .catch(() => undefined);
+    }, 30_000);
     return () => clearInterval(id);
   }, []);
 
-  const hold = (r: Reveal | null) => {
+  const hold = (next: Omit<Reveal, 'acct'> | null) => {
+    const r = next && { ...next, acct: s?.code ?? null };
     pending = r;
     // 코드 칸에서 남긴 "복사했어" 같은 줄이 닫은 뒤 아래 칸에 남지 않게
     if (!r) clearNear();
     setReveal(r);
     setAcked(false);
   };
+
+  // 코드를 들고 있는 동안 설정 창을 화면 캡처에서 가린다
+  useEffect(() => {
+    const sync = server()?.sync;
+    if (!reveal || !sync) return;
+    sync.protect(true);
+    return () => sync.protect(false);
+  }, [reveal]);
+  // 계정이 바뀌거나 로그아웃하면 들고 있던 코드를 버린다
+  useEffect(() => {
+    if (reveal && s && (!s.signedIn || s.code !== reveal.acct)) hold(null);
+  });
 
   const b = server()?.sync;
   if (!syncShown(s) || !s?.sync || !b) return null;

@@ -158,3 +158,15 @@ test('화면이 쓰는 모든 동기화 말이 ko, en 에 있고 "모드" 와 �
   assert.equal(ko['sync.need.bad'], '코드가 맞지 않아.');
   assert.equal(ko['note.conflictCopy'], '충돌 사본');
 });
+
+test('기능 키를 아직 못 받았으면(null) 켜 둔 기기도 "쓸 수 없음" 이 아니라 평소 모양이다', () => {
+  const s = status({ features: null, sync: view({ phase: 'on' }) });
+  assert.equal(syncUnavailable(s), false);
+  assert.equal(syncShown(s), true, '켜 둔 기기는 모를 때도 보인다');
+  assert.equal(syncShown(status({ features: null })), false, '꺼 둔 기기는 모르면 숨김');
+});
+
+test('서버가 준 feature_off, update_required 는 각자 말로', () => {
+  assert.equal(syncErrorKey('feature_off'), 'sync.problem.feature');
+  assert.equal(syncErrorKey('update_required'), 'sync.problem.update');
+});

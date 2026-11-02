@@ -68,6 +68,9 @@ function fakeServer() {
     backupFull: false,
     /** 기능 키 coin_reset (#102) */
     coinReset: false,
+    /** 기능 키 읽기가 요청 한도에 걸렸다 (retry_after 초). 호출 수 */
+    featuresLimited: undefined as number | undefined,
+    featureCalls: 0,
     /** 기능 키 calendar_link_hint 와 구글 일정 연결 표시 (#115): 이 기기가 올린 값, 다른 기기에서 연결한 수 */
     calendarHint: true,
     calendarHere: false,
@@ -94,7 +97,10 @@ function fakeServer() {
     const body = init.body && json ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
     const auth = (init.headers as Record<string, string>).authorization?.slice(7);
     if (u.pathname === '/v1/features') {
+      s.featureCalls++;
       if (s.down) throw new TypeError('fetch failed');
+      if (s.featuresLimited !== undefined)
+        return reply(429, { error: 'rate_limited', retry_after: s.featuresLimited });
       return reply(200, {
         features: { coin_reset: s.coinReset, kakao_login: false, calendar_link_hint: s.calendarHint },
       });
@@ -1541,4 +1547,25 @@ test('동기화: 상태(status().sync)와 계정 코드가 실린다, 엔진이 
   assert.equal(x.core.accountCode(), code);
   const y = setup({ coins: 10 });
   assert.ok(!('sync' in y.core.status()));
+});
+
+test('기능 키 읽기가 429 면 서버가 알려 준 초만큼 쉬고 옛 값을 둔다', async () => {
+  const x = await setup();
+  await x.core.setAge('adult');
+  await x.core.refreshProviders(true);
+  assert.equal(x.core.status().features?.calendar_link_hint, true);
+  x.server.calendarHint = false;
+  x.server.featuresLimited = 90;
+  const n = x.server.featureCalls;
+  await x.core.refreshProviders(true);
+  assert.equal(x.server.featureCalls, n + 1);
+  assert.equal(x.core.status().features?.calendar_link_hint, true, '옛 값 유지');
+  x.server.featuresLimited = undefined;
+  x.tick(60_000);
+  await x.core.refreshProviders(true);
+  assert.equal(x.server.featureCalls, n + 1, '90초 안에는 묻지 않는다');
+  x.tick(31_000);
+  await x.core.refreshProviders(true);
+  assert.equal(x.server.featureCalls, n + 2);
+  assert.equal(x.core.status().features?.calendar_link_hint, false, '쉬고 나면 새 값');
 });

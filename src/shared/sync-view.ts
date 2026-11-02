@@ -43,6 +43,7 @@ export const SYNC = {
   disable: 'sync:disable',
   copyCode: 'sync:copy-code',
   saveCode: 'sync:save-code',
+  protect: 'sync:protect',
 } as const;
 
 /**
@@ -70,4 +71,6 @@ export interface SyncBridge {
   copyCode(code: string): Promise<boolean>;
   /** 복구 코드를 글 파일로 저장 (저장 대화상자) */
   saveCode(code: string): Promise<SyncSaveReply>;
+  /** 복구 코드가 보이는 동안 설정 창을 화면 캡처에서 가린다 (끝나면 false) */
+  protect(on: boolean): void;
 }
