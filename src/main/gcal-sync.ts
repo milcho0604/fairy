@@ -2,6 +2,7 @@
 // 보낼 것은 저장 파일에서 고르고(GcalStore.pending), 일정마다 다시 하기 간격(GcalBackoff)을 지킨다.
 import { type GcalBackoff, type GcalProblem, isGoogleId, toGooglePatch } from '../shared/gcal.ts';
 import type { GcalOp, GcalStore } from '../shared/gcal-store.ts';
+import { googleIdFromUid } from '../shared/sync-item.ts';
 import type { ApiResult } from './gcal-auth.ts';
 
 /** 연결이 끝났다 (invalid_grant). 보내기를 멈춘다 */
@@ -65,7 +66,10 @@ export async function applyOp(
       return 'again';
     } else return outcomeOf(r.kind);
   }
-  const id = op.googleId && isGoogleId(op.googleId) ? op.googleId : d.newId();
+  // 새 일정의 구글 id 는 일정 uid 에서 정한다: 동기화한 다른 기기가 같은 일정을 보내도 같은 id 라 409 를 받아 고치기로 바뀐다.
+  // 이미 구글 id 가 있는 일정은 그대로
+  const derivedId = op.uid ? googleIdFromUid(op.uid) : undefined;
+  const id = op.googleId && isGoogleId(op.googleId) ? op.googleId : (derivedId ?? d.newId());
   const fresh = !op.confirmed || id !== op.googleId;
   // 넣기 전에 id 와 캘린더를 적어 둔다 (대답을 못 받고 꺼져도 다음에 같은 id 로 보내 겹치지 않는다)
   if (fresh) {
@@ -83,7 +87,9 @@ export async function applyOp(
     return 'ok';
   }
   if (r.kind === 'notFound') {
-    d.store.forget(op.eventId);
+    // uid 에서 정한 id 로 넣었다가 409 (지운 일정의 id) 뒤 고치기도 404 면 같은 id 로 맴돌지 않게 무작위 새 id 로 바꾼다
+    if (id === derivedId) d.store.assignId(op.eventId, d.newId(), op.calendarId);
+    else d.store.forget(op.eventId);
     return 'again';
   }
   return outcomeOf(r.kind);

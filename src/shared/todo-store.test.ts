@@ -339,3 +339,25 @@ test('반복 할 일: 다음 회차를 끝낸 뒤 첫 회차를 되돌렸다 다
   store.complete(a.id, T0 + 3000);
   assert.ok(store.list(T0 + 4000).open.filter((x) => x.title === '물').length <= openBefore);
 });
+
+test('coin_paid 가 1 인 할 일은 다시 끝내도 코인을 주지 않는다 (다른 기기에서 받은 완료를 되돌리고 다시 끝냄)', () => {
+  const { db, store } = fresh();
+  const a = store.add({ title: '다른 기기에서 끝난 일' }, T0);
+  // 다른 기기가 코인을 받고 끝냈다고 알려 온 상태 (받은 완료는 coins 0, coin_paid 1)
+  db.prepare('update todo set done_at = ?, coins = 0, coin_paid = 1 where id = ?').run(T0, a.id);
+  assert.equal(store.undo(a.id, T0 + 1), 0, '이 기기는 받은 코인이 없어 환불도 없다');
+  assert.equal(store.complete(a.id, T0 + 2), 0, '다시 끝내도 코인 0');
+  assert.equal(store.balance(), 0);
+  assert.equal(Number((db.prepare('select count(*) n from coin_log').get() as { n: number }).n), 0);
+});
+
+test('coin_paid 가 0 이면 끝낼 때 코인을 받고 1 이 된다, 환불로 되돌리면 0 이라 다시 받는다', () => {
+  const { db, store } = fresh();
+  const a = store.add({ title: '내가 끝낸 일' }, T0);
+  assert.equal(store.complete(a.id, T0), COIN.todo);
+  assert.equal(Number((db.prepare('select coin_paid p from todo').get() as { p: number }).p), 1);
+  assert.equal(store.undo(a.id, T0 + 1), COIN.todo);
+  assert.equal(Number((db.prepare('select coin_paid p from todo').get() as { p: number }).p), 0);
+  assert.equal(store.complete(a.id, T0 + 2), COIN.todo, '환불했으니 다시 끝내면 받는다');
+  assert.equal(store.balance(), COIN.todo);
+});

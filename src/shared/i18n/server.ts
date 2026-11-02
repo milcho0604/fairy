@@ -79,6 +79,8 @@ export const ko = {
   'server.removeFailed': '지우지 못했어. 서버에 닿으면 다시 해 줘.',
   'server.reverted': '다른 기기에서 먼저 코인을 써서 {what} 사기를 되돌렸어. 코인은 돌려받았어.',
   'server.coinsLowered': '서버 기록에 맞춰 코인이 {n} 줄었어.',
+  // 기기 간 동기화: 같은 메모를 두 기기에서 고쳐 합치지 못했을 때 진 쪽 글로 만드는 사본의 제목
+  'sync.conflictCopy': '{title} (충돌 사본, {device}, {date})',
   'server.reverted.food': '먹이',
   'server.reverted.customFood': '먹이 만들기',
   'server.page.okTitle': '로그인했어',
@@ -266,6 +268,7 @@ export const en: Translation<typeof ko> = {
   'server.reverted':
     'Coins were spent first on another device, so buying {what} was undone. Your coins are back.',
   'server.coinsLowered': 'Your coins went down by {n} to match the server record.',
+  'sync.conflictCopy': '{title} (conflict copy, {device}, {date})',
   'server.reverted.food': 'food',
   'server.reverted.customFood': 'custom food',
   'server.page.okTitle': 'Signed in',

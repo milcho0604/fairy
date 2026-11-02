@@ -5,6 +5,7 @@ import { type Db, migrate } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
 import { GcalBackoff } from '../shared/gcal.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
+import { googleIdFromUid } from '../shared/sync-item.ts';
 import { type ApiResult, classifyApi } from './gcal-auth.ts';
 import { type GcalApi, GcalLost, reasonOf, syncPass } from './gcal-sync.ts';
 
@@ -86,6 +87,10 @@ function fakeGoogle() {
   return { cals, calls, forced, api, res };
 }
 
+/** 일정의 uid 에서 정한 구글 id (새 일정은 이 id 로 간다, 기획서 6절) */
+const gid = (db: Db, eventId: number): string =>
+  googleIdFromUid((db.prepare('select uid from event where id = ?').get(eventId) as { uid: string }).uid);
+
 function setup() {
   const db = new DatabaseSync(':memory:') as unknown as Db;
   migrate(db);
@@ -119,8 +124,9 @@ function setup() {
 }
 
 test('넣고, 고치고, 지우기가 구글로 간다. 안 바뀌면 다시 안 부른다', async () => {
-  const { events, g, pass, store } = setup();
+  const { db, events, g, pass, store } = setup();
   const e = events.add({ title: '회의', startAt: NOW + 2 * HOUR, reminds: [10, 60] }, NOW);
+  const id = gid(db, e.id);
   const r1 = await pass();
   assert.deepEqual(r1, {
     pending: 0,
@@ -131,7 +137,7 @@ test('넣고, 고치고, 지우기가 구글로 간다. 안 바뀌면 다시 안
     rejected: [],
     accepted: [e.id],
   });
-  const sent = g.cals.get('primary')?.get('jjk00001');
+  const sent = g.cals.get('primary')?.get(id);
   assert.equal(sent?.summary, '회의');
   assert.deepEqual(sent?.reminders, {
     useDefault: false,
@@ -140,7 +146,7 @@ test('넣고, 고치고, 지우기가 구글로 간다. 안 바뀌면 다시 안
       { method: 'popup', minutes: 60 },
     ],
   });
-  assert.ok(store.sentUids().has('jjk00001@google.com'));
+  assert.ok(store.sentUids().has(`${id}@google.com`));
 
   g.calls.length = 0;
   assert.equal((await pass()).sent, 0);
@@ -148,12 +154,12 @@ test('넣고, 고치고, 지우기가 구글로 간다. 안 바뀌면 다시 안
 
   events.update(e.id, { title: '회의 (3층)' }, NOW);
   await pass();
-  assert.deepEqual(g.calls, ['PATCH /calendars/primary/events/jjk00001']);
-  assert.equal(g.cals.get('primary')?.get('jjk00001')?.summary, '회의 (3층)');
+  assert.deepEqual(g.calls, [`PATCH /calendars/primary/events/${id}`]);
+  assert.equal(g.cals.get('primary')?.get(id)?.summary, '회의 (3층)');
 
   events.remove(e.id, NOW);
   await pass();
-  assert.equal(g.cals.get('primary')?.get('jjk00001')?.status, 'cancelled');
+  assert.equal(g.cals.get('primary')?.get(id)?.status, 'cancelled');
   g.calls.length = 0;
   await pass();
   assert.deepEqual(g.calls, []);
@@ -161,12 +167,13 @@ test('넣고, 고치고, 지우기가 구글로 간다. 안 바뀌면 다시 안
   // 되돌리기: 같은 id 를 고쳐 되살린다
   events.restore(e.id);
   await pass();
-  assert.equal(g.cals.get('primary')?.get('jjk00001')?.status, 'confirmed');
+  assert.equal(g.cals.get('primary')?.get(id)?.status, 'confirmed');
 });
 
 test('넣기 대답을 못 받았어도(끊김) 다시 보낼 때 같은 id 라 겹치지 않는다: 409 → 고치기', async () => {
-  const { events, g, pass, backoff, tick } = setup();
-  events.add({ title: '회의', startAt: NOW + HOUR }, NOW);
+  const { db, events, g, pass, backoff, tick } = setup();
+  const e = events.add({ title: '회의', startAt: NOW + HOUR }, NOW);
+  const id = gid(db, e.id);
   // 구글에는 들어갔는데 대답이 오다 끊겼다
   g.forced.push(new TypeError('fetch failed'));
   const r1 = await pass();
@@ -177,24 +184,26 @@ test('넣기 대답을 못 받았어도(끊김) 다시 보낼 때 같은 id 라 
   assert.equal((await pass()).waiting, 1);
   tick(30_000);
   // 끊긴 사이 구글에는 들어가 있었다. 이번에는 미리 적어 둔 같은 id 로 보낸다
-  g.cals.get('primary')?.set('jjk00001', { summary: '회의', id: 'jjk00001' });
+  g.cals.get('primary')?.set(id, { summary: '회의', id });
   g.calls.length = 0;
   const r2 = await pass();
   assert.equal(r2.sent, 1);
-  assert.deepEqual(g.calls, ['POST /calendars/primary/events', 'PATCH /calendars/primary/events/jjk00001']);
+  assert.deepEqual(g.calls, ['POST /calendars/primary/events', `PATCH /calendars/primary/events/${id}`]);
   assert.equal(g.cals.get('primary')?.size, 1);
 });
 
-test('구글에서 지운 일정을 고치면(404) 새 id 로 다시 넣는다', async () => {
-  const { events, g, pass } = setup();
+test('구글에서 지운 일정을 고치면(404) 무작위 새 id 로 다시 넣는다 (지운 일정의 id 는 구글에서 다시 못 쓸 수 있다)', async () => {
+  const { db, events, g, pass } = setup();
   const e = events.add({ title: '회의', startAt: NOW + HOUR }, NOW);
+  const id = gid(db, e.id);
   await pass();
-  g.cals.get('primary')?.delete('jjk00001');
+  g.cals.get('primary')?.delete(id);
   events.update(e.id, { title: '회의!' }, NOW);
   const r = await pass();
   assert.equal(r.again, true);
   await pass();
-  assert.equal(g.cals.get('primary')?.get('jjk00002')?.summary, '회의!');
+  assert.equal(g.cals.get('primary')?.get('jjk00001')?.summary, '회의!');
+  assert.equal(g.cals.get('primary')?.get(id), undefined);
 });
 
 test('구글이 받지 않는 일정은 길게 미루고 다음 것으로, 바쁘면(503) 거기서 멈춘다', async () => {
@@ -240,14 +249,14 @@ test('연결이 끝나면(GcalLost) 그대로 던진다. 가져온 일정은 보
 });
 
 test('종일 일정은 날짜로 간다', async () => {
-  const { events, g, pass } = setup();
+  const { db, events, g, pass } = setup();
   // 서울 10월 12일 0시
-  events.add(
+  const added = events.add(
     { title: '여행', startAt: Date.UTC(2026, 9, 11, 15), endAt: Date.UTC(2026, 9, 13, 15), allDay: true },
     NOW,
   );
   await pass();
-  const ev = g.cals.get('primary')?.get('jjk00001');
+  const ev = g.cals.get('primary')?.get(gid(db, added.id));
   assert.deepEqual([ev?.start, ev?.end], [{ date: '2026-10-12' }, { date: '2026-10-14' }]);
 });
 
@@ -287,20 +296,20 @@ test('옛 캘린더에 남은 일정을 지울 때 그 캘린더를 못 쓰면(4
 });
 
 test('종일과 시각 일정 사이를 바꿔도 구글이 받는다 (PATCH 가 옛 date, dateTime 칸을 지운다)', async () => {
-  const { events, g, pass } = setup();
+  const { db, events, g, pass } = setup();
   const e = events.add({ title: '워크숍', startAt: NOW + 2 * HOUR }, NOW);
   await pass();
   // 패널의 종일 단추와 같은 바꾸기: 시각 → 종일
   events.update(e.id, { startAt: NOW, endAt: null, allDay: true }, NOW);
   const r1 = await pass();
   assert.deepEqual([r1.sent, r1.rejected], [1, []]);
-  const allDay = g.cals.get('primary')?.get('jjk00001') as { start: Record<string, unknown> };
+  const allDay = g.cals.get('primary')?.get(gid(db, e.id)) as { start: Record<string, unknown> };
   assert.deepEqual(Object.keys(allDay.start), ['date']);
   // 종일 → 시각
   events.update(e.id, { startAt: NOW + 3 * HOUR, endAt: null, allDay: false }, NOW);
   const r2 = await pass();
   assert.deepEqual([r2.sent, r2.rejected], [1, []]);
-  const timed = g.cals.get('primary')?.get('jjk00001') as { start: Record<string, unknown> };
+  const timed = g.cals.get('primary')?.get(gid(db, e.id)) as { start: Record<string, unknown> };
   assert.deepEqual(Object.keys(timed.start).sort(), ['dateTime', 'timeZone']);
 });
 
@@ -333,4 +342,57 @@ test('까닭 이름: 모양이 이상하면 - 로', () => {
   assert.equal(reasonOf({ error: { errors: [{ reason: 'a b <script>' }] } }), '-');
   assert.equal(reasonOf(undefined), '-');
   assert.equal(reasonOf('x'), '-');
+});
+
+test('동기화한 두 기기가 같은 새 일정을 보내면 같은 구글 id 가 된다: 두 번째 기기는 409 를 받아 고치기로 바뀐다', async () => {
+  // 두 기기가 같은 uid 를 가진 일정을 따로 구글에 보낸다 (다른 기기 구글 일정 id 기록은 맞추지 않는다)
+  const a = setup();
+  const b = setup();
+  const ea = a.events.add({ title: '회의', startAt: NOW + HOUR }, NOW);
+  const uid = (a.db.prepare('select uid from event where id = ?').get(ea.id) as { uid: string }).uid;
+  const eb = b.events.add({ title: '회의 (고침)', startAt: NOW + HOUR }, NOW);
+  b.db.prepare('update event set uid = ? where id = ?').run(uid, eb.id);
+  const id = googleIdFromUid(uid);
+  assert.match(id, /^jjk[0-9a-v]{26}$/);
+  // 한 구글 캘린더를 두 기기가 같이 쓴다
+  b.g.cals.set('primary', a.g.cals.get('primary') as Map<string, Record<string, unknown>>);
+  await a.pass();
+  assert.equal(a.g.cals.get('primary')?.size, 1);
+  b.g.calls.length = 0;
+  const r = await b.pass();
+  assert.equal(r.sent, 1);
+  assert.deepEqual(b.g.calls, ['POST /calendars/primary/events', `PATCH /calendars/primary/events/${id}`]);
+  assert.equal(a.g.cals.get('primary')?.size, 1, '일정이 둘로 늘지 않았다');
+  assert.equal(a.g.cals.get('primary')?.get(id)?.summary, '회의 (고침)');
+});
+
+test('uid 에서 정한 id 를 쓴 뒤 고치기도 404 면 같은 id 로 맴돌지 않고 무작위 새 id 로 넣는다', async () => {
+  const { db, events, g, pass } = setup();
+  const e = events.add({ title: '회의', startAt: NOW + HOUR }, NOW);
+  const id = gid(db, e.id);
+  // 구글에서 지워진 일정의 id: 넣으면 409, 고치려 하면 404
+  g.forced.push(g.res(409, {}), g.res(404, {}));
+  const r1 = await pass();
+  assert.equal(r1.again, true);
+  assert.notEqual(
+    (db.prepare('select google_id from event where id = ?').get(e.id) as { google_id: string }).google_id,
+    id,
+  );
+  const r2 = await pass();
+  assert.equal(r2.sent, 1);
+  assert.equal(g.cals.get('primary')?.size, 1);
+  assert.equal(g.cals.get('primary')?.get(id), undefined);
+});
+
+test('24판 앞의 행처럼 uid 가 없으면 예전처럼 무작위 id 를 쓴다, 이미 구글 id 가 있는 일정은 그대로', async () => {
+  const { db, events, g, pass } = setup();
+  const e = events.add({ title: '옛 일정', startAt: NOW + HOUR }, NOW);
+  const old = events.add({ title: '이미 보낸 일정', startAt: NOW + 2 * HOUR }, NOW);
+  db.prepare("update event set google_id = 'jjkoldid00001' where id = ?").run(old.id);
+  db.prepare('update event set uid = null where id = ?').run(e.id);
+  g.cals.get('primary')?.set('jjkoldid00001', { id: 'jjkoldid00001', summary: '이미 보낸 일정' });
+  await pass();
+  assert.ok(g.cals.get('primary')?.get('jjk00001'), '무작위 id');
+  assert.equal(g.cals.get('primary')?.get('jjkoldid00001')?.summary, '이미 보낸 일정');
+  assert.equal(g.cals.get('primary')?.size, 2);
 });

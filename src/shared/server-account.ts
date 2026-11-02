@@ -2,6 +2,7 @@
 // 설정 창과 메인이 같이 쓰는 모양만 둔다. 토큰과 네트워크는 메인(main/server-core.ts)에만 있다.
 
 import type { AdminWebPlace } from './admin-web.ts';
+import type { SyncView } from './sync-view.ts';
 
 /** 나이 답 (생년월일은 받지 않는다). 만 14세 미만, 만 14세 이상 18세 미만, 만 18세 이상 */
 export const AGE_ANSWERS = ['under14', 'teen', 'adult'] as const;
@@ -144,6 +145,8 @@ export interface ServerStatus {
    * 로그인, 서버 모드, 기능 키 calendar_link_hint 가 켜졌을 때만. 이 기기에서 거절했으면 다시 묻지 않는다
    */
   calendarHint: boolean;
+  /** 기기 간 동기화 상태 (docs/sync-plan.md 7절). 엔진이 없으면(옛 시험 상태 등) 빠진다 */
+  sync?: SyncView;
 }
 
 /** 앱이 서버에 묻는 기능 키 (server/src/features.ts 와 같은 이름) */

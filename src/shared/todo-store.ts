@@ -231,6 +231,17 @@ const toTodo = (r: Row, reminds: number[] = [], steps: TodoStep[] = []): Todo =>
   ...(isRepeat(r.repeat) && r.repeat_anchor ? { repeatAnchor: r.repeat_anchor } : {}),
 });
 
+/**
+ * 새 할 일의 번호(SQL 식): 지금 있는 가장 큰 번호나 코인 장부가 기억하는 가장 큰 번호 다음.
+ * 영구 삭제로 맨 끝 할 일이 사라진 뒤 같은 번호가 다시 쓰이면 서버 맞추기의 ref(소금 + 번호)가 옛 할 일 것과 겹친다.
+ * 다른 기기에서 받은 할 일을 넣을 때도 같은 식을 쓴다 (main/sync/rows.ts)
+ */
+export const NEXT_TODO_ID = `max(
+  coalesce((select max(id) from todo), 0),
+  coalesce((select hi from todo_hi where id = 1), 0),
+  coalesce((select max(ref_id) from coin_log where reason in ('todo', 'early', 'undo')), 0)
+) + 1`;
+
 export class TodoStore {
   #db: Db;
   #day: (ms: number) => string;
@@ -363,12 +374,7 @@ export class TodoStore {
     const r = this.#db
       .prepare(
         `insert into todo (id, title, due, important, created_at, repeat, repeat_of, due_min${uid ? ', uid' : ''})
-         values (
-           max(
-             coalesce((select max(id) from todo), 0),
-             coalesce((select hi from todo_hi where id = 1), 0),
-             coalesce((select max(ref_id) from coin_log where reason in ('todo', 'early', 'undo')), 0)
-           ) + 1, ?, ?, ?, ?, ?, ?, ?${uid ? ', ?' : ''})`,
+         values (${NEXT_TODO_ID}, ?, ?, ?, ?, ?, ?, ?${uid ? ', ?' : ''})`,
       )
       .run(
         ...[
@@ -836,9 +842,15 @@ export class TodoStore {
       ).s,
     );
     let coins = 0;
+    // 이 할 일로 어느 기기에서든 코인을 받았으면 다시 끝내도 주지 않는다 (coin_paid: 다른 기기가 보낸 완료와 되돌린 뒤 다시 끝냄)
+    const paid =
+      Number(
+        (this.#db.prepare('select coin_paid from todo where id = ?').get(id) as { coin_paid: number })
+          .coin_paid,
+      ) === 1;
     this.#db.exec('begin');
     try {
-      if (rewardedToday < COIN.dailyTodoLimit) {
+      if (!paid && rewardedToday < COIN.dailyTodoLimit) {
         const early = t.due !== null && day <= t.due ? COIN.early : 0;
         let owed = Math.max(0, COIN.todo + early - Math.max(0, kept));
         const base = Math.min(owed, COIN.todo);
