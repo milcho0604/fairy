@@ -272,7 +272,15 @@ export type FlowPreview =
 
 /** 홈의 "지금 확인할 것" 한 줄 (서버가 계산하고 웹 홈과 앱 요약이 같이 쓴다) */
 export interface AdminTodo {
-  kind: 'reports' | 'budget' | 'ending_events' | 'ending_coupons' | 'backup' | 'backup_db' | 'backup_files';
+  kind:
+    | 'reports'
+    | 'budget'
+    | 'ending_events'
+    | 'ending_coupons'
+    | 'backup'
+    | 'backup_db'
+    | 'backup_files'
+    | 'inbox_seal';
   level: 'warn' | 'bad';
   /** 신고 건수, 끝나는 이벤트나 쿠폰 수, 예산과 백업은 쓴 비율(%) */
   n: number;
@@ -429,6 +437,8 @@ export interface AdminView {
   /** 최근 14일 일별 추이와 서버 백업 현황 (#152) */
   trend: TrendView;
   backup: BackupStatus;
+  /** 쪽지 글 암호화(INBOX_ENC_KEY)가 켜져 있다. false 면 새 쪽지 글이 평문으로 저장된다 */
+  inboxSeal?: boolean;
   /** 운영 기록 한 쪽. actorName 은 옛 기록에서 null (actor 를 그대로 보인다), targetName 은 대상이 계정일 때 */
   log: Array<{
     at: string;
@@ -1092,6 +1102,8 @@ export function todoOf(o: {
   backup?: Pick<BackupStatus, 'bytes' | 'maxBytes'>;
   /** 밖에서 도는 백업(덤프, 외장 디스크 사본)의 상태. 상태 파일이 없으면(unknown) 카드를 만들지 않는다 */
   external?: ExternalBackup;
+  /** 쪽지 글 암호화가 꺼져 있다 */
+  inboxSealOff?: boolean;
 }): AdminTodo[] {
   const out: AdminTodo[] = [];
   if (o.reports > 0) out.push({ kind: 'reports', level: 'warn', n: o.reports, place: 'reports' });
@@ -1138,6 +1150,7 @@ export function todoOf(o: {
         place: 'settings/backup',
       });
   }
+  if (o.inboxSealOff) out.push({ kind: 'inbox_seal', level: 'warn', n: 0, place: 'settings/backup' });
   return out;
 }
 
@@ -1157,6 +1170,8 @@ export function todoText(t: AdminTodo): string {
       return t.n < 0
         ? '서버 백업 상한이 0 이라 새 백업 올리기가 모두 막혀요'
         : `서버 백업이 상한의 ${t.n}%를 썼어요`;
+    case 'inbox_seal':
+      return '쪽지 암호화가 꺼져 있어요 (서버 설정의 INBOX_ENC_KEY 가 비었어요). 쪽지 글이 평문으로 저장돼요';
     case 'backup_db':
     case 'backup_files': {
       const what = t.kind === 'backup_db' ? '데이터베이스 덤프' : '백업 파일 외장 디스크 사본';
@@ -1186,7 +1201,7 @@ function homeSection(v: AdminView): string {
     : '<p class="empty">아직 운영 기록이 없어요</p>';
   return `<section><h2>지금 확인할 것</h2>${todo}</section>
 ${trendSection(v)}
-<section><h2>백업</h2>${backupGlance(v.backup)}</section>
+<section><h2>백업</h2>${backupGlance(v.backup)}${v.inboxSeal === false ? '<p class="hint">쪽지 암호화가 꺼져 있어요 (INBOX_ENC_KEY 가 비었어요). 새 쪽지 글이 평문으로 저장돼요.</p>' : ''}</section>
 <section><h2>사용량</h2>
 <dl class="stats">
 <div><dt>계정</dt><dd>${s.accounts}</dd></div>
@@ -1345,6 +1360,7 @@ ${row('파일', `${b.files}개 (${b.accounts}명)`)}
 ${row('총 크기', `${esc(bytesText(b.bytes))}${b.maxBytes === 0 ? ' / 상한 0 (모두 막힘)' : b.maxBytes ? ` / 상한 ${esc(bytesText(b.maxBytes))}` : ' (상한 없음)'}`)}
 ${row('상한 사용', b.maxBytes === 0 ? '0, 새 백업 올리기가 모두 막혀요 (507)' : used === null ? '알 수 없어요' : `${used}%`)}
 ${row('올리기 실패', '기록 없음 (서버가 실패를 남기지 않아요)')}
+${v.inboxSeal === undefined ? '' : row('쪽지 글 암호화', v.inboxSeal ? '켜짐' : '꺼짐 (INBOX_ENC_KEY 가 비었어요, 새 쪽지 글이 평문으로 저장돼요)')}
 </dl>
 <p class="hint">상한을 넘거나 상한이 0 이면 새 백업 올리기가 막혀요(507). 올린 지 1년 지난 계정의 백업은 서버가 지워요.</p>
 ${jobSection('db', b.external.db)}

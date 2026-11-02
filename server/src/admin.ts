@@ -74,7 +74,7 @@ import type { Config } from './config';
 import { Db } from './db';
 import { type FeatureKey, Features, isFeatureKey } from './features';
 import { EVENT_COLUMNS, type EventRow, Feeds, levelsOf } from './feeds';
-import { sendInbox } from './inbox';
+import { noteOut, noteSealOn, sendInbox } from './inbox';
 import {
   checkDoc,
   cleanText,
@@ -298,7 +298,7 @@ const TRAIL_SELECT = `SELECT i.id, i.kind, i.message, i.coins, i.chat_passes, i.
 const trailOf = (x: TrailRow): GrantTrail => ({
   id: x.id,
   kind: x.kind,
-  message: x.message,
+  message: noteOut(x.id, x.message),
   coins: x.coins,
   passes: x.chat_passes,
   fillTo: x.fill_to,
@@ -652,9 +652,11 @@ export class AdminService {
         now: Date.now(),
         backup: backup.enabled ? backup : undefined,
         external: backup.external,
+        inboxSealOff: !noteSealOn(),
       }),
       trend,
       backup,
+      inboxSeal: noteSealOn(),
       summary: {
         accounts: Number(sum.rows[0]?.accounts ?? 0),
         coins: Number(sum.rows[0]?.coins ?? 0),

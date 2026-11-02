@@ -74,6 +74,8 @@ services:
       # 서버 백업 (5단계). 비면 백업 경로만 503. 파일은 아래 fairy_backups 볼륨에 암호화해 둔다
       BACKUP_ENC_KEY: ${BACKUP_ENC_KEY:-}
       BACKUP_DIR: /data/backups
+      # 쪽지 글 칸 암호화 열쇠. 비면 평문으로 저장하고 운영자 홈에 경고
+      INBOX_ENC_KEY: ${INBOX_ENC_KEY:-}
       # 밖에서 도는 백업(덤프, 외장 디스크 사본)이 결과를 남기는 폴더. 읽기만 한다 (운영자 홈의 백업 현황)
       BACKUP_STATUS_DIR: /data/backup-status
       # 서버 백업 전체 상한 (GB, 비우면 80). 넘으면 새 올리기는 507
