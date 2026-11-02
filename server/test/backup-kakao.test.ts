@@ -723,6 +723,7 @@ describe('코인 초기화 기능 키와 서버 백업 전체 상한', () => {
       friend_calendar: false,
       friend_visit: false,
       friend_gift_passes: false,
+      sync: false,
     });
   });
 

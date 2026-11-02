@@ -343,6 +343,11 @@ export class Accounts {
       await c.query(`UPDATE ${table} SET account_id = $2 WHERE account_id = $1`, [from.id, into.id]);
     // 서버 백업은 남는 쪽으로 옮기고 두 계정 것 중 최근 2개만 (21절). 빠진 파일 이름은 dropped 로 돌려준다
     await c.query('UPDATE backup SET account_id = $2 WHERE account_id = $1', [from.id, into.id]);
+    // 동기화 사본은 남는 쪽 것만 둔다 (docs/sync-plan.md 5절). 닫히는 쪽 기기는 남는 쪽 복구 코드를 넣고 자기 항목을 새로 올린다 (닫는 계정 행은 지우지 않아 CASCADE 가 돌지 않으므로 여기서 지운다)
+    for (const table of ['sync_item', 'sync_key', 'sync_head'])
+      await c.query(`DELETE FROM ${table} WHERE account_id = $1`, [from.id]);
+    // 남는 쪽 기기들은 서버 사본이 바뀐 것을 epoch 로 알아 다시 맞춘다
+    await c.query('UPDATE sync_head SET epoch = epoch + 1 WHERE account_id = $1', [into.id]);
     // 계정 활동은 둘 중 늦은 쪽 (1년 정리 기준)
     await c.query(
       `UPDATE account SET last_active_at = GREATEST(last_active_at, (SELECT last_active_at FROM account WHERE id = $1))

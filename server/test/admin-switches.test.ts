@@ -51,6 +51,7 @@ const KEYS = [
   'friend_calendar',
   'friend_visit',
   'friend_gift_passes',
+  'sync',
 ];
 
 describe('기능 스위치 한 표', () => {
