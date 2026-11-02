@@ -335,6 +335,11 @@ const NoteRow = memo(function NoteRow({
       <button type="button" aria-current={current ? 'true' : undefined} onClick={() => onOpen(n.id)}>
         <span className="note-title" dir="auto">
           {n.source === 'ai' && <i className="tag">AI</i>}
+          {n.conflictCopy && (
+            <i className="tag conflict-copy" title={t('note.conflictCopy.hint')}>
+              {t('note.conflictCopy')}
+            </i>
+          )}
           {n.title}
         </span>
         <span className="note-meta">

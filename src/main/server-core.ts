@@ -847,6 +847,7 @@ export function createServerCore(d: ServerCoreDeps) {
   }
 
   /** 지금 쓸 수 있는 로그인 서비스를 서버에 묻는다 (#102, 기능 키에 따라 카카오가 들고 난다) */
+  let featuresRestUntil = 0;
   async function refreshProviders(force = false): Promise<void> {
     const t = token();
     if (!d.api || !allowed()) return;
@@ -858,9 +859,18 @@ export function createServerCore(d: ServerCoreDeps) {
       providers = r.data;
       providersAt = d.now();
     } else d.log('server', '로그인 서비스 목록을 못 받음', r.status, r.error);
-    const f = await d.api.features(t);
-    if (f.ok) features = f.data;
-    else d.log('server', '기능 키를 못 받음', f.status, f.error);
+    // 429 면 서버가 알려 준 만큼 쉬고 옛 값을 둔다 (모르면 1분)
+    if (d.now() >= featuresRestUntil) {
+      const f = await d.api.features(t);
+      if (f.ok) features = f.data;
+      else {
+        if (f.status === 429) {
+          const sec = Number(f.body.retry_after);
+          featuresRestUntil = d.now() + (Number.isFinite(sec) && sec > 0 ? Math.min(sec, 3600) : 60) * 1000;
+        }
+        d.log('server', '기능 키를 못 받음', f.status, f.error);
+      }
+    }
     // 바뀌었으면 설정 창에 바로 (맞추기 밖에서 불렸을 때: 설정 창을 열 때)
     if (JSON.stringify([providers, features]) !== before) changed();
   }

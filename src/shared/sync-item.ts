@@ -15,9 +15,8 @@ export interface SyncItem {
   f: Record<string, Json>;
   /** 칸마다 시각 (ms, 하이브리드 논리 시계) */
   c: Record<string, number>;
-  /** 보낸 기기의 번호와 이름 */
+  /** 보낸 기기의 번호 (이름은 싣지 않는다: 컴퓨터 이름에 실명이 들어 있을 수 있다) */
   dev: string;
-  name: string;
   /** 메모: 보낸 기기가 마지막으로 서버와 맞춘 본문의 지문 (없으면 처음 보내는 것) */
   bh?: string | null;
   /** 충돌 사본이면 원본 uid */
@@ -177,15 +176,12 @@ export const contentHash = (it: SyncItem): string =>
 export const conflictCopyUid = (origUid: string, loserT: number, loserHash: string): string =>
   derivedUid(`${origUid}:conflict:${loserT}:${loserHash}`);
 
-/** 충돌 사본의 제목 틀에 넣는 날짜 (기기마다 같게 UTC) */
-export const conflictDate = (t: number): string => new Date(t).toISOString().slice(0, 10);
-
 /** 충돌 사본 항목을 만든다. 모든 칸의 시각이 진 쪽 본문 시각이라 어느 기기가 만들어도 같고, 같으면 값 순서로 수렴한다 */
 export function conflictCopy(
   orig: SyncItem,
   copy: NonNullable<MergeResult['copy']>,
   title: string,
-  dev: { id: string; name: string },
+  dev: { id: string },
 ): SyncItem {
   const t = copy.t;
   const f: Record<string, Json> = {
@@ -205,7 +201,6 @@ export function conflictCopy(
     f,
     c,
     dev: dev.id,
-    name: dev.name,
     bh: null,
     copyOf: orig.uid,
   };

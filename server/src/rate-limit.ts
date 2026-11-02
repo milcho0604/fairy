@@ -20,6 +20,10 @@ export const LIMITS = {
   deviceAll: { max: 500, windowMs: 3_600_000 },
   /** 구글 로그인 시작, 돌아오기, 세션 바꾸기: 같은 곳에서 10분 30번 */
   loginByIp: { max: 30, windowMs: 600_000 },
+  /** 기능 키 읽기(GET /v1/features), 토큰이 있을 때: 계정마다 1분 120번 (설정 창이 30초마다 묻고, 회사나 학교 공유 IP 에서도 막히지 않게) */
+  featuresByAccount: { max: 120, windowMs: 60_000 },
+  /** 기능 키 읽기, 토큰이 없을 때: 같은 곳에서 10분 600번 (공유 IP 를 넉넉히 두되 무토큰 폭주는 막는다) */
+  featuresByIp: { max: 600, windowMs: 600_000 },
   /** 토큰을 든 요청: 계정마다 1분 120번 (맞추기는 몇 분에 한 번) */
   account: { max: 120, windowMs: 60_000 },
   /** AI 대화권 질문과 신고: 계정마다 1분 10번 (하루 상한은 따로 DB 로 센다) */
@@ -104,7 +108,16 @@ export class RateLimiter implements OnModuleDestroy {
   /** take 가 false 면 429 */
   check(key: string, limit: Limit): void {
     if (!this.take(key, limit))
-      throw new HttpException({ error: 'rate_limited' }, HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        { error: 'rate_limited', retry_after: this.retryAfter(key) },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+  }
+
+  /** 창이 풀릴 때까지 남은 초 (앱이 그만큼 쉬게). 모르면 60 */
+  retryAfter(key: string): number {
+    const w = this.#windows.get(key);
+    return w ? Math.max(1, Math.ceil((w.start + w.windowMs - this.now()) / 1000)) : 60;
   }
 
   sweep(): void {

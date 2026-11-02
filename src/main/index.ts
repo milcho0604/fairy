@@ -109,6 +109,7 @@ import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { watchSiteEvents } from './site-events.ts';
 import { onJsonTrouble, readJson, renameJson, writeJson } from './store.ts';
+import { copyNoteIds } from './sync/rows.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { testKeychainSwitches } from './test-keychain.ts';
 import { createTogether } from './together.ts';
@@ -1127,6 +1128,7 @@ ready
       store,
       doing,
       notes,
+      noteCopies: () => copyNoteIds(db),
       events,
       focus: () => planner.focus,
       focusUndoAvailable: () => planner.focusUndoAvailable(),

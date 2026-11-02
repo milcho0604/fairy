@@ -137,12 +137,7 @@ function clocksOf(db: Db, kind: SyncKind, uid: string, keys: string[]): Record<s
  * 이 기기의 항목 하나를 보낼 모양으로. 행이 없거나 추적하지 않는 일정이면 undefined.
  * 부모가 없는 단계도 undefined (보낼 수 없다)
  */
-export function readItem(
-  db: Db,
-  kind: SyncKind,
-  uid: string,
-  dev: { id: string; name: string },
-): SyncItem | undefined {
+export function readItem(db: Db, kind: SyncKind, uid: string, dev: { id: string }): SyncItem | undefined {
   const r = one(db, `select * from ${kind} where uid = ?`, uid);
   if (!r) return undefined;
   const id = Number(r.id);
@@ -235,7 +230,7 @@ export function readItem(
   }
   const c = clocksOf(db, kind, uid, Object.keys(f));
   if (kind === 'todo') c.auto_removed = c.deleted_at ?? 0;
-  return { kind, uid, f, c, dev: dev.id, name: dev.name };
+  return { kind, uid, f, c, dev: dev.id };
 }
 
 // ---- 쓰기: 항목을 표 행으로 ----
@@ -748,6 +743,20 @@ export function noteCopy(db: Db, uid: string, orig: string, now: number): void {
 export function copyOrigin(db: Db, uid: string): string | undefined {
   const r = one(db, 'select orig from sync_copy where uid = ?', uid);
   return r ? String(r.orig) : undefined;
+}
+
+/** 충돌 사본인 메모의 번호들 (메모 목록의 "충돌 사본" 표시). 동기화 표가 아직 없는 저장 파일이면 빈 집합 */
+export function copyNoteIds(db: Db): Set<number> {
+  try {
+    return new Set(
+      all(
+        db,
+        'select n.id as id from note n join sync_copy c on c.uid = n.uid where n.deleted_at is null',
+      ).map((r) => Number(r.id)),
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 /** 서버 사본이 바뀌었다(지움, 열쇠 바꿈, 계정 바뀜): 본 번호와 보류를 모두 버린다 */

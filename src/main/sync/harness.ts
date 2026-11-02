@@ -212,7 +212,6 @@ export function newDevice(
     },
     secure: () => o.secure !== false,
     now: () => clock.now,
-    deviceName: () => name,
     random: (n) => randomBytes(n),
     log: () => {},
     scrypt: { N: 1 << 10, r: 8, p: 1 },
@@ -268,7 +267,7 @@ export function snapshot(db: Db, withClock = false): string {
       db.prepare(`select uid from ${kind} where uid is not null order by uid`).all() as { uid: string }[]
     ).map((r) => r.uid);
     for (const uid of uids) {
-      const it = readItem(db, kind, uid, { id: '', name: '' });
+      const it = readItem(db, kind, uid, { id: '' });
       if (!it) continue;
       out.push(
         `${kind}:${uid}:${JSON.stringify(sortKeys(it.f))}${withClock ? JSON.stringify(sortKeys(it.c)) : ''}`,
