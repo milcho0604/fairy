@@ -2159,7 +2159,7 @@ export function logDetailKo(action: string, detail: unknown): string | null {
       const n = num('note');
       if (n === undefined) return null;
       const days = num('days');
-      return `쪽지 #${n}${d.batch === true ? ' (묶음 지급의 한 건)' : ''}: ${gift(num('coins'), num('chatPasses'))}${days ? `, 만료 ${days}일` : ''}${quote(str('message'))}`;
+      return `쪽지 #${n}${d.batch === true ? ' (묶음 지급의 한 건)' : ''}: ${gift(num('coins'), num('chatPasses'))}${days ? `, 만료 ${days}일` : ''}${num('messageChars') ? `, 글 ${num('messageChars')}자` : ''}`;
     }
     case 'grant.batch': {
       const people = num('recipients');

@@ -1302,7 +1302,13 @@ export class AdminService {
         log: [
           'note.send',
           `account:${a.id}`,
-          { note: Number(noteId), coins, chatPasses: passes, days, message: message || undefined },
+          {
+            note: Number(noteId),
+            coins,
+            chatPasses: passes,
+            days,
+            messageChars: message.length || undefined,
+          },
         ],
       };
     });
@@ -1360,7 +1366,7 @@ export class AdminService {
           coins,
           chatPasses: passes,
           days,
-          message: reason,
+          messageChars: reason.length,
           batch: true,
         });
       }

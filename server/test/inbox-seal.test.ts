@@ -115,6 +115,15 @@ describe('열쇠가 있을 때', () => {
     assert.equal(byId.get(y?.id as string), '둘째 글');
   });
 
+  test('운영 기록(note.send)에는 쪽지 글이 남지 않고 글자 수만 남는다', async () => {
+    const a = await newDevice('18+', '기록고양이');
+    assert.ok((await admin.act('/admin/notes', { account: a.code, message: '기록에 남으면 안 되는 글' })).ok);
+    const log = await (await import('./helpers')).client(() => h).lastLog('note.send');
+    assert.equal(log.detail.message, undefined);
+    assert.equal(log.detail.messageChars, '기록에 남으면 안 되는 글'.length);
+    assert.ok(!JSON.stringify(log.detail).includes('기록에'));
+  });
+
   test('글자 수 상한: 200자는 되고 201자는 운영자 화면이 거절한다', async () => {
     const a = await newDevice('18+', '길이고양이');
     assert.ok((await admin.act('/admin/notes', { account: a.code, message: '가'.repeat(200) })).ok);
