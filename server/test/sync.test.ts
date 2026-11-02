@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
+import { Pool } from 'pg';
 import { Accounts } from '../src/accounts';
 import { Features } from '../src/features';
 import { LIMITS } from '../src/rate-limit';
@@ -41,7 +42,7 @@ const uid = () => randomBytes(16).toString('hex');
 const KEY = { salt: b64(randomBytes(16)), params: { N: 16384, r: 8, p: 1 }, wrapped: b64(randomBytes(60)) };
 const withKey = async (): Promise<User> => {
   const u = await user();
-  const r = await call(u, 'PUT', '/v1/sync/key', KEY);
+  const r = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch });
   assert.equal(r.status, 200, r.text);
   u.epoch = r.body.epoch;
   return u;
@@ -104,13 +105,18 @@ describe('열쇠', () => {
     const none = await call(u, 'GET', '/v1/sync/key');
     assert.equal(none.status, 404);
     assert.deepEqual(none.body, { error: 'none' });
-    const put = await call(u, 'PUT', '/v1/sync/key', KEY);
+    const put = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch });
     assert.equal(put.status, 200);
     assert.deepEqual({ ...put.body, epoch: 0 }, { epoch: 0, gen: 1, key_rev: 1, created: true });
     assert.ok(put.body.epoch >= 1);
+    u.epoch = put.body.epoch;
     const got = await call(u, 'GET', '/v1/sync/key');
     assert.deepEqual(got.body, { ...KEY, gen: 1, key_rev: 1, epoch: put.body.epoch });
-    const again = await call(u, 'PUT', '/v1/sync/key', { ...KEY, wrapped: b64(randomBytes(60)) });
+    const again = await call(u, 'PUT', '/v1/sync/key', {
+      ...KEY,
+      epoch: u.epoch,
+      wrapped: b64(randomBytes(60)),
+    });
     assert.equal(again.status, 409);
     assert.deepEqual(again.body, { error: 'key_exists', epoch: put.body.epoch, gen: 1, key_rev: 1 });
     assert.deepEqual(
@@ -128,7 +134,7 @@ describe('열쇠', () => {
       params: { N: 32768, r: 8, p: 1 },
       wrapped: b64(randomBytes(60)),
     };
-    const r = await call(u, 'PUT', '/v1/sync/key', { ...next, gen: 1, key_rev: 1 });
+    const r = await call(u, 'PUT', '/v1/sync/key', { ...next, epoch: u.epoch, gen: 1, key_rev: 1 });
     assert.equal(r.status, 200);
     assert.deepEqual(r.body, { epoch: u.epoch, gen: 1, key_rev: 2, created: false });
     assert.deepEqual((await call(u, 'GET', '/v1/sync/key')).body, {
@@ -137,7 +143,7 @@ describe('열쇠', () => {
       key_rev: 2,
       epoch: u.epoch,
     });
-    const stale = await call(u, 'PUT', '/v1/sync/key', { ...KEY, gen: 1, key_rev: 1 });
+    const stale = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch, gen: 1, key_rev: 1 });
     assert.equal(stale.status, 409);
     assert.deepEqual(stale.body, { error: 'key_rev', epoch: u.epoch, gen: 1, key_rev: 2 });
     assert.equal(await rows(u.id), 1, '항목은 지우지 않는다');
@@ -147,7 +153,13 @@ describe('열쇠', () => {
     const u = await withKey();
     const rs = await Promise.all(
       Array.from({ length: 5 }, () =>
-        call(u, 'PUT', '/v1/sync/key', { ...KEY, wrapped: b64(randomBytes(60)), gen: 1, key_rev: 1 }),
+        call(u, 'PUT', '/v1/sync/key', {
+          ...KEY,
+          epoch: u.epoch,
+          wrapped: b64(randomBytes(60)),
+          gen: 1,
+          key_rev: 1,
+        }),
       ),
     );
     assert.equal(rs.filter((r) => r.status === 200).length, 1);
@@ -158,10 +170,10 @@ describe('열쇠', () => {
   test('열쇠 바꾸기(gen+1): 항목을 모두 지우고 epoch+1, key_rev+1. gen 은 한 번에 1만 오른다', async () => {
     const u = await withKey();
     await push(u, [item(uid(), 0, 'old'), item(uid(), 0, 'old')]);
-    const skip = await call(u, 'PUT', '/v1/sync/key', { ...KEY, gen: 3, key_rev: 1 });
+    const skip = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch, gen: 3, key_rev: 1 });
     assert.equal(skip.status, 400);
     assert.equal(await rows(u.id), 2);
-    const r = await call(u, 'PUT', '/v1/sync/key', { ...KEY, gen: 2, key_rev: 1 });
+    const r = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch, gen: 2, key_rev: 1 });
     assert.equal(r.status, 200);
     assert.deepEqual(r.body, { epoch: u.epoch + 1, gen: 2, key_rev: 2, created: false });
     assert.equal(await rows(u.id), 0);
@@ -178,18 +190,18 @@ describe('열쇠', () => {
   test('scrypt 값은 N, r, p 만 받는다 (다른 칸, 다른 최상위 칸은 400), 모양이 틀려도 400', async () => {
     const u = await user();
     for (const bad of [
-      { ...KEY, salt: 'zz' },
-      { ...KEY, salt: b64('abc') },
-      { ...KEY, wrapped: '' },
-      { ...KEY, params: 'N=1' },
-      { ...KEY, params: { N: 16384, r: 8, p: 1, key: b64(randomBytes(32)) } },
-      { ...KEY, params: { N: 16384, r: 8 } },
-      { ...KEY, params: { N: 1000, r: 8, p: 1 } },
-      { ...KEY, params: { N: '16384', r: 8, p: 1 } },
-      { ...KEY, recovery: 'ABCDE' },
-      { ...KEY, derived: b64(randomBytes(32)) },
-      { ...KEY, key_rev: 'one' },
-      { ...KEY, gen: 2 },
+      { ...KEY, epoch: u.epoch, salt: 'zz' },
+      { ...KEY, epoch: u.epoch, salt: b64('abc') },
+      { ...KEY, epoch: u.epoch, wrapped: '' },
+      { ...KEY, epoch: u.epoch, params: 'N=1' },
+      { ...KEY, epoch: u.epoch, params: { N: 16384, r: 8, p: 1, key: b64(randomBytes(32)) } },
+      { ...KEY, epoch: u.epoch, params: { N: 16384, r: 8 } },
+      { ...KEY, epoch: u.epoch, params: { N: 1000, r: 8, p: 1 } },
+      { ...KEY, epoch: u.epoch, params: { N: '16384', r: 8, p: 1 } },
+      { ...KEY, epoch: u.epoch, recovery: 'ABCDE' },
+      { ...KEY, epoch: u.epoch, derived: b64(randomBytes(32)) },
+      { ...KEY, epoch: u.epoch, key_rev: 'one' },
+      { ...KEY, epoch: u.epoch, gen: 2 },
     ])
       assert.equal((await call(u, 'PUT', '/v1/sync/key', bad)).status, 400, JSON.stringify(bad).slice(0, 80));
     assert.equal((await call(u, 'GET', '/v1/sync/key')).status, 404);
@@ -242,8 +254,9 @@ describe('epoch', () => {
     assert.equal(c.status, 409);
     assert.deepEqual(c.body, { error: 'epoch', epoch: old + 1, gen: 0 });
     // 다시 켜면 같은 head 줄을 쓰므로 epoch 는 그대로 이어진다
-    const again = await call(u, 'PUT', '/v1/sync/key', KEY);
+    const again = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: old + 1 });
     assert.equal(again.body.epoch, old + 1);
+    assert.equal(again.body.key_rev, 2, 'key_rev 는 지워도 되돌아가지 않는다');
   });
 });
 
@@ -508,7 +521,7 @@ describe('검사와 상한', () => {
       epoch: 0,
       gen: 0,
     });
-    u.epoch = (await call(u, 'PUT', '/v1/sync/key', KEY)).body.epoch;
+    u.epoch = (await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch })).body.epoch;
     await push(u, [item(uid(), 0, 'abcd'), item(uid(), 0, 'ef')]);
     const s = await status(u);
     assert.deepEqual([s.on, s.items, s.bytes, s.soon], [true, 2, 6, false]);
@@ -551,7 +564,7 @@ describe('지우기, 탈퇴, 합치기, 1년 정리', () => {
     assert.deepEqual((await push(u, [item(uid(), 0)])).body, { error: 'no_key' });
     assert.equal(await rows(other.id), 1);
     // 다시 켤 수 있다
-    assert.equal((await call(u, 'PUT', '/v1/sync/key', KEY)).status, 200);
+    assert.equal((await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch })).status, 200);
     assert.equal((await push(u, [item(uid(), 0)])).status, 200);
   });
 
@@ -659,5 +672,158 @@ describe('지우기, 탈퇴, 합치기, 1년 정리', () => {
     assert.equal((await push(u, [item(gone, 4, 'again')])).body.results[0].ok, true);
     st = await status(u);
     assert.deepEqual([st.items, st.bytes], [3, 5 + 4 + 5]);
+  });
+});
+
+describe('검토에서 나온 구멍', () => {
+  test('동시 push 20개(서로 다른 uid): rev 중복 없이 head 와 셈이 맞는다', async () => {
+    const u = await withKey();
+    const rs = await Promise.all(Array.from({ length: 20 }, (_, i) => push(u, [item(`c${i}`, 0)])));
+    assert.ok(rs.every((r) => r.status === 200));
+    const head = (await h.pool.query('SELECT rev, items, bytes FROM sync_head WHERE account_id = $1', [u.id]))
+      .rows[0];
+    const d = (
+      await h.pool.query(
+        'SELECT count(DISTINCT rev)::int n, max(rev)::int m FROM sync_item WHERE account_id = $1',
+        [u.id],
+      )
+    ).rows[0];
+    assert.deepEqual([Number(head.rev), head.items, Number(head.bytes), d.n, d.m], [20, 20, 20, 20, 20]);
+  });
+
+  test('PUT key 는 epoch 가 필수이고 다르면 409. DELETE 뒤 옛 기기의 key_rev 로는 덮어쓰지 못한다 (ABA)', async () => {
+    const u = await withKey();
+    assert.equal((await call(u, 'PUT', '/v1/sync/key', { ...KEY, key_rev: 1 })).status, 400, 'epoch 없음');
+    const wrong = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch + 1, key_rev: 1 });
+    assert.equal(wrong.status, 409);
+    assert.deepEqual(wrong.body, { error: 'epoch', epoch: u.epoch, gen: 1 });
+    assert.equal(
+      (await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: u.epoch, key_rev: 1 })).body.key_rev,
+      2,
+    );
+    const old = u.epoch;
+    assert.equal((await call(u, 'DELETE', '/v1/sync')).status, 200);
+    // 기기 B 가 새 열쇠로 다시 켠다
+    const fresh = await call(u, 'PUT', '/v1/sync/key', { ...KEY, epoch: old + 1 });
+    assert.equal(fresh.status, 200);
+    assert.equal(fresh.body.key_rev, 3, 'key_rev 는 되돌아가지 않고 이어진다');
+    // 기기 A: 옛 key_rev(1, 2)와 옛 epoch 모두 막힌다
+    for (const body of [
+      { ...KEY, epoch: old, key_rev: 2 },
+      { ...KEY, epoch: old + 1, key_rev: 1 },
+      { ...KEY, epoch: old + 1, key_rev: 2 },
+    ]) {
+      const stale = await call(u, 'PUT', '/v1/sync/key', body);
+      assert.equal(stale.status, 409, stale.text);
+    }
+    assert.equal(
+      (await call(u, 'GET', '/v1/sync/key')).body.wrapped,
+      fresh.body && (await call(u, 'GET', '/v1/sync/key')).body.wrapped,
+    );
+  });
+
+  test('인증 없는(또는 세션 토큰이 아닌) 요청의 큰 본문은 4MB 파서가 아니라 256KB 파서가 받는다 (413)', async () => {
+    const u = await withKey();
+    const big = JSON.stringify({ epoch: u.epoch, items: [], pad: 'a'.repeat(3_000_000) });
+    const json = { 'content-type': 'application/json' };
+    assert.equal((await api('POST', '/v1/sync/push', { body: big, headers: json, ip: ip() })).status, 413);
+    assert.equal(
+      (await api('POST', '/v1/sync/push', { token: u.device, body: big, headers: json, ip: ip() })).status,
+      413,
+    );
+    // 세션 토큰이면 4MB 안에서 받는다 (pad 는 모르는 칸이라 무시된다)
+    assert.equal(
+      (await api('POST', '/v1/sync/push', { token: u.token, body: big, headers: json, ip: ip() })).status,
+      200,
+    );
+  });
+
+  test('1년 정리와 push 가 겹쳐도 고아 항목이 남지 않는다 (정리는 계정 잠금 안에서 다시 확인)', async () => {
+    const u = await withKey();
+    await push(u, [item('x1', 0)]);
+    const blocker = new Pool({ connectionString: h.config.databaseUrl, max: 1 });
+    await h.pool.query('ALTER TABLE sync_item DISABLE TRIGGER ALL');
+    const c = await blocker.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query("INSERT INTO sync_item (account_id, uid, rev, blob) VALUES ($1, 'y1', 999, 'z')", [u.id]);
+      const p = push(u, [item('y1', 0)]); // head 를 읽은 뒤 이 줄에서 막힌다 (계정 잠금은 쥔 채)
+      await new Promise((r) => setTimeout(r, 800));
+      const sw = h.app.get(Sync).sweep(Date.now() + 400 * DAY); // 잠금을 기다린다
+      await new Promise((r) => setTimeout(r, 300));
+      await c.query('ROLLBACK');
+      const [pr, sr] = await Promise.all([p, sw]);
+      assert.equal(pr.status, 200);
+      assert.ok(sr.expired >= 1);
+    } finally {
+      c.release();
+      await blocker.end();
+      await h.pool.query('ALTER TABLE sync_item ENABLE TRIGGER ALL');
+    }
+    for (const t of ['sync_item', 'sync_key', 'sync_head'])
+      assert.equal(await count(`SELECT count(*)::int AS n FROM ${t} WHERE account_id = $1`, u.id), 0, t);
+  });
+
+  test('push 끝에서 head 줄이 없으면 쓴 것을 되돌리고 409 epoch', async () => {
+    const u = await withKey();
+    await h.pool.query('DELETE FROM sync_head WHERE account_id = $1', [u.id]);
+    const r = await push(u, [item(uid(), 0)]);
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error, 'epoch');
+    assert.equal(await rows(u.id), 0);
+  });
+
+  test('셈 불변식: 고치기, 지우기, 비우기, 다시 쓰기 뒤에도 head 의 items, bytes 가 실제와 같다', async () => {
+    const u = await withKey();
+    const sync = h.app.get(Sync);
+    const first = (await push(u, [item('a', 0, 'x'.repeat(100)), item('b', 0, 'y'.repeat(10))])).body.results;
+    const r2 = (await push(u, [item('a', first[0].rev, 'z'.repeat(30))])).body.results[0].rev;
+    const r3 = (await push(u, [item('a', r2, '', true)])).body.results[0].rev;
+    await sync.purge(Date.now() + 91 * DAY);
+    assert.equal((await push(u, [item('a', r3, 'w'.repeat(7))])).status, 200);
+    const same = async () => {
+      const head = (await h.pool.query('SELECT items, bytes FROM sync_head WHERE account_id = $1', [u.id]))
+        .rows[0];
+      const real = (
+        await h.pool.query(
+          'SELECT count(*) FILTER (WHERE purged_at IS NULL)::int n, COALESCE(sum(octet_length(blob)), 0)::bigint b FROM sync_item WHERE account_id = $1',
+          [u.id],
+        )
+      ).rows[0];
+      assert.deepEqual(
+        { items: head.items, bytes: Number(head.bytes) },
+        { items: real.n, bytes: Number(real.b) },
+      );
+    };
+    await same();
+    const rb = Number(
+      (await h.pool.query("SELECT rev FROM sync_item WHERE account_id = $1 AND uid = 'b'", [u.id])).rows[0]
+        .rev,
+    );
+    await push(u, [item('b', rb, '', true)]);
+    await sync.purge(Date.now() + 200 * DAY);
+    await sync.purge(Date.now() + 200 * DAY);
+    await same();
+  });
+
+  test('남는 계정에 sync head 가 없는 합치기: head 를 새로 만들지 않고, epoch 0 으로 바로 켤 수 있다', async () => {
+    const from = await withKey();
+    const into = await user();
+    await push(from, [item(uid(), 0)]);
+    const accounts = h.app.get(Accounts);
+    await accounts['db'].tx(async (c) => {
+      const [f, i] = await accounts.lockPair(c, from.id, into.id);
+      await accounts.merge(c, f as never, i as never);
+    });
+    for (const t of ['sync_item', 'sync_key', 'sync_head']) {
+      assert.equal(await count(`SELECT count(*)::int AS n FROM ${t} WHERE account_id = $1`, from.id), 0, t);
+      assert.equal(await count(`SELECT count(*)::int AS n FROM ${t} WHERE account_id = $1`, into.id), 0, t);
+    }
+    const st = await status(into);
+    assert.deepEqual([st.on, st.epoch, st.gen], [false, 0, 0]);
+    // 옛 세션(닫힌 계정)도 남는 쪽으로 따라가 같은 상태
+    assert.equal((await status(from)).epoch, 0);
+    const r = await call(into, 'PUT', '/v1/sync/key', { ...KEY, epoch: 0 });
+    assert.equal(r.status, 200);
   });
 });

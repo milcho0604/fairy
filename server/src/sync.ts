@@ -116,7 +116,7 @@ function sameEpoch(known: number, now: Epoch): void {
 }
 
 const PARAM_KEYS = ['N', 'r', 'p'];
-const KEY_FIELDS = new Set(['salt', 'params', 'wrapped', 'gen', 'key_rev']);
+const KEY_FIELDS = new Set(['salt', 'params', 'wrapped', 'gen', 'key_rev', 'epoch']);
 
 /** scrypt 값은 N, r, p 세 정수만 받는다 (그 밖의 칸은 파생 열쇠나 복구 코드와 닿을 수 있어 받지 않는다) */
 function scryptParams(p: unknown): { N: number; r: number; p: number } | null {
@@ -191,8 +191,9 @@ export class Sync implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 감싼 열쇠 올리기. 본문: { salt, params: {N, r, p}, wrapped, gen?, key_rev? }
-   * - 처음이면 저장한다 (gen 1, key_rev 1).
+   * 감싼 열쇠 올리기. 본문: { epoch, salt, params: {N, r, p}, wrapped, gen?, key_rev? }
+   * - epoch 는 필수: 기기가 아는 값 (열쇠도 head 도 없는 새 계정은 0). 지금과 다르면 409 epoch.
+   * - 처음이면 저장한다 (gen 1, key_rev 는 지금까지의 가장 큰 판 + 1: 지우고 다시 켜도 되돌아가지 않는다).
    * - 이미 있으면 key_rev 가 지금 것과 같을 때만 덮어쓴다 (아니면 409). 덮어쓰면 key_rev+1.
    *   gen 이 지금과 같으면 "복구 코드 새로 만들기"(같은 열쇠를 다시 감쌈), 지금+1 이면 "열쇠 바꾸기"(새 데이터 열쇠):
    *   그 계정의 항목을 모두 지우고 epoch+1.
@@ -211,11 +212,14 @@ export class Sync implements OnModuleInit, OnModuleDestroy {
       v === undefined || (typeof v === 'number' && Number.isSafeInteger(v) && v >= 1);
     if (!posInt(b.gen)) throw bad('gen');
     if (!posInt(b.key_rev)) throw bad('key_rev');
+    if (typeof b.epoch !== 'number' || !Number.isSafeInteger(b.epoch) || b.epoch < 0) throw bad('epoch');
+    const known = b.epoch;
     const gen = b.gen as number | undefined;
     const keyRev = b.key_rev as number | undefined;
     const now = new Date(this.clock());
     return this.db.tx(async (c) => {
       const a = await lockAccount(c, accountId);
+      sameEpoch(known, await epochOf(c, a.id));
       const cur = await c.query<{ gen: number; key_rev: number }>(
         'SELECT gen, key_rev FROM sync_key WHERE account_id = $1 FOR UPDATE',
         [a.id],
@@ -228,12 +232,15 @@ export class Sync implements OnModuleInit, OnModuleDestroy {
            VALUES ($1, $2, $3::jsonb, $4, 1, 1, $5, $5)`,
           [a.id, salt, JSON.stringify(params), wrapped, now],
         );
-        const h = await c.query<{ epoch: number }>(
-          `INSERT INTO sync_head (account_id, epoch, last_access_at) VALUES ($1, $2, $3)
-           ON CONFLICT (account_id) DO UPDATE SET last_access_at = EXCLUDED.last_access_at RETURNING epoch`,
+        const h = await c.query<{ epoch: number; key_rev: number }>(
+          `INSERT INTO sync_head (account_id, epoch, key_rev, last_access_at) VALUES ($1, $2, 1, $3)
+           ON CONFLICT (account_id) DO UPDATE SET key_rev = sync_head.key_rev + 1, last_access_at = EXCLUDED.last_access_at
+           RETURNING epoch, key_rev`,
           [a.id, randomInt(1, 1_000_000_000), now],
         );
-        return { epoch: h.rows[0]?.epoch ?? 0, gen: 1, key_rev: 1, created: true };
+        const rev = h.rows[0]?.key_rev ?? 1;
+        await c.query('UPDATE sync_key SET key_rev = $2 WHERE account_id = $1', [a.id, rev]);
+        return { epoch: h.rows[0]?.epoch ?? 0, gen: 1, key_rev: rev, created: true };
       }
       const head = await epochOf(c, a.id);
       if (keyRev === undefined)
@@ -247,6 +254,7 @@ export class Sync implements OnModuleInit, OnModuleDestroy {
           WHERE account_id = $1`,
         [a.id, salt, JSON.stringify(params), wrapped, nextGen, now],
       );
+      await c.query('UPDATE sync_head SET key_rev = $2 WHERE account_id = $1', [a.id, have.key_rev + 1]);
       let epoch = head.epoch;
       if (nextGen !== have.gen) {
         // 새 데이터 열쇠: 옛 열쇠로 잠근 항목은 쓸모가 없다. 기기가 새 열쇠로 다시 올린다
@@ -443,10 +451,12 @@ export class Sync implements OnModuleInit, OnModuleDestroy {
       // 한 항목이라도 상한을 넘기면 묶음 전체를 거절한다 (트랜잭션이 되돌려진다)
       if (count > SYNC_MAX_ITEMS || bytes > SYNC_MAX_BYTES)
         throw fail(HttpStatus.PAYLOAD_TOO_LARGE, { error: 'sync_full' });
-      await c.query(
+      const upd = await c.query(
         `UPDATE sync_head SET rev = $2, items = $3, bytes = $4, last_access_at = $5 WHERE account_id = $1`,
         [a.id, rev, count, bytes, now],
       );
+      // head 줄이 없으면(열쇠는 있는데 사라진 경우) 쓴 것을 되돌리고 기기가 다시 맞추게 한다
+      if ((upd.rowCount ?? 0) === 0) throw fail(HttpStatus.CONFLICT, { error: 'epoch', epoch: 0, gen: 0 });
       if (lost.length) {
         const now2 = await c.query<ItemRow>(
           'SELECT uid, rev, blob, deleted FROM sync_item WHERE account_id = $1 AND uid = ANY($2::text[])',
@@ -489,14 +499,33 @@ export class Sync implements OnModuleInit, OnModuleDestroy {
    * 시험은 now 를 넘겨 먼 뒤를 흉내 낸다
    */
   async sweep(now = this.clock()): Promise<{ expired: number; purged: number }> {
-    const r = await this.db.pool.query(
-      `WITH old AS (DELETE FROM sync_head WHERE last_access_at < $1 RETURNING account_id),
-            k AS (DELETE FROM sync_key WHERE account_id IN (SELECT account_id FROM old)),
-            i AS (DELETE FROM sync_item WHERE account_id IN (SELECT account_id FROM old))
-       SELECT account_id FROM old`,
-      [new Date(now - SYNC_IDLE_DAYS * DAY_MS)],
+    const cutoff = new Date(now - SYNC_IDLE_DAYS * DAY_MS);
+    const cand = await this.db.pool.query<{ account_id: string }>(
+      'SELECT account_id FROM sync_head WHERE last_access_at < $1 ORDER BY last_access_at LIMIT 200',
+      [cutoff],
     );
-    return { expired: r.rowCount ?? 0, purged: await this.purge(now) };
+    let expired = 0;
+    for (const { account_id } of cand.rows) {
+      try {
+        // push 와 겹치지 않게 계정을 잠근 뒤 만료를 다시 확인한다 (그사이 맞춘 계정은 지우지 않는다)
+        expired += await this.db.tx(async (c) => {
+          const a = await lockAccount(c, account_id);
+          if (a.id !== account_id) return 0;
+          const gone = await c.query('DELETE FROM sync_head WHERE account_id = $1 AND last_access_at < $2', [
+            a.id,
+            cutoff,
+          ]);
+          if ((gone.rowCount ?? 0) === 0) return 0;
+          await c.query('DELETE FROM sync_key WHERE account_id = $1', [a.id]);
+          await c.query('DELETE FROM sync_item WHERE account_id = $1', [a.id]);
+          return 1;
+        });
+      } catch (err) {
+        // 그사이 탈퇴한 계정은 줄이 이미 지워졌다
+        if (!(err instanceof HttpException && err.getStatus() === HttpStatus.UNAUTHORIZED)) throw err;
+      }
+    }
+    return { expired, purged: await this.purge(now) };
   }
 
   /** 지운 항목의 blob 비우기 (계정마다 잠금 안에서, 한 번에 계정 100개까지) */

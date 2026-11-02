@@ -38,6 +38,8 @@ CREATE TABLE sync_head (
   account_id BIGINT PRIMARY KEY REFERENCES account (id) ON DELETE CASCADE,
   rev BIGINT NOT NULL DEFAULT 0,
   epoch INTEGER NOT NULL DEFAULT 1,
+  -- 지금까지 올라간 감싼 열쇠 판의 가장 큰 값. 지우고 다시 켜도 되돌아가지 않아 옛 기기의 key_rev 가 새 열쇠와 겹치지 않는다
+  key_rev INTEGER NOT NULL DEFAULT 0,
   items INTEGER NOT NULL DEFAULT 0,
   bytes BIGINT NOT NULL DEFAULT 0,
   last_access_at TIMESTAMPTZ NOT NULL DEFAULT now()
