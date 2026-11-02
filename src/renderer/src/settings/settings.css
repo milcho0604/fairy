@@ -2022,3 +2022,87 @@ textarea.rules {
   margin: 0 0 8px;
   padding-left: 18px;
 }
+
+/* ---- 기기 간 동기화 (SyncBox.tsx, docs/sync-plan.md 7절): 서버 계정 칸과 같은 묶음 규칙 ---- */
+.sync-do {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sync-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sync-line {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sync-line.warn {
+  color: var(--warn);
+}
+
+.sync-line.error {
+  color: var(--error);
+}
+
+.sync-usage {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 복구 코드: 크게 다섯 묶음. 좁으면 묶음이 줄을 바꿔 쌓인다 */
+.sync-code {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--code);
+  user-select: text;
+}
+
+.sync-code-part {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+.sync-ack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-ack input {
+  accent-color: var(--accent);
+}
+
+.sync-need-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sync-code-input {
+  width: 100%;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+
+.sync-code-input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.sync-ask-lede {
+  color: var(--ink);
+  font-size: 14px;
+}

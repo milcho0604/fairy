@@ -31,3 +31,43 @@ export interface SyncView {
   /** 맞추는 중 */
   running: boolean;
 }
+
+/** 설정 창과 메인이 주고받는 동기화 채널 (기존 서버 계정 채널과 같이 설정 창만 받는다) */
+export const SYNC = {
+  enable: 'sync:enable',
+  enterCode: 'sync:enter-code',
+  uploadLocal: 'sync:upload-local',
+  downloadOnly: 'sync:download-only',
+  newCode: 'sync:new-code',
+  rotateKey: 'sync:rotate-key',
+  disable: 'sync:disable',
+  copyCode: 'sync:copy-code',
+  saveCode: 'sync:save-code',
+} as const;
+
+/**
+ * 켜기, 복구 코드 넣기, 새 코드, 열쇠 바꾸기의 답.
+ * 복구 코드(code)는 이 답에만 실려 간다. 메인은 어디에도 저장하지 않고, 화면은 닫을 때 버린다
+ */
+export type SyncReply =
+  | { ok: true; kind?: 'created' | 'needCode' | 'on'; code?: string }
+  | { ok: false; error: string; code?: string };
+
+/** 파일로 저장한 결과. 취소는 canceled */
+export type SyncSaveReply = { ok: boolean; canceled?: boolean };
+
+/** 설정 창이 부르는 동기화 메서드 (window.jjakkungServer.sync) */
+export interface SyncBridge {
+  enable(): Promise<SyncReply>;
+  enterCode(code: string): Promise<SyncReply>;
+  uploadLocal(): Promise<SyncReply>;
+  downloadOnly(): Promise<SyncReply>;
+  newCode(): Promise<SyncReply>;
+  rotateKey(): Promise<SyncReply>;
+  /** wipeServer 가 true 면 서버 사본과 열쇠도 지운다 (되돌릴 수 없다) */
+  disable(wipeServer: boolean): Promise<SyncReply>;
+  /** 복구 코드를 클립보드로 */
+  copyCode(code: string): Promise<boolean>;
+  /** 복구 코드를 글 파일로 저장 (저장 대화상자) */
+  saveCode(code: string): Promise<SyncSaveReply>;
+}

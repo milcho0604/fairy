@@ -277,6 +277,14 @@ export function createSyncEngine(d: SyncDeps) {
     emit();
   }
 
+  /**
+   * 서버가 알려 준 세대가 이 기기가 아는 것보다 크면 다른 기기가 열쇠를 바꾼 것이다(열쇠 바꾸기도 epoch 를 올리므로
+   * epoch 만 보면 구분되지 않는다). 아니면 서버 사본이 지워졌다가 다시 시작된 것이다
+   */
+  function pausedBy(gen: unknown): 'epoch' | 'gen' {
+    return typeof gen === 'number' && gen > st.gen ? 'gen' : 'epoch';
+  }
+
   function backoff(minMs = 0): void {
     fails += 1;
     nextTry = d.now() + Math.max(minMs, Math.min(BACKOFF_MAX_MS, BACKOFF_MIN_MS * 2 ** (fails - 1)));
@@ -292,7 +300,7 @@ export function createSyncEngine(d: SyncDeps) {
     if (r.status === 0) {
       offline = true;
       backoff();
-    } else if (r.status === 409 && (r.error === 'epoch' || r.error === 'no_key')) pause('epoch');
+    } else if (r.status === 409 && (r.error === 'epoch' || r.error === 'no_key')) pause(pausedBy(r.body.gen));
     else if (r.status === 401 || (r.status === 403 && r.error === 'login')) {
       problem = 'login';
       backoff();
@@ -530,7 +538,7 @@ export function createSyncEngine(d: SyncDeps) {
         return false;
       }
       if (r.data.gen !== st.gen || r.data.epoch !== st.epoch) {
-        pause(r.data.epoch !== st.epoch ? 'epoch' : 'gen');
+        pause(pausedBy(r.data.gen));
         return false;
       }
       if (applyBatch(r.data.items) > 0) appliedAny = true;
@@ -639,7 +647,7 @@ export function createSyncEngine(d: SyncDeps) {
           return false;
         }
         if (r.data.gen !== st.gen || r.data.epoch !== st.epoch) {
-          pause(r.data.epoch !== st.epoch ? 'epoch' : 'gen');
+          pause(pausedBy(r.data.gen));
           return false;
         }
         const by = new Map(sending.map((b) => [b.uid, b]));

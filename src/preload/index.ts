@@ -57,6 +57,7 @@ import { SERVER, type ServerBridge, type ServerStatus } from '../shared/server-a
 import { FRIENDS, type FriendsBridge, type FriendsState } from '../shared/server-friends.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
+import { SYNC } from '../shared/sync-view.ts';
 import type { TogetherLook } from '../shared/together.ts';
 
 // 샌드박스 preload 는 다른 파일을 require 할 수 없어 한 파일로 묶는다.
@@ -408,6 +409,18 @@ if (kind === 'settings' || kind === 'home') {
       backupDownload: (id) => ipcRenderer.invoke(SERVER.backupDownload, id),
       backupDelete: (id) => ipcRenderer.invoke(SERVER.backupDelete, id),
       calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
+      // 기기 간 동기화 (docs/sync-plan.md 7절): 복구 코드는 답으로만 온다
+      sync: {
+        enable: () => ipcRenderer.invoke(SYNC.enable),
+        enterCode: (code) => ipcRenderer.invoke(SYNC.enterCode, code),
+        uploadLocal: () => ipcRenderer.invoke(SYNC.uploadLocal),
+        downloadOnly: () => ipcRenderer.invoke(SYNC.downloadOnly),
+        newCode: () => ipcRenderer.invoke(SYNC.newCode),
+        rotateKey: () => ipcRenderer.invoke(SYNC.rotateKey),
+        disable: (wipeServer) => ipcRenderer.invoke(SYNC.disable, wipeServer),
+        copyCode: (code) => ipcRenderer.invoke(SYNC.copyCode, code),
+        saveCode: (code) => ipcRenderer.invoke(SYNC.saveCode, code),
+      },
     };
     contextBridge.exposeInMainWorld('jjakkungServer', server);
     // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다

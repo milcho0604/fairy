@@ -750,6 +750,20 @@ export function copyOrigin(db: Db, uid: string): string | undefined {
   return r ? String(r.orig) : undefined;
 }
 
+/** 충돌 사본인 메모의 번호들 (메모 목록의 "충돌 사본" 표시). 동기화 표가 아직 없는 저장 파일이면 빈 집합 */
+export function copyNoteIds(db: Db): Set<number> {
+  try {
+    return new Set(
+      all(
+        db,
+        'select n.id as id from note n join sync_copy c on c.uid = n.uid where n.deleted_at is null',
+      ).map((r) => Number(r.id)),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 /** 서버 사본이 바뀌었다(지움, 열쇠 바꿈, 계정 바뀜): 본 번호와 보류를 모두 버린다 */
 export function resetSeen(db: Db): void {
   db.exec('delete from sync_seen; delete from sync_hold;');

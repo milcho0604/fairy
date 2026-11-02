@@ -2604,3 +2604,9 @@ li:is(.todo, .event) .tools .extra .due.none {
   fill: var(--accent);
   stroke: var(--panel);
 }
+
+/* 동기화가 합치지 못해 남긴 충돌 사본 (큰 창 메모 목록) */
+.tag.conflict-copy {
+  background: color-mix(in srgb, var(--warn) 18%, var(--code));
+  color: var(--warn);
+}

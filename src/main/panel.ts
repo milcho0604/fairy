@@ -39,6 +39,7 @@ import {
   isPanelTab,
   type NoteAiKind,
   type NoteSaveResult,
+  type NoteSummary,
   PANEL,
   type PanelAddResult,
   type PanelState,
@@ -133,6 +134,8 @@ export interface PanelOptions {
   /** 진행 중으로 표시한 할 일 (펫 머리 위 말풍선, 이슈 #124) */
   doing: DoingSet;
   notes: NoteStore;
+  /** 충돌 사본인 메모 번호들 (기기 간 동기화). 없으면 표시하지 않는다 */
+  noteCopies?: () => ReadonlySet<number>;
   events: EventStore;
   focus: () => FocusState;
   /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로, 할 일 id 를 주면 그 할 일을 하는 집중 */
@@ -276,6 +279,20 @@ export function createPanel(o: PanelOptions) {
     return o.doing.ids().filter((id) => ids.has(id));
   }
 
+  /** 큰 창 메모 목록 한 줄 한 줄 (동기화 충돌 사본이면 표시) */
+  function noteRows(): NoteSummary[] {
+    const copies = o.noteCopies?.();
+    return o.notes.list().map((n) => ({
+      id: n.id,
+      title: noteTitle(n),
+      preview: notePreview(n),
+      source: n.source,
+      updatedAt: n.updatedAt,
+      pinnedAt: n.pinnedAt,
+      ...(copies?.has(n.id) ? { conflictCopy: true as const } : {}),
+    }));
+  }
+
   let newNoteRequest = 0;
   let pendingNewNote = false;
   let slotTakenSeq = 0;
@@ -298,14 +315,7 @@ export function createPanel(o: PanelOptions) {
       fullness: Math.round(o.store.fullness(now)),
       hungryBelow: FULLNESS.hungry,
       foodCost: COIN.food,
-      notes: o.notes.list().map((n) => ({
-        id: n.id,
-        title: noteTitle(n),
-        preview: notePreview(n),
-        source: n.source,
-        updatedAt: n.updatedAt,
-        pinnedAt: n.pinnedAt,
-      })),
+      notes: noteRows(),
       events,
       // 안 끝난 시각 일정끼리 (어제부터 이어지는 것 포함). 일정 탭이 보이는 것과 같은 범위
       eventClash: [...clashIds(o.events.timedOverlapping(now, startOfDayAfter(now, 14)))],

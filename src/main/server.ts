@@ -9,6 +9,7 @@ import {
   app,
   type BrowserWindow,
   clipboard,
+  dialog,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
@@ -26,6 +27,7 @@ import { isLoginService, type RewardOutcome, SERVER, type ServerStatus } from '.
 import { FRIENDS, type FriendsState, inviteLink } from '../shared/server-friends.ts';
 import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.ts';
 import { EVENT_ID, normalizeCoupon } from '../shared/site-events.ts';
+import { SYNC, type SyncReply } from '../shared/sync-view.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import { isVersion } from '../shared/update-levels.ts';
 import { startLoopback } from './gcal-auth.ts';
@@ -39,6 +41,7 @@ import { SERVER_RESTORE_MARK } from './server-mark.ts';
 import { sealedSecret } from './server-secret.ts';
 import { appServerUrl } from './server-url.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
+import { formatRecoveryCode, normalizeRecoveryCode } from './sync/crypto.ts';
 import { createSyncEngine, type SyncEngine } from './sync/engine.ts';
 import { memorySecrets } from './test-keychain.ts';
 
@@ -221,6 +224,7 @@ export function createServer(o: {
     onChange: () => sendStatus(core.status()),
     ...(o.onSyncApplied ? { onApplied: o.onSyncApplied } : {}),
   });
+  const syncApi: SyncEngine = sync;
 
   // 친구 (#110): 서버 모드, 로그인, 서버가 켠 친구 기능일 때만
   const friends = createServerFriends({
@@ -425,6 +429,82 @@ export function createServer(o: {
   });
   ipcMain.handle(SERVER.merge, (e, yes: unknown) => (ok(e) ? core.merge(yes === true) : undefined));
   ipcMain.handle(SERVER.remove, async (e) => (ok(e) ? core.remove() : { ok: false, status: undefined }));
+  // 기기 간 동기화 (docs/sync-plan.md 7절): 설정 창만. 복구 코드는 답으로 한 번 나가고 메인은 어디에도 두지 않는다
+  const syncReply = (r: { ok: boolean; kind?: string; code?: string; error?: string }): SyncReply =>
+    r.ok
+      ? {
+          ok: true,
+          ...(r.kind ? { kind: r.kind as 'created' | 'needCode' | 'on' } : {}),
+          ...(r.code ? { code: r.code } : {}),
+        }
+      : { ok: false, error: r.error ?? 'failed', ...(r.code ? { code: r.code } : {}) };
+  const syncRefused: SyncReply = { ok: false, error: 'refused' };
+  ipcMain.handle(
+    SYNC.enable,
+    async (e): Promise<SyncReply> => (ok(e) ? syncReply(await syncApi.enable()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.enterCode,
+    async (e, code: unknown): Promise<SyncReply> =>
+      ok(e) && typeof code === 'string' && code.length <= 200
+        ? syncReply(await syncApi.enterCode(code))
+        : syncRefused,
+  );
+  ipcMain.handle(
+    SYNC.uploadLocal,
+    (e): SyncReply => (ok(e) ? syncReply(syncApi.uploadLocal()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.downloadOnly,
+    (e): SyncReply => (ok(e) ? syncReply(syncApi.downloadOnly()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.newCode,
+    async (e): Promise<SyncReply> => (ok(e) ? syncReply(await syncApi.newCode()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.rotateKey,
+    async (e): Promise<SyncReply> => (ok(e) ? syncReply(await syncApi.rotateKey()) : syncRefused),
+  );
+  ipcMain.handle(
+    SYNC.disable,
+    async (e, wipe: unknown): Promise<SyncReply> =>
+      ok(e) && typeof wipe === 'boolean' ? syncReply(await syncApi.disable(wipe)) : syncRefused,
+  );
+  /** 화면이 보낸 글이 정말 복구 코드 모양일 때만 다룬다 (다른 글을 클립보드나 파일로 보내는 길이 되지 않게) */
+  const codeText = (v: unknown): string | null => {
+    const norm = typeof v === 'string' && v.length <= 200 ? normalizeRecoveryCode(v) : null;
+    return norm ? formatRecoveryCode(norm) : null;
+  };
+  ipcMain.handle(SYNC.copyCode, (e, code: unknown) => {
+    const text = ok(e) ? codeText(code) : null;
+    if (!text) return false;
+    clipboard.writeText(text);
+    return true;
+  });
+  ipcMain.handle(SYNC.saveCode, async (e, code: unknown) => {
+    const text = ok(e) ? codeText(code) : null;
+    if (!text) return { ok: false };
+    const win = o.target();
+    const opts = {
+      defaultPath: join(app.getPath('documents'), t('sync.codeFile')),
+      filters: [{ name: 'Text', extensions: ['txt'] }],
+    };
+    try {
+      const r = await (win && !win.isDestroyed()
+        ? dialog.showSaveDialog(win, opts)
+        : dialog.showSaveDialog(opts));
+      if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+      writeFileSync(r.filePath, `${t('sync.codeFileBody', { code: text })}\n`, {
+        encoding: 'utf8',
+        mode: 0o600,
+      });
+      return { ok: true };
+    } catch (err) {
+      o.log('server', '복구 코드 파일 저장 실패', String(err));
+      return { ok: false };
+    }
+  });
   // 서버 백업 (#102)
   const backupId = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0);
   ipcMain.handle(SERVER.backupList, async (e) => {
@@ -525,7 +605,7 @@ export function createServer(o: {
     core,
     friends,
     /** 기기 간 동기화 엔진 (켜기, 복구 코드, 끄기. 화면은 다음 PR) */
-    sync: sync as SyncEngine,
+    sync: syncApi,
     /** 서버 모드라 코인이 서버 정본을 따른다 (백업 되살리기 안내, 코인 초기화) */
     serverCoins: () => core.allowed(),
     beforeRestore: () => core.beforeRestore(),
