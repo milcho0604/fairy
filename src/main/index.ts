@@ -1216,7 +1216,11 @@ ready
           if (fed !== undefined) void pet.say({ kind: 'answer', text: fed, ttlMs: 3000 });
         }
       },
-      onChanged: () => sendStatus(),
+      onChanged: () => {
+        sendStatus();
+        // 할 일을 고치면 구글 캘린더로 곧 보낸다 (켜 두지 않았으면 아무것도 하지 않는다)
+        gcal.kick();
+      },
       openChat: () => chat.open(pet.bounds()),
       openSettings: () => settingsWindow.open(),
       panelPin: () => settings.get().panelPin,

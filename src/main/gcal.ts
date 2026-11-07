@@ -431,7 +431,10 @@ export function createGcal(o: {
     }
     todoPending = r.pending;
     if (r.again) again = true;
-    if (r.sent) o.log('gcal', '할 일 보냄', r.sent);
+    if (r.sent) {
+      o.log('gcal', '할 일 보냄', r.sent);
+      setPrefs({ lastSyncAt: Date.now() });
+    }
     if (r.stop === 'scope') scopeLost();
     if (r.stop) todoProblem = r.stop === 'scope' ? null : r.stop;
     else if (r.waiting === 0) todoProblem = null;

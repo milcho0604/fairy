@@ -464,6 +464,8 @@ function writeEvent(
       uid,
     );
     for (const c of clash) {
+      // 구글로 보낸 회차면 지우기 전에 무덤에 옮긴다 (안 그러면 구글 일정이 남는다)
+      tombRows(db, 'event', "id = ? and source = 'local'", o.now, Number(c.id));
       run(db, "delete from reminder where kind = 'event' and ref_id = ?", Number(c.id));
       run(db, 'delete from event where id = ?', Number(c.id));
     }
