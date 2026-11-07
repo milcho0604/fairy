@@ -404,6 +404,8 @@ function NoteEditor({
   const [body, setBody] = useState(draft?.body ?? note.body);
   /** 형식 (txt, md). 바꾸면 이 메모에 저장하고, 새 메모의 처음 형식으로도 기억한다 */
   const [format, setFormat] = useState<NoteFormat>(note.format);
+  // 다른 기기나 펫이 형식을 바꾸면 열려 있는 편집기도 따라간다
+  useEffect(() => setFormat(note.format), [note.format]);
   /** 마크다운 메모의 편집과 미리보기. 마지막으로 본 쪽으로 열되, 쓴 글이 없으면 편집 (볼 것이 없다) */
   const [mode, setMode] = useState<NoteMode>(() =>
     (draft?.body ?? note.body).trim() ? savedMode() : 'edit',

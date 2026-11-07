@@ -92,7 +92,21 @@ marked.use({
   },
 });
 
-/** 마크다운 글을 (아직 DOMPurify 를 거치지 않은) 안전하게 만든 HTML 글자로. 화면에는 sanitizeMarkdownHtml 을 거쳐 넣는다 */
+/** 미리보기로 꾸며 보이는 글의 최대 길이. 넘으면 꾸미지 않고 글 그대로 보인다 (기호가 많은 긴 글은 꾸미기가 느려진다) */
+export const MD_PREVIEW_MAX = 20_000;
+
+/** 꾸미지 않은 글 그대로 */
+const plainHtml = (src: string): string => `<pre>${escapeHtml(src)}</pre>`;
+
+/**
+ * 마크다운 글을 (아직 DOMPurify 를 거치지 않은) 안전하게 만든 HTML 글자로. 화면에는 sanitizeMarkdownHtml 을 거쳐 넣는다.
+ * 너무 길거나 꾸미다 실패하면(목록이나 인용을 수천 겹 겹친 글은 호출이 너무 깊어진다) 글 그대로 보인다
+ */
 export function renderNoteMarkdown(src: string): string {
-  return marked.parse(src, { async: false });
+  if (src.length > MD_PREVIEW_MAX) return plainHtml(src);
+  try {
+    return marked.parse(src, { async: false });
+  } catch {
+    return plainHtml(src);
+  }
 }

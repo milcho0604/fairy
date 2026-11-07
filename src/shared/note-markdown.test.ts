@@ -4,7 +4,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setLang } from './i18n/index.ts';
-import { escapeHtml, MD_ALLOWED_ATTR, MD_ALLOWED_TAGS, renderNoteMarkdown } from './note-markdown.ts';
+import {
+  escapeHtml,
+  MD_ALLOWED_ATTR,
+  MD_ALLOWED_TAGS,
+  MD_PREVIEW_MAX,
+  renderNoteMarkdown,
+} from './note-markdown.ts';
 
 const tagsOf = (html: string): string[] =>
   [...html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)].map((m) => (m[1] ?? '').toLowerCase());
@@ -172,4 +178,23 @@ test('허용 목록에는 그림, 스크립트, 스타일, 틀, 양식, 이벤�
 
 test('escapeHtml', () => {
   assert.equal(escapeHtml(`<a href="x">'&'</a>`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;');
+});
+
+test('수천 겹 겹친 글도 던지지 않고 글 그대로 보인다', () => {
+  for (const src of [
+    '- '.repeat(5000) + 'a',
+    '>'.repeat(5000) + 'a',
+    `${'*'.repeat(5000)}a${'*'.repeat(5000)}`,
+  ]) {
+    const html = renderNoteMarkdown(src);
+    assert.ok(html.startsWith('<pre>'), src.slice(0, 4));
+  }
+});
+
+test('너무 긴 글은 꾸미지 않고 글 그대로, 안의 HTML 은 글자로', () => {
+  const src = `<script>x</script>${'_a'.repeat(MD_PREVIEW_MAX)}`;
+  const html = renderNoteMarkdown(src);
+  assert.ok(html.startsWith('<pre>&lt;script&gt;'));
+  assert.ok(!html.includes('<script>'));
+  assert.ok(!html.includes('<em>'));
 });
