@@ -191,6 +191,8 @@ export interface CalRow {
   pull: boolean;
   push: boolean;
   canPush: boolean;
+  /** 페어리 할 일 전용 캘린더: 일정 가져오기와 보내기에서 고를 수 없다 */
+  fairy?: true;
 }
 
 /**
@@ -211,7 +213,8 @@ export function calendarRows(o: {
     primary: c.id === GCAL_PRIMARY,
     pull: o.pull.includes(c.id),
     push: o.push === c.id,
-    canPush: canPush(listed),
+    canPush: canPush(listed) && !listed?.fairy,
+    ...(listed?.fairy ? { fairy: true as const } : {}),
   });
   for (const c of o.calendars ?? []) rows.push(row(c, c));
   const have = new Set(rows.map((r) => r.id));
