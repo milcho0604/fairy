@@ -276,6 +276,19 @@ test('메모 읽기와 덧붙이기', () => {
   assert.equal(tool('read_note', { id: 99999 }).result?.isError, true);
 });
 
+test('메모 형식: 만들 때 기본 txt, md 를 주면 md, 읽을 때 형식이 보인다', () => {
+  const plain = Number(/id (\d+)/.exec(text(tool('add_note', { title: '글자', body: '# 그냥' })))?.[1]);
+  const md = Number(
+    /id (\d+)/.exec(text(tool('add_note', { title: '꾸밈', body: '# 제목', format: 'md' })))?.[1],
+  );
+  const odd = Number(
+    /id (\d+)/.exec(text(tool('add_note', { title: '이상', body: 'x', format: 'rtf' })))?.[1],
+  );
+  assert.match(text(tool('read_note', { id: plain })), /형식 txt/);
+  assert.match(text(tool('read_note', { id: md })), /형식 md/);
+  assert.match(text(tool('read_note', { id: odd })), /형식 txt/);
+});
+
 test('일정 겹침 알림, 고치기, 지우기', () => {
   tool('add_event', { title: '팀 회의', start: '2099-07-01T10:00', duration_min: 60 });
   const r = text(tool('add_event', { title: '치과', start: '2099-07-01T10:30' }));

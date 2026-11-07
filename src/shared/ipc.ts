@@ -34,7 +34,7 @@ import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
 import type { NoteKept } from './note-keep.ts';
 import type { PolishReply } from './note-polish.ts';
-import type { Note, NoteSource } from './note-store.ts';
+import type { Note, NoteFormat, NoteSource } from './note-store.ts';
 import type { PetKey } from './pet-keys.ts';
 import type { PetLicense } from './pet-share.ts';
 import type { PetSprites } from './pet-sprites.ts';
@@ -1100,6 +1100,10 @@ export const PANEL = {
   noteGet: 'panel:note-get',
   noteAdd: 'panel:note-add',
   noteUpdate: 'panel:note-update',
+  /** 메모 형식 바꾸기 (txt, md) */
+  noteFormat: 'panel:note-format',
+  /** 마크다운 미리보기 속 링크를 기본 브라우저로 (메인이 http, https 인지 다시 본다) */
+  openLink: 'panel:open-link',
   noteRemove: 'panel:note-remove',
   noteRestore: 'panel:note-restore',
   /** 메모 찾기 (본문 전체) */
@@ -1426,7 +1430,14 @@ export interface PanelBridge {
   onState(listener: (state: PanelState) => void): void;
   noteGet(id: number): Promise<Note | undefined>;
   /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기). 제목과 본문을 함께 주면 둘 다 그대로 쓴다 (큰 창의 빈 새 메모 칸) */
-  noteAdd(text?: string | { title: string; body: string }): Promise<Note | { ok: false; error?: string }>;
+  noteAdd(
+    text?: string | { title: string; body: string },
+    format?: NoteFormat,
+  ): Promise<Note | { ok: false; error?: string }>;
+  /** 메모 형식을 바꾼다 (글은 그대로, 고친 시각도 그대로). 바꿨으면 true */
+  noteFormat(id: number, format: NoteFormat): Promise<boolean>;
+  /** 미리보기 속 링크 열기: 메인이 http, https 만 기본 브라우저로 연다 */
+  openLink(url: string): void;
   /**
    * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
    */

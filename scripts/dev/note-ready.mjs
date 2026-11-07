@@ -224,7 +224,7 @@ const run = async () => {
   check('구역을 고르면 오른쪽이 빈 새 메모 칸이고 안내 글이 없다', (await shown('.note-draft')) && (await ev(`!document.querySelector('.note-pane-empty')`)) && !(await shown(realEditor)));
   check('들어가도 메모는 안 만들어진다', (await count()) === n0);
   check('본문 칸에 커서가 있다', await bodyFocused(), await focusOn());
-  check('칸에 제목, 본문 안내 글이 있다 (ko/en)', (await ev(`[document.querySelector('.note-draft .note-title-input').placeholder, document.querySelector('.note-draft textarea').placeholder].join('|')`)) === tx('제목 (비우면 첫 줄)|적어 봐. # 제목, - 목록 같은 마크다운도 돼.', 'Title (blank uses the first line)|Write here. Markdown like # heading and - list works too.'));
+  check('칸에 제목, 본문 안내 글이 있다 (ko/en)', (await ev(`[document.querySelector('.note-draft .note-title-input').placeholder, document.querySelector('.note-draft textarea').placeholder].join('|')`)) === tx('제목 (비우면 첫 줄)|적어 봐.', 'Title (blank uses the first line)|Write something.'));
   for (const dark of [false, true]) await shot('w1100-draft', dark);
 
   // 한 글자 쓰기
