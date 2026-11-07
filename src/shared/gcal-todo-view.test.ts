@@ -161,3 +161,9 @@ test('일정 보내기 캘린더와 같으면 섞인다 (보내기가 켜져 있
 test('지우기 확인 글은 올린 곳에 따라', () => {
   assert.notEqual(removeSentBodyKey('fairy'), removeSentBodyKey('pick'));
 });
+
+test('고른 캘린더가 저장된 것과 다르면 켜지지 않는다', () => {
+  const v = { connected: true, connecting: false, todos: base({ target: 'pick', calendarId: 'Y' }) };
+  assert.notEqual(chooseOutcome(v, 'pick', 'X'), 'ok');
+  assert.equal(chooseOutcome(v, 'pick', 'Y'), 'ok');
+});

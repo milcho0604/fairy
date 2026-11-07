@@ -75,7 +75,7 @@ export const ko = {
   'gcal.state.pulled': (v: { n: number; when: string }) => `일정 ${v.n}개 가져왔어 (${v.when})`,
   'gcal.state.pullIdle': '곧 가져올게',
   'gcal.privacy':
-    '캘린더 일정 권한과 캘린더 목록 보기 권한만 받아 (캘린더 설정, 공유는 못 봐). 가져온 일정은 제목과 시각, 캘린더 이름과 색만 이 컴퓨터에 둬. 연결 토큰은 이 컴퓨터에만 두고 설정, 백업에 넣지 않아.',
+    '캘린더 일정 권한과 캘린더 목록 보기 권한만 받아 (캘린더 설정, 공유는 못 봐). 페어리 할 일 캘린더를 쓰면 그때만 페어리가 만드는 캘린더 권한을 하나 더 물어. 가져온 일정은 제목과 시각, 캘린더 이름과 색만 이 컴퓨터에 둬. 연결 토큰은 이 컴퓨터에만 두고 설정, 백업에 넣지 않아.',
   'gcal.problem.expired': '구글 연결이 끝났어. 구글에서 권한을 거뒀거나 오래돼서 그래. 다시 연결해 줄래?',
   'gcal.problem.relink':
     '저장해 둔 구글 연결을 더는 열 수 없어. 앱 이름이나 열쇠고리가 바뀌면 이럴 수 있어. 한 번만 다시 연결해 줄래?',
@@ -135,7 +135,7 @@ export const ko = {
   'gcal.todo.removeSentBody.fairy':
     '구글의 "페어리 할 일" 캘린더를 통째로 지워. 그 안의 일정이 모두 사라지고 휴대폰에서도 없어져. 페어리의 할 일은 그대로고, 할 일 올리기는 꺼져. 되돌릴 수 없어.',
   'gcal.todo.removeSentBody.pick':
-    '고른 캘린더에서 페어리가 올린 할 일 일정만 하나씩 지워. 그 캘린더의 다른 일정은 건드리지 않아. 페어리의 할 일은 그대로고, 할 일 올리기는 꺼져.',
+    '페어리가 올린 할 일 일정만 하나씩 지워(전에 올린 다른 캘린더 것도 포함). 그 캘린더들의 다른 일정은 건드리지 않아. 페어리의 할 일은 그대로고, 할 일 올리기는 꺼져.',
   'gcal.todo.removeDo': '지우기',
   'gcal.todo.sheet.title': '할 일을 올릴 곳',
   'gcal.todo.sheet.intro': '날짜가 있는 할 일을 구글 캘린더 어디에 올릴지 골라.',
@@ -145,6 +145,9 @@ export const ko = {
   'gcal.todo.sheet.pick': '기존 캘린더에 올리기',
   'gcal.todo.sheet.pickHint': '이미 쓰는 캘린더에 올려. 쓸 수 있는 캘린더만 보여.',
   'gcal.todo.sheet.pickNone': '쓸 수 있는 캘린더가 아직 없어. 캘린더 목록을 읽은 뒤에 다시 열어 줘.',
+  'gcal.todo.sheet.pickRelink':
+    '캘린더 목록을 보려면 한 번 다시 연결해 줘. 그러면 여기서 캘린더를 고를 수 있어.',
+  'gcal.todo.confirmFailed': '잘 안 됐어. 잠시 뒤 다시 해 줘.',
   'gcal.todo.sheet.pickOf': (v: { name: string }) => `${v.name}에 올리기`,
   'gcal.todo.sheet.mix': '이 캘린더는 페어리 일정을 보내는 곳이기도 해서, 할 일이 일정과 섞여 보여.',
   'gcal.todo.sheet.privacy':
@@ -244,7 +247,7 @@ export const en: Translation<typeof ko> = {
     Number(v.n) === 1 ? `Brought in 1 event (${v.when})` : `Brought in ${v.n} events (${v.when})`,
   'gcal.state.pullIdle': 'Bringing them in shortly',
   'gcal.privacy':
-    "Asks only for calendar events and seeing your calendar list (it can't see calendar settings or sharing). Events it brings in keep only their title and time, plus the calendar's name and color, on this computer. The sign-in token stays on this computer, never in settings or backups.",
+    "Asks only for calendar events and seeing your calendar list (it can't see calendar settings or sharing). If you use the fairy to-dos calendar, it asks for one more permission, for calendars fairy makes, only then. Events it brings in keep only their title and time, plus the calendar's name and color, on this computer. The sign-in token stays on this computer, never in settings or backups.",
   'gcal.problem.expired':
     'Your Google connection ended (access was removed in Google, or it expired). Could you connect again?',
   'gcal.problem.relink':
@@ -308,7 +311,7 @@ export const en: Translation<typeof ko> = {
   'gcal.todo.removeSentBody.fairy':
     'Deletes the whole "fairy to-dos" calendar in Google. Every event in it disappears, on your phone too. Your to-dos in fairy stay, and sending to-dos is turned off. This can\'t be undone.',
   'gcal.todo.removeSentBody.pick':
-    "Deletes only the to-do events fairy sent to the calendar you picked, one by one. Other events in that calendar aren't touched. Your to-dos in fairy stay, and sending to-dos is turned off.",
+    "Deletes only the to-do events fairy sent, one by one (including ones sent earlier to other calendars). Other events in those calendars aren't touched. Your to-dos in fairy stay, and sending to-dos is turned off.",
   'gcal.todo.removeDo': 'Delete',
   'gcal.todo.sheet.title': 'Where to put to-dos',
   'gcal.todo.sheet.intro': 'Pick which Google calendar gets your to-dos that have a date.',
@@ -320,6 +323,9 @@ export const en: Translation<typeof ko> = {
     'Sends to a calendar you already use. Only calendars you can write to are shown.',
   'gcal.todo.sheet.pickNone':
     'No calendar you can write to yet. Open this again after the calendar list has loaded.',
+  'gcal.todo.sheet.pickRelink':
+    'Reconnect once to see your calendar list. Then you can pick a calendar here.',
+  'gcal.todo.confirmFailed': "That didn't work. Please try again in a bit.",
   'gcal.todo.sheet.pickOf': (v: { name: string }) => `Put to-dos on ${v.name}`,
   'gcal.todo.sheet.mix': 'This calendar also gets your fairy events, so to-dos will be mixed in with them.',
   'gcal.todo.sheet.privacy':

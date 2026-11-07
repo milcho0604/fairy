@@ -77,10 +77,12 @@ export function GcalTodoSheet({
   s,
   onStatus,
   onClose,
+  onReconnect,
 }: {
   s: GcalStatus;
   onStatus: (v: GcalStatus) => void;
   onClose: () => void;
+  onReconnect: () => void;
 }) {
   const list = pickable(s.calendars);
   const saved = s.todos?.target === 'pick' ? s.todos.calendarId : null;
@@ -103,15 +105,18 @@ export function GcalTodoSheet({
   const chosen = list.some((c) => c.id === pickId) ? pickId : (list.find((c) => c.primary) ?? list[0])?.id;
   const grant = tried ? (s.todos?.grant ?? null) : null;
   const waiting = busy && s.connecting;
-  // 허락을 기다리는 중에 닫으면 기다림도 그만둔다
+  const cancelled = useRef(false);
+  // 하는 중에 닫으면 허락 기다림도 그만두고, 끝난 뒤에도 켜지 않는다
   const close = () => {
-    if (waiting) gcal().cancel();
+    cancelled.current = true;
+    if (busy) gcal().cancel();
     onClose();
   };
 
   const go = async () => {
     if (busy) return;
     if (choice === 'pick' && !chosen) return;
+    cancelled.current = false;
     setBusy(true);
     setTried(true);
     try {
@@ -120,10 +125,10 @@ export function GcalTodoSheet({
       );
       if (!v) return;
       onStatus(v);
-      if (chooseOutcome(v, choice) !== 'ok') return;
+      if (cancelled.current || chooseOutcome(v, choice, chosen) !== 'ok') return;
       const on = await gcal().setTodoOn(true);
       if (on) onStatus(on);
-      onClose();
+      if (!cancelled.current) onClose();
     } finally {
       setBusy(false);
     }
@@ -165,9 +170,18 @@ export function GcalTodoSheet({
       </fieldset>
       {choice === 'pick' &&
         (list.length === 0 ? (
-          <small className="gcal-loading" role="status">
-            {t('gcal.todo.sheet.pickNone')}
-          </small>
+          <div className="gcal-relink" role="status">
+            <small>
+              {t(s.listScope === false ? 'gcal.todo.sheet.pickRelink' : 'gcal.todo.sheet.pickNone')}
+            </small>
+            {s.listScope === false && (
+              <div className="action-row">
+                <button type="button" className="primary" disabled={s.connecting} onClick={onReconnect}>
+                  {t('gcal.sheet.relinkBtn')}
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           <>
             <fieldset className="gcal-cals">
@@ -245,39 +259,61 @@ export function GcalTodoSheet({
   );
 }
 
-/** 확인 시트: 하는 일을 글로 말하고, 누르면 한다. 하는 동안은 단추를 잠근다 */
+/** 확인 시트: 하는 일을 글로 말하고, 누르면 한다. 하는 동안은 단추를 잠그고, 허락을 기다리면 안내와 그만두기를 보인다 */
 export function GcalConfirmSheet({
   title,
   body,
   confirm,
+  waiting,
   onConfirm,
   onClose,
 }: {
   title: string;
   body: string;
   confirm: string;
+  /** 구글 허락을 기다리는 중 (연결 상태의 connecting) */
+  waiting: boolean;
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const run = async () => {
     if (busy) return;
     setBusy(true);
+    setFailed(false);
     try {
       await onConfirm();
-    } finally {
+    } catch {
+      setFailed(true);
       setBusy(false);
-      onClose();
+      return;
     }
+    setBusy(false);
+    onClose();
+  };
+  const close = () => {
+    if (busy && waiting) gcal().cancel();
+    onClose();
   };
   return (
-    <SheetFrame title={title} onClose={busy ? () => {} : onClose} closeLabel={t('gcal.cancel')}>
+    <SheetFrame title={title} onClose={busy && !waiting ? () => {} : close} closeLabel={t('gcal.cancel')}>
       <small className="gcal-confirm-body">{body}</small>
+      {busy && waiting && (
+        <div className="gcal-relink" role="status">
+          <small>{t('gcal.todo.sheet.waiting')}</small>
+        </div>
+      )}
+      {failed && (
+        <small className="warn" role="alert">
+          {t('gcal.todo.confirmFailed')}
+        </small>
+      )}
       <div className="action-row">
         <button type="button" className="ghost danger" disabled={busy} onClick={() => void run()}>
           {confirm}
         </button>
-        <button type="button" className="link" disabled={busy} onClick={onClose}>
+        <button type="button" className="link" disabled={busy && !waiting} onClick={close}>
           {t('gcal.cancel')}
         </button>
       </div>

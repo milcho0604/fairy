@@ -86,12 +86,15 @@ export function todoView(todos: GcalTodos | undefined): TodoView {
 export function chooseOutcome(
   v: Pick<GcalStatus, 'connected' | 'connecting' | 'todos'>,
   want: 'fairy' | 'pick',
+  /** pick 일 때 고른 캘린더 id: 저장된 것이 이것과 같아야 한다 */
+  id?: string,
 ): 'ok' | 'problem' | 'none' {
   const t = v.todos;
   if (!t || !v.connected) return 'none';
   if (t.grant) return 'problem';
   if (v.connecting) return 'none';
-  return t.target === want && t.calendarId ? 'ok' : 'none';
+  if (t.target !== want || !t.calendarId) return 'none';
+  return want === 'pick' && t.calendarId !== id ? 'none' : 'ok';
 }
 
 /** "기존 캘린더에 올리기" 에서 고를 수 있는 캘린더: 쓰기 권한이 있고 페어리 할 일 전용이 아닌 것 */

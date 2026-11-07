@@ -322,13 +322,14 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
         )}
       </div>
       {todoSheet && s.connected && (
-        <GcalTodoSheet s={s} onStatus={setS} onClose={() => setTodoSheet(false)} />
+        <GcalTodoSheet s={s} onStatus={setS} onClose={() => setTodoSheet(false)} onReconnect={connect} />
       )}
       {confirm === 'sent' && s.connected && (
         <GcalConfirmSheet
           title={t('gcal.todo.removeSentTitle')}
           body={t(removeSentBodyKey(s.todos?.target ?? 'fairy'))}
           confirm={t('gcal.todo.removeDo')}
+          waiting={s.connecting}
           onConfirm={async () => {
             const v = await gcal().removeSentTodos();
             if (v) setS(v);
@@ -341,6 +342,7 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
           title={t('gcal.todo.removeExtrasTitle')}
           body={t('gcal.todo.removeExtrasBody')}
           confirm={t('gcal.todo.removeDo')}
+          waiting={s.connecting}
           onConfirm={async () => {
             const v = await gcal().removeExtraFairy();
             if (v) setS(v);
