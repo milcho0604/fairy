@@ -30,6 +30,8 @@ export interface GcalPrefs {
   todos: GcalTodoPrefs;
   /** 연결한 구글 계정의 지문 (기본 캘린더 id 의 sha256). 값 자체는 저장하지 않는다. 모르면 null */
   account: string | null;
+  /** 캘린더를 만들고 지우는 권한(calendar.app.created)을 받았는지 */
+  appScope: boolean;
 }
 
 export const defaultTodoPrefs = (): GcalTodoPrefs => ({ on: false, target: 'pick', calendarId: null });
@@ -61,6 +63,7 @@ export function parseGcalPrefs(raw: unknown): GcalPrefs {
     cals: cleanCalendars(v.cals),
     listScope: typeof v.listScope === 'boolean' ? v.listScope : null,
     todos: cleanTodoPrefs(v.todos),
+    appScope: v.appScope === true,
     account: typeof v.account === 'string' && /^[0-9a-f]{64}$/.test(v.account) ? v.account : null,
   };
 }

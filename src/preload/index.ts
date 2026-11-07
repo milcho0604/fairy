@@ -353,6 +353,11 @@ if (kind === 'settings' || kind === 'home') {
     setCalendars: (c) => ipcRenderer.invoke(GCAL.setCalendars, c),
     listCalendars: () => ipcRenderer.invoke(GCAL.listCalendars),
     syncNow: () => ipcRenderer.invoke(GCAL.syncNow),
+    grantApp: () => ipcRenderer.invoke(GCAL.grantApp),
+    setTodoOn: (on: boolean) => ipcRenderer.invoke(GCAL.todoSetOn, on),
+    chooseTodoTarget: (c) => ipcRenderer.invoke(GCAL.todoChoose, c),
+    removeExtraFairy: () => ipcRenderer.invoke(GCAL.todoRemoveExtras),
+    removeSentTodos: () => ipcRenderer.invoke(GCAL.todoRemoveSent),
     onChanged: (listener) => {
       const h = (_e: unknown, s: GcalStatus) => listener(s);
       ipcRenderer.on(GCAL.changed, h);

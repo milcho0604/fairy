@@ -125,6 +125,7 @@ test('토큰 대답 읽기: 만료 1분 전, refresh token, 권한 확인, 오�
       refreshToken: '1//R',
       scopeOk: true,
       listScope: true,
+      appScope: false,
     },
   });
   // 예전 연결(일정 권한만): 일정은 되지만 캘린더 목록은 못 본다. 다시 연결해 달라고 한다
