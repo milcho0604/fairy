@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import type { GcalBridge, GcalStatus } from '../../../shared/gcal.ts';
 import { calendarRows } from '../../../shared/gcal-cals.ts';
+import { removeSentBodyKey, type TodoLine, todoView } from '../../../shared/gcal-todo-view.ts';
 import { locale, t } from '../../../shared/i18n/index.ts';
 import { GcalCalendarsSheet, rowName } from './GcalCalendarsSheet.tsx';
+import { GcalConfirmSheet, GcalTodoSheet } from './GcalTodoSheet.tsx';
 
 declare global {
   interface Window {
@@ -19,6 +21,9 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
   // 구글 캘린더 옵션 창 (연결 직후 자동으로, "캘린더 고르기"로)
   const [picking, setPicking] = useState(false);
+  // 할 일 올리기: 올릴 곳 고르는 시트, 지우기 확인 시트
+  const [todoSheet, setTodoSheet] = useState(false);
+  const [confirm, setConfirm] = useState<'sent' | 'extras' | null>(null);
   // 같은 계정의 다른 기기에서 구글 일정을 연결했다는 안내 (#115). 서버 칸 상태에서 온다 (서버 주소가 없으면 늘 false)
   const [hint, setHint] = useState(false);
 
@@ -107,6 +112,9 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
     : s.lastPullAt
       ? t('gcal.state.pulled', { n: s.pulled, when: when(s.lastPullAt) })
       : t('gcal.state.pullIdle');
+  const todo = todoView(s.todos);
+  const todoName = s.todos?.calendarId ? nameOf(s.todos.calendarId) : '';
+  const line = (l: TodoLine) => t(l.key, l.params);
   // 연결 전에는 연결하면 둘 다 켜지니 가져오기 안내를 보인다
   const twoWay = !s.connected || s.pull;
 
@@ -204,6 +212,76 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
                 </button>
               </div>
             )}
+            <div className="gcal-todo">
+              <div className="toggle">
+                <div className="text">
+                  <span>{t('gcal.todo.title')}</span>
+                  {todo.status && <small className="toggle-note">{line(todo.status)}</small>}
+                  {todo.where && (
+                    <small>
+                      {todo.where === 'fairy'
+                        ? t('gcal.todo.whereFairy')
+                        : t('gcal.todo.wherePick', { name: todoName })}
+                    </small>
+                  )}
+                  <small>{t('gcal.todo.hint')}</small>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={todo.on}
+                  aria-label={t('gcal.todo.title')}
+                  className={todo.on ? 'on' : ''}
+                  disabled={busy}
+                  onClick={() => (todo.on ? void run(() => gcal().setTodoOn(false)) : setTodoSheet(true))}
+                >
+                  <i />
+                </button>
+              </div>
+              {todo.notes.map((n) => (
+                <small key={n.key} className={n.warn ? 'warn' : undefined}>
+                  {line(n)}
+                </small>
+              ))}
+              {busy && s.connecting && <small>{t('gcal.todo.sheet.waiting')}</small>}
+              <div className="action-row">
+                {todo.recreate && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={busy}
+                    onClick={() => void run(() => gcal().chooseTodoTarget({ target: 'fairy' }))}
+                  >
+                    {t('gcal.todo.recreate')}
+                  </button>
+                )}
+                {todo.extras > 0 && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={busy}
+                    onClick={() => setConfirm('extras')}
+                  >
+                    {t('gcal.todo.removeExtras')}
+                  </button>
+                )}
+                {todo.on && !todo.recreate && (
+                  <button type="button" className="ghost" disabled={busy} onClick={() => setTodoSheet(true)}>
+                    {t('gcal.todo.change')}
+                  </button>
+                )}
+                {busy && s.connecting && (
+                  <button type="button" className="link" onClick={() => gcal().cancel()}>
+                    {t('gcal.cancel')}
+                  </button>
+                )}
+                {todo.removeSent && (
+                  <button type="button" className="link" disabled={busy} onClick={() => setConfirm('sent')}>
+                    {t('gcal.todo.removeSent')}
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="field gcal-pick">
               <span>{t('gcal.calendar')}</span>
               <small className="gcal-pick-summary">{t('gcal.pickPull', { names: pullNames })}</small>
@@ -243,6 +321,33 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
           </>
         )}
       </div>
+      {todoSheet && s.connected && (
+        <GcalTodoSheet s={s} onStatus={setS} onClose={() => setTodoSheet(false)} />
+      )}
+      {confirm === 'sent' && s.connected && (
+        <GcalConfirmSheet
+          title={t('gcal.todo.removeSentTitle')}
+          body={t(removeSentBodyKey(s.todos?.target ?? 'fairy'))}
+          confirm={t('gcal.todo.removeDo')}
+          onConfirm={async () => {
+            const v = await gcal().removeSentTodos();
+            if (v) setS(v);
+          }}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+      {confirm === 'extras' && s.connected && (
+        <GcalConfirmSheet
+          title={t('gcal.todo.removeExtrasTitle')}
+          body={t('gcal.todo.removeExtrasBody')}
+          confirm={t('gcal.todo.removeDo')}
+          onConfirm={async () => {
+            const v = await gcal().removeExtraFairy();
+            if (v) setS(v);
+          }}
+          onClose={() => setConfirm(null)}
+        />
+      )}
       {picking && s.connected && (
         <GcalCalendarsSheet
           s={s}

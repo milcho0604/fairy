@@ -148,7 +148,7 @@ export function GcalCalendarsSheet({
               const listed = s.calendars?.find((c) => c.id === r.id);
               const failed = s.pullFailed.includes(r.id) && r.pull;
               return (
-                <div key={r.id} className="gcal-cal-row">
+                <div key={r.id} className={`gcal-cal-row${r.fairy ? ' gcal-cal-fairy' : ''}`}>
                   <span className="gcal-cal-name">
                     <i
                       className="gcal-dot"
@@ -161,29 +161,40 @@ export function GcalCalendarsSheet({
                       </span>
                       <small>
                         {/* 목록을 못 읽은 기본 캘린더는 이름이 곧 "기본 캘린더"라 한 번만 */}
-                        {r.primary
-                          ? r.kind
-                            ? t('gcal.sheet.kind.primary')
-                            : ''
-                          : r.kind
-                            ? t(`gcal.sheet.kind.${r.kind}`)
-                            : t('gcal.sheet.custom')}
+                        {r.fairy
+                          ? t('gcal.sheet.todoOnly')
+                          : r.primary
+                            ? r.kind
+                              ? t('gcal.sheet.kind.primary')
+                              : ''
+                            : r.kind
+                              ? t(`gcal.sheet.kind.${r.kind}`)
+                              : t('gcal.sheet.custom')}
                         {listed?.hidden ? `, ${t('gcal.sheet.hidden')}` : ''}
                         {failed && <span className="warn">, {t('gcal.sheet.failed')}</span>}
                       </small>
                     </span>
                   </span>
-                  <label className="gcal-cell">
+                  <label className="gcal-cell" title={r.fairy ? t('gcal.sheet.todoOnlyTip') : undefined}>
                     <input
                       className="gcal-check"
                       type="checkbox"
-                      checked={r.pull}
-                      disabled={busy}
+                      checked={r.pull && !r.fairy}
+                      disabled={busy || r.fairy === true}
                       aria-label={t('gcal.sheet.pullOf', { name: r.name })}
                       onChange={() => togglePull(r)}
                     />
                   </label>
-                  <label className="gcal-cell" title={r.canPush ? undefined : t('gcal.sheet.readOnlyTip')}>
+                  <label
+                    className="gcal-cell"
+                    title={
+                      r.fairy
+                        ? t('gcal.sheet.todoOnlyTip')
+                        : r.canPush
+                          ? undefined
+                          : t('gcal.sheet.readOnlyTip')
+                    }
+                  >
                     <input
                       className="gcal-check"
                       type="radio"
@@ -191,7 +202,13 @@ export function GcalCalendarsSheet({
                       checked={r.push}
                       disabled={busy || !r.canPush}
                       aria-label={t('gcal.sheet.pushTo', { name: r.name })}
-                      aria-description={r.canPush ? undefined : t('gcal.sheet.readOnlyTip')}
+                      aria-description={
+                        r.fairy
+                          ? t('gcal.sheet.todoOnlyTip')
+                          : r.canPush
+                            ? undefined
+                            : t('gcal.sheet.readOnlyTip')
+                      }
                       onChange={() => void save(s.pullCals, r.id)}
                     />
                   </label>
