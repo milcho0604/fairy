@@ -10,7 +10,6 @@ import type { EventStore } from '../shared/event-store.ts';
 import {
   GCAL,
   GCAL_PREFS_FILE,
-  GCAL_PRIMARY,
   GCAL_TODO_ID_PREFIX,
   GcalBackoff,
   type GcalCalLabel,
