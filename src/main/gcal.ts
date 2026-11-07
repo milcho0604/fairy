@@ -8,22 +8,25 @@ import { join } from 'node:path';
 import { app, type BrowserWindow, type IpcMainInvokeEvent, ipcMain, shell, type WebContents } from 'electron';
 import type { EventStore } from '../shared/event-store.ts';
 import {
+  cleanCalendarId,
   GCAL,
   GCAL_PREFS_FILE,
   GCAL_TODO_ID_PREFIX,
   GcalBackoff,
   type GcalCalLabel,
+  type GcalGrantProblem,
   type GcalMark,
   type GcalProblem,
   type GcalStatus,
+  type GcalTodoChoice,
   newGoogleId,
   type PanelGcal,
 } from '../shared/gcal.ts';
-import { cleanChoice } from '../shared/gcal-cals.ts';
+import { canonicalFairy, canPush, cleanChoice, extraFairy, type GcalCalendar } from '../shared/gcal-cals.ts';
 import { type GcalPrefs, parseGcalPrefs } from '../shared/gcal-prefs.ts';
 import type { GcalStore } from '../shared/gcal-store.ts';
 import type { GcalTodoStore } from '../shared/gcal-todo-store.ts';
-import { t } from '../shared/i18n/index.ts';
+import { getLang, t } from '../shared/i18n/index.ts';
 import {
   authUrl,
   callApi,
@@ -37,8 +40,18 @@ import {
   revokeToken,
   startLoopback,
 } from './gcal-auth.ts';
+import { runGrant } from './gcal-grant.ts';
 import { listCalendars, type PullResult, pullPass } from './gcal-pull.ts';
 import { GcalLost, type PassResult, syncPass } from './gcal-sync.ts';
+import {
+  calendarGone,
+  deleteCalendar,
+  ensureFairyCalendar,
+  fairyState,
+  listEffects,
+  removeExtraFairy,
+  removeSentTodos,
+} from './gcal-todo-cal.ts';
 import { writeFileDurable } from './json-file.ts';
 import { mainFetch } from './net-fetch.ts';
 import { osCrypto } from './os-crypto.ts';
@@ -145,6 +158,12 @@ export function createGcal(o: {
   /** 할 일 보내기: 아직 못 보낸 수, 멈춘 까닭 */
   let todoPending = 0;
   let todoProblem: GcalProblem | null = null;
+  /** 새 권한 받기, 캘린더 만들기와 지우기에서 막힌 까닭 (사용자가 다시 시도하면 지운다) */
+  let grantProblem: GcalGrantProblem | null = null;
+  /** 쓰던 페어리 할 일 캘린더가 구글에서 없어진 것을 알아챘다 ("다시 만들기"를 보인다. 메모리에만) */
+  let fairyLost = false;
+  /** 올린 할 일 지우기가 도중에 멈췄다: 다음 차례에 이어서 지운다 */
+  let removeLeft = false;
   /** 구글이 받지 않은 일정 id → 그때 내용 지문 (내용이 바뀌면 다시 보낼 차례라 못 보냄 표시를 내린다) */
   const rejected = new Map<number, string>();
 
@@ -184,6 +203,10 @@ export function createGcal(o: {
         sent: sentTodos(),
         pending: todoPending,
         problem: todoProblem,
+        appScope: prefs.appScope,
+        fairy: fairyState({ calendars: prefs.cals, todos: prefs.todos, lost: fairyLost }),
+        extras: extraFairy(prefs.cals).length,
+        grant: grantProblem,
       },
     };
   }
@@ -232,6 +255,7 @@ export function createGcal(o: {
     todoPending = 0;
     todoProblem = null;
     rejected.clear();
+    if (prefs.appScope) setPrefs({ appScope: false });
     // 다시 연결하는 계정이 다를 수 있다: 보낸 기록을 "확인 전"으로 (같은 계정이면 겹치지 않고, 다른 계정이면 새로 들어간다)
     o.store.resetSent();
     o.todoStore.resetSent();
@@ -261,6 +285,7 @@ export function createGcal(o: {
       setPrefs({ listScope: r.tokens.listScope });
       broadcast();
     }
+    if (r.tokens.appScope && !prefs.appScope) setPrefs({ appScope: true });
     // 구글이 새 refresh token 을 주면(돌려쓰기) 바꿔 둔다
     if (r.tokens.refreshToken && r.tokens.refreshToken !== refresh) token.set(r.tokens.refreshToken);
     return access.token;
@@ -293,6 +318,7 @@ export function createGcal(o: {
     problem = 'scope';
     todoPending = 0;
     todoProblem = null;
+    if (prefs.appScope) setPrefs({ appScope: false });
     o.store.resetSent();
     o.todoStore.resetSent();
     dropPulled();
@@ -321,6 +347,7 @@ export function createGcal(o: {
       else {
         todoPending = 0;
         todoProblem = null;
+        if (removeLeft) await drainSent();
       }
     }
     if (linked() && prefs.pull && (pullForce || Date.now() - lastPullTry >= PULL_EVERY_MS)) await pull();
@@ -428,6 +455,16 @@ export function createGcal(o: {
       if (err instanceof GcalLost) return;
       throw err;
     }
+    // 페어리 캘린더에 쓰려는데 안 된다: 구글에서 지웠는지 본다. 지웠으면 이 차례를 멈추고 다시 만들 때까지 기다린다 (저절로 만들지 않는다)
+    if (
+      r.stop === 'calendar' &&
+      prefs.todos.target === 'fairy' &&
+      prefs.todos.calendarId === calendarId &&
+      (await calendarGone(api, calendarId))
+    ) {
+      fairyIsGone();
+      return;
+    }
     todoPending = r.pending;
     if (r.again) again = true;
     if (r.sent) {
@@ -494,7 +531,7 @@ export function createGcal(o: {
     try {
       const r = await listCalendars({ api: (m, p) => api(m, p), log: o.log });
       if (r.ok) {
-        setPrefs({ cals: r.calendars, listScope: true });
+        applyList(r);
         // 목록이 바뀌었으면(이름, 색) 일정 줄의 캘린더 표시도 다시
         o.onMarks?.();
       } else if (r.stop === 'scope') setPrefs({ listScope: false });
@@ -505,6 +542,264 @@ export function createGcal(o: {
       listing = false;
       broadcast();
     }
+  }
+
+  /** 쓰던 페어리 캘린더가 없다: 보낸 기록과 올릴 캘린더를 비운다 (다시 만들 때까지 보내지 않는다) */
+  function fairyIsGone() {
+    o.log('gcal', '페어리 할 일 캘린더가 없어짐');
+    fairyLost = true;
+    todoPending = 0;
+    todoProblem = null;
+    todoBackoff.clear();
+    o.todoStore.resetSent();
+    setPrefs({ todos: { ...prefs.todos, calendarId: null } });
+  }
+
+  /**
+   * 목록을 읽을 때마다: 계정 지문 채우기와 비교, 페어리 캘린더 정본 다시 고르기, 없어졌는지 보기.
+   * 읽은 목록을 저장하는 것도 여기서 한다
+   */
+  function applyList(r: { calendars: GcalCalendar[]; primaryId: string | null }) {
+    const eff = listEffects({
+      calendars: r.calendars,
+      primaryId: r.primaryId,
+      account: prefs.account,
+      todos: prefs.todos,
+    });
+    const patch: Partial<Prefs> = { cals: r.calendars, listScope: true };
+    if (eff.account && eff.account !== prefs.account) patch.account = eff.account;
+    if (eff.accountChanged) {
+      // 다시 연결하면서 다른 구글 계정을 골랐다: 그 전 계정에 올린 것은 이 계정에 없다
+      o.log('gcal', '다른 구글 계정으로 연결함');
+      todoPending = 0;
+      todoProblem = null;
+      fairyLost = false;
+      todoBackoff.clear();
+      o.todoStore.resetSent();
+      o.todoStore.clearTomb();
+      patch.todos = { ...prefs.todos, calendarId: null };
+      setPrefs(patch);
+      return;
+    }
+    setPrefs(patch);
+    if (eff.moveTo) {
+      // 정본이 바뀌었다 (다른 컴퓨터가 더 작은 id 로 만들었다): 이미 올린 할 일은 다음 차례에 events.move 가 옮긴다
+      o.log('gcal', '페어리 할 일 캘린더 정본 바뀜');
+      setPrefs({ todos: { ...prefs.todos, calendarId: eff.moveTo } });
+      todoBackoff.clear();
+      kick();
+    } else if (eff.gone) {
+      // 목록이 늦은 것일 수 있다: 정말 없는지 한 번 더 묻고 비운다
+      const id = prefs.todos.calendarId;
+      if (id)
+        void calendarGone(api, id)
+          .then((gone) => {
+            if (gone && prefs.todos.calendarId === id) {
+              fairyIsGone();
+              broadcast();
+            }
+          })
+          .catch(() => {});
+    }
+  }
+
+  /** 새 권한(캘린더 만들기와 지우기)을 따로 받는다. 연결과 설정은 건드리지 않는다 */
+  async function grantAppScope(): Promise<void> {
+    if (!client || !linked()) return;
+    grantProblem = null;
+    // 같은 계정인지 보려면 지금 연결의 지문이 있어야 한다: 예전 연결은 목록을 한 번 읽어 채운다
+    if (!prefs.account) await loadCalendars();
+    const expected = prefs.account;
+    if (!expected) {
+      grantProblem = 'failed';
+      broadcast();
+      return;
+    }
+    connecting?.cancel();
+    let cancelWait: () => void = () => {};
+    // 허락 서버가 열리기 전에 온 취소도 기억한다
+    let cancelled = false;
+    const mine = {
+      cancel: () => {
+        cancelled = true;
+        cancelWait();
+      },
+    };
+    connecting = mine;
+    broadcast();
+    try {
+      const r = await runGrant({
+        f,
+        client,
+        now: Date.now,
+        expectedAccount: expected,
+        openExternal: (url) => shell.openExternal(url),
+        onCancel: (c) => {
+          cancelWait = c;
+          if (cancelled) c();
+        },
+        stillMine: () => connecting === mine && !cancelled,
+        page: (ok) => ({
+          title: t(ok ? 'gcal.page.okTitle' : 'gcal.page.failTitle'),
+          body: t(ok ? 'gcal.page.okBody' : 'gcal.page.failBody'),
+        }),
+        log: o.log,
+      });
+      if (r.kind === 'granted' && (connecting !== mine || cancelled)) {
+        // 마지막 순간에 연결이 끊기거나 바뀌었다: 아무것도 바꾸지 않는다
+      } else if (r.kind === 'granted') {
+        // 새 토큰으로 바꾼다. 설정은 새 권한 칸과 지문만 고친다. scopeLost 도 부르지 않는다
+        token.set(r.tokens.refreshToken);
+        access = { token: r.tokens.accessToken, expiresAt: r.tokens.expiresAt };
+        setPrefs({ appScope: true, account: r.account });
+        o.log('gcal', '새 권한 받음');
+      } else if (r.kind === 'kept') {
+        o.log('gcal', '새 권한 못 받음', r.problem);
+        grantProblem = r.problem;
+      }
+    } catch (err) {
+      if (!(err instanceof GcalLost))
+        o.log('gcal', '새 권한 받기 실패', err instanceof Error ? err.name : 'error');
+      grantProblem = 'failed';
+    } finally {
+      if (connecting === mine) connecting = null;
+      broadcast();
+    }
+  }
+
+  /** 캘린더 만들기나 지우기 전에: 새 권한이 없으면 지금 받는다. 받았는가 */
+  async function needApp(): Promise<boolean> {
+    if (!prefs.appScope) await grantAppScope();
+    return prefs.appScope;
+  }
+
+  /** 구글이 권한이 부족하다고 한다 (받았다고 적힌 것이 틀렸다): 다시 받게 한다 */
+  function appScopeMissing() {
+    if (prefs.appScope) setPrefs({ appScope: false });
+    grantProblem = 'noApp';
+  }
+
+  /** 올릴 곳과 켜짐을 바꾼다 */
+  function setTodos(patch: Partial<Prefs['todos']>) {
+    setPrefs({ todos: { ...prefs.todos, ...patch } });
+  }
+
+  /** 올릴 곳 고르기. fairy: 찾고 없으면 만든다 (새 권한이 없으면 먼저 받는다). pick: 기존 캘린더 하나 */
+  async function chooseTodoTarget(raw: GcalTodoChoice): Promise<void> {
+    if (!linked()) return;
+    grantProblem = null;
+    if (raw.target === 'pick') {
+      const id = cleanCalendarId(raw.calendarId);
+      if (!id || !canPush(prefs.cals?.find((c) => c.id === id))) return;
+      fairyLost = false;
+      setTodos({ target: 'pick', calendarId: id });
+    } else {
+      // 먼저 있는 것을 찾는다: 있으면 새 권한 없이 쓴다
+      const ask = (canCreate: boolean) =>
+        ensureFairyCalendar({ api, lang: getLang(), tz: tz(), canCreate, log: o.log });
+      let made = await ask(prefs.appScope);
+      if (!made.ok && made.stop === 'needApp') {
+        if (!(await needApp())) return;
+        made = await ask(true);
+      }
+      if (!made.ok) {
+        if (made.stop === 'scope') {
+          if (made.where === 'create') appScopeMissing();
+          else grantProblem = 'noList';
+        } else if (made.stop !== 'needApp') grantProblem = made.stop;
+        return;
+      }
+      applyList({ calendars: made.calendars, primaryId: made.primaryId });
+      fairyLost = false;
+      setTodos({ target: 'fairy', calendarId: made.calendarId });
+      o.log('gcal', '페어리 할 일 캘린더 고름', made.created ? '새로 만듦' : '있던 것');
+    }
+    todoProblem = null;
+    todoBackoff.clear();
+    o.onMarks?.();
+    kick();
+  }
+
+  /** 정본 말고 남은 페어리 할 일 캘린더를 지운다 */
+  async function removeExtras(): Promise<void> {
+    if (!linked()) return;
+    grantProblem = null;
+    await loadCalendars();
+    if (extraFairy(prefs.cals).length === 0 || !prefs.cals) return;
+    if (!(await needApp())) return;
+    // 이 기기의 할 일이 아직 남는 캘린더에 있으면 먼저 옮기고, 그래도 남은 것은 지우지 않는다
+    if (todoActive()) await run();
+    const left = extraFairy(prefs.cals).filter((id) => o.todoStore.sentInCals([id]) > 0);
+    const r = await removeExtraFairy({
+      api,
+      calendars: prefs.cals.filter((c) => !left.includes(c.id)),
+      log: o.log,
+    });
+    if (r.deleted.length > 0 && prefs.cals)
+      setPrefs({ cals: prefs.cals.filter((c) => !r.deleted.includes(c.id)) });
+    if (r.stop === 'scope') appScopeMissing();
+    else if (r.stop) grantProblem = r.stop;
+  }
+
+  /** 도중에 멈춘 올린 할 일 지우기를 이어서 한다 (보내기가 꺼져 있는 동안) */
+  async function drainSent(): Promise<void> {
+    try {
+      const r = await removeSentTodos({
+        store: o.todoStore,
+        api,
+        fallbackCal: prefs.todos.calendarId ?? prefs.calendarId,
+        now: Date.now,
+        log: o.log,
+      });
+      removeLeft = r.stop !== null;
+    } catch (err) {
+      removeLeft = false;
+      if (!(err instanceof GcalLost))
+        o.log('gcal', '올린 할 일 지우기 실패', err instanceof Error ? err.name : 'error');
+    }
+  }
+
+  /**
+   * 구글에 올린 할 일 지우기. 보내기는 먼저 끈다 (켠 채로는 지우자마자 다시 올라간다).
+   * fairy: 정본 캘린더를 통째로 지우고 올릴 캘린더와 보낸 기록을 비운다. pick: 올린 할 일 일정만 하나씩 지운다
+   */
+  async function removeSent(): Promise<void> {
+    if (!linked()) return;
+    grantProblem = null;
+    if (prefs.todos.on) setTodos({ on: false });
+    todoPending = 0;
+    todoProblem = null;
+    // 돌고 있는 보내기가 끝난 뒤에 무덤으로 옮긴다 (그 사이 보낸 것이 빠지지 않게)
+    for (let i = 0; running && i < 300; i++) await new Promise((r) => setTimeout(r, 100));
+    if (prefs.todos.target === 'fairy') {
+      await loadCalendars();
+      const id = canonicalFairy(prefs.cals) ?? prefs.todos.calendarId;
+      if (!id) return;
+      if (!(await needApp())) return;
+      const r = await deleteCalendar(api, id, o.log);
+      if (!r.ok) {
+        if (r.stop === 'scope') appScopeMissing();
+        else grantProblem = r.stop;
+        return;
+      }
+      o.todoStore.resetSent();
+      todoBackoff.clear();
+      fairyLost = false;
+      setPrefs({
+        cals: prefs.cals ? prefs.cals.filter((c) => c.id !== id) : prefs.cals,
+        todos: { ...prefs.todos, calendarId: null },
+      });
+      return;
+    }
+    const r = await removeSentTodos({
+      store: o.todoStore,
+      api,
+      fallbackCal: prefs.todos.calendarId ?? prefs.calendarId,
+      now: Date.now,
+      log: o.log,
+    });
+    removeLeft = r.stop !== null;
+    if (r.stop) todoProblem = r.stop;
   }
 
   // ---- 연결 ----
@@ -565,7 +860,7 @@ export function createGcal(o: {
           access = { token: got.tokens.accessToken, expiresAt: got.tokens.expiresAt };
           backoff.clear();
           // 연결하는 것이 곧 보내고 읽어 오겠다는 것: 둘 다 켠다 (설정 창에서 따로 끌 수 있다)
-          setPrefs({ push: true, pull: true, listScope: got.tokens.listScope, cals: null });
+          setPrefs({ push: true, pull: true, listScope: got.tokens.listScope, cals: null, appScope: false });
           o.log('gcal', '연결됨', got.tokens.listScope ? '목록' : '목록 권한 없음');
           o.onMarks?.();
           o.onLinked?.();
@@ -593,6 +888,9 @@ export function createGcal(o: {
     pending = 0;
     todoPending = 0;
     todoProblem = null;
+    grantProblem = null;
+    fairyLost = false;
+    removeLeft = false;
     backoff.clear();
     todoBackoff.clear();
     rejected.clear();
@@ -609,7 +907,13 @@ export function createGcal(o: {
     o.todoStore.clearTomb();
     // 읽어 온 구글 일정도 걷어 낸다 (연결을 끊으면 더는 맞출 수 없다). 캘린더 목록도 그 계정 것이라 지운다
     dropPulled();
-    setPrefs({ cals: null, listScope: null, account: null, todos: { ...prefs.todos, calendarId: null } });
+    setPrefs({
+      cals: null,
+      listScope: null,
+      account: null,
+      appScope: false,
+      todos: { ...prefs.todos, calendarId: null },
+    });
     o.log('gcal', '연결 끊음');
     broadcast();
     o.onMarks?.();
@@ -709,6 +1013,53 @@ export function createGcal(o: {
     await run();
     return status();
   });
+
+  // 할 일 보내기 (docs/gcal-todo-plan.md 4절, 9절). 설정 창만. 한 번에 하나씩 (눌러서 겹치지 않게)
+  let todoBusy = false;
+  const exclusive = async (fn: () => Promise<void>): Promise<GcalStatus> => {
+    if (!todoBusy) {
+      todoBusy = true;
+      try {
+        await fn();
+      } catch (err) {
+        if (!(err instanceof GcalLost))
+          o.log('gcal', '할 일 설정 실패', err instanceof Error ? err.name : 'error');
+      } finally {
+        todoBusy = false;
+        broadcast();
+      }
+    }
+    return refreshed();
+  };
+  ipcMain.handle(GCAL.grantApp, (e) => (ok(e) ? exclusive(grantAppScope) : undefined));
+  ipcMain.handle(GCAL.todoSetOn, (e, on: unknown) => {
+    if (!ok(e)) return undefined;
+    if (typeof on === 'boolean' && on !== prefs.todos.on) {
+      setTodos({ on });
+      todoBackoff.clear();
+      if (on) {
+        removeLeft = false;
+        kick();
+      } else {
+        // 끄면 보내기만 멈춘다 (구글의 일정과 캘린더는 둔다)
+        todoPending = 0;
+        todoProblem = null;
+      }
+      o.onMarks?.();
+    }
+    return refreshed();
+  });
+  ipcMain.handle(GCAL.todoChoose, (e, raw: unknown) => {
+    if (!ok(e)) return undefined;
+    const c = raw as { target?: unknown; calendarId?: unknown } | null;
+    if (c?.target === 'fairy') return exclusive(() => chooseTodoTarget({ target: 'fairy' }));
+    const id = c?.calendarId;
+    if (c?.target === 'pick' && typeof id === 'string' && id.length <= 300)
+      return exclusive(() => chooseTodoTarget({ target: 'pick', calendarId: id }));
+    return refreshed();
+  });
+  ipcMain.handle(GCAL.todoRemoveExtras, (e) => (ok(e) ? exclusive(removeExtras) : undefined));
+  ipcMain.handle(GCAL.todoRemoveSent, (e) => (ok(e) ? exclusive(removeSent) : undefined));
 
   /** 창에 보일 때는 못 보낸 수를 새로 센다 */
   function refreshed(): GcalStatus {

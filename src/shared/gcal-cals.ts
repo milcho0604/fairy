@@ -16,11 +16,48 @@ export interface GcalCalendar {
   primary: boolean;
   /** 구글 캘린더 목록에서 숨긴 캘린더 */
   hidden?: boolean;
+  /** 페어리가 만든 할 일 캘린더 (설명 첫 줄에 FAIRY_MARKER 가 있고 내가 주인). 설명 글은 저장하지 않는다 */
+  fairy?: true;
+}
+
+/** 페어리 할 일 캘린더의 표식. 캘린더 설명의 첫 줄에 넣는다 (이름은 사용자가 바꿀 수 있어서 이름으로 찾지 않는다) */
+export const FAIRY_MARKER = 'fairy:todos:v1';
+
+/** 설명 글의 첫 줄이 표식인가 */
+export function hasFairyMarker(description: unknown): boolean {
+  if (typeof description !== 'string') return false;
+  return (description.split(/\r?\n/, 1)[0] ?? '').trim() === FAIRY_MARKER;
+}
+
+/** 페어리 할 일 캘린더들 (id 순) */
+export const fairyCalendars = (cals: readonly GcalCalendar[] | null | undefined): GcalCalendar[] =>
+  (cals ?? []).filter((c) => c.fairy === true).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+/**
+ * 정본: 표식 캘린더 가운데 id 가 사전순으로 가장 작은 것. 두 컴퓨터가 동시에 만들어도 기기마다 같은 답이 나온다.
+ * 없으면 null
+ */
+export const canonicalFairy = (cals: readonly GcalCalendar[] | null | undefined): string | null =>
+  fairyCalendars(cals)[0]?.id ?? null;
+
+/** 정본이 아닌 표식 캘린더 id 들 */
+export const extraFairy = (cals: readonly GcalCalendar[] | null | undefined): string[] =>
+  fairyCalendars(cals)
+    .slice(1)
+    .map((c) => c.id);
+
+/** 목록 대답에서 기본 캘린더의 진짜 id (구글 계정 메일과 같다). 계정 지문을 만들 때만 쓰고 저장하지 않는다 */
+export function primaryIdOf(items: readonly unknown[]): string | null {
+  for (const raw of items) {
+    const v = raw as { id?: unknown; primary?: unknown } | null;
+    if (v && v.primary === true && typeof v.id === 'string' && v.id) return v.id.slice(0, 254);
+  }
+  return null;
 }
 
 /** 받을 칸만: id, 이름, 색, 권한, 기본, 표시 여부 */
 export const CALLIST_FIELDS =
-  'items(id,summary,summaryOverride,backgroundColor,accessRole,primary,selected,hidden),nextPageToken';
+  'items(id,summary,description,summaryOverride,backgroundColor,accessRole,primary,selected,hidden),nextPageToken';
 /** 목록 쪽 상한 (한 쪽 250개) */
 export const CALLIST_MAX_PAGES = 4;
 /** 한 번에 가져올 수 있는 캘린더 수 (15분마다 캘린더마다 부른다) */
@@ -49,6 +86,7 @@ export function parseCalendarList(items: readonly unknown[]): GcalCalendar[] {
       accessRole?: unknown;
       primary?: unknown;
       hidden?: unknown;
+      description?: unknown;
     } | null;
     if (!v || typeof v.id !== 'string') continue;
     const role = ROLES.find((r) => r === v.accessRole);
@@ -66,6 +104,7 @@ export function parseCalendarList(items: readonly unknown[]): GcalCalendar[] {
       role,
       primary,
       ...(v.hidden === true ? { hidden: true } : {}),
+      ...(role === 'owner' && !primary && hasFairyMarker(v.description) ? { fairy: true as const } : {}),
     });
   }
   const rank = (c: GcalCalendar) => (c.primary ? 0 : c.role === 'owner' ? 1 : c.role === 'writer' ? 2 : 3);
@@ -90,6 +129,7 @@ export function cleanCalendars(raw: unknown): GcalCalendar[] | null {
       role,
       primary: v.primary === true,
       ...(v.hidden === true ? { hidden: true } : {}),
+      ...(v.fairy === true && role === 'owner' ? { fairy: true as const } : {}),
     });
   }
   return out;

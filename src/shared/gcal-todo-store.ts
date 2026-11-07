@@ -6,7 +6,7 @@ import type { Db } from './db-schema.ts';
 import { GCAL_DELETED, GCAL_TODO_ID_PREFIX, gcalHash } from './gcal.ts';
 import type { GcalOp, GcalOpStore } from './gcal-store.ts';
 import { FIRST_SEND_BACK_DAYS, isDueDay, todayIn, todoToGoogle } from './gcal-todo.ts';
-import { tombClear, tombDone, tombList } from './gcal-tomb.ts';
+import { type TombRow, tombClear, tombDone, tombList, tombRows } from './gcal-tomb.ts';
 
 /** 한 번에 보낼 수 (많으면 다음 차례에) */
 const BATCH = 200;
@@ -149,6 +149,38 @@ export class GcalTodoStore implements GcalOpStore {
   /** 연결을 끊을 때: 무덤을 비운다 (일정 쪽 무덤도 같은 표라 같이 빈다) */
   clearTomb(): void {
     tombClear(this.#db);
+  }
+
+  /**
+   * 올린 할 일을 모두 구글에서 지울 차례로 만든다 ("올린 할 일 지우기"): 무덤으로 옮기고 올린 기록을 비운다.
+   * 옮긴 줄 수. 무덤 줄은 구글에서 지운 뒤에만 빠지므로 중간에 멈춰도 남은 것을 다시 지울 수 있다
+   */
+  tombSent(now: number): number {
+    const n = tombRows(this.#db, 'todo', '1 = 1', now);
+    this.#db
+      .prepare(
+        'update todo set google_id = null, google_cal = null, google_hash = null, google_uid = null where google_id is not null',
+      )
+      .run();
+    return n;
+  }
+
+  /** 이 캘린더들에 올라가 있는 할 일 수 (남는 캘린더를 지우기 전에 옮겨졌는지 본다) */
+  sentInCals(ids: readonly string[]): number {
+    if (ids.length === 0) return 0;
+    const q = ids.map(() => '?').join(',');
+    return Number(
+      (
+        this.#db
+          .prepare(`select count(*) as n from todo where google_id is not null and google_cal in (${q})`)
+          .get(...ids) as { n: number }
+      ).n,
+    );
+  }
+
+  /** 지울 차례인 무덤 줄 (할 일 것만) */
+  tombTodos(limit: number): TombRow[] {
+    return tombList(this.#db, 'todo', limit);
   }
 
   /** 구글에 올라가 있는 할 일 수 (설정 칸의 "올린 개수") */

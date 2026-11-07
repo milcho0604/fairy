@@ -5,7 +5,7 @@
 import { createHash, randomBytes as nodeRandomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { GCAL_LIST_SCOPE, GCAL_SCOPE } from '../shared/gcal.ts';
+import { GCAL_APP_SCOPE, GCAL_LIST_SCOPE, GCAL_SCOPE } from '../shared/gcal.ts';
 
 export const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 export const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -86,13 +86,15 @@ export function authUrl(o: {
   redirectUri: string;
   challenge: string;
   state: string;
+  /** 묻는 권한들. 없으면 일정 + 목록 (연결). 새 권한 받기는 캘린더 만들기까지 셋 */
+  scopes?: readonly string[];
 }): string {
   const q = new URLSearchParams({
     client_id: o.clientId,
     redirect_uri: o.redirectUri,
     response_type: 'code',
     // 일정 읽기 쓰기 + 캘린더 목록 보기 (구글 캘린더 옵션 창). 허락 화면에서 목록 칸만 풀 수도 있다 (listScope)
-    scope: `${GCAL_SCOPE} ${GCAL_LIST_SCOPE}`,
+    scope: (o.scopes ?? [GCAL_SCOPE, GCAL_LIST_SCOPE]).join(' '),
     code_challenge: o.challenge,
     code_challenge_method: 'S256',
     state: o.state,
@@ -151,6 +153,11 @@ export interface Tokens {
   scopeOk: boolean;
   /** 캘린더 목록 보기 권한도 있는지. 예전(일정 권한만) 연결이면 false: 옵션 창이 다시 연결해 달라고 한다 */
   listScope: boolean;
+  /**
+   * 캘린더 만들기와 지우기 권한(calendar.app.created)이 scope 글에 적혀 있다. 위 둘과 달리 scope 가 비면 false:
+   * 이 권한은 묻지 않은 연결에서도 받은 것으로 치면 안 된다 (docs/gcal-todo-plan.md 3절)
+   */
+  appScope: boolean;
 }
 
 export type TokenResult =
@@ -180,6 +187,7 @@ export function parseTokenResponse(status: number, json: unknown, now: number): 
       // scope 가 없으면 구글이 요청한 그대로 준 것
       scopeOk: scope.length === 0 || scope.includes(GCAL_SCOPE),
       listScope: scope.length === 0 || scope.includes(GCAL_LIST_SCOPE),
+      appScope: scope.includes(GCAL_APP_SCOPE),
     },
   };
 }
