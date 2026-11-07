@@ -209,18 +209,18 @@ export function conflictCopy(
 // ---- 구글 일정 id ----
 
 const B32HEX = '0123456789abcdefghijklmnopqrstuv';
-const GOOGLE_ID_PREFIX = 'jjk';
 
 /**
  * 항목 uid 에서 정한 구글 일정 id (구글 규칙: a~v, 0~9, 5~1024자). 어느 기기가 보내도 같은 id 가 된다.
- * uid 가 32자리 16진이면 그대로 바이트로 보고, 아니면 지문을 쓴다. 머리 + 26글자(130비트 중 128비트)
+ * uid 가 32자리 16진이면 그대로 바이트로 보고, 아니면 지문을 쓴다. 머리 + 26글자(130비트 중 128비트).
+ * prefix 는 일정은 jjk, 할 일은 jjt (shared/gcal.ts GCAL_ID_PREFIX, GCAL_TODO_ID_PREFIX)
  */
-export function googleIdFromUid(uid: string): string {
+export function googleIdFromUid(uid: string, prefix: string): string {
   const hex = /^[0-9a-f]{32}$/.test(uid) ? uid : sha256Hex(uid).slice(0, 32);
   let bits = '';
   for (const ch of hex) bits += Number.parseInt(ch, 16).toString(2).padStart(4, '0');
   bits = bits.padEnd(130, '0');
-  let out = GOOGLE_ID_PREFIX;
+  let out = prefix;
   for (let i = 0; i < 130; i += 5) out += B32HEX[Number.parseInt(bits.slice(i, i + 5), 2)];
   return out;
 }

@@ -4,7 +4,8 @@
 // 다음에 그대로 이어서 보내고, 패널, 빠른 입력, 펫 MCP 서버(다른 프로세스) 어디서 고쳐도 똑같이 따라간다.
 import type { Db } from './db-schema.ts';
 import type { EventStore } from './event-store.ts';
-import { GCAL_DELETED, type GcalBody, type GcalMark, gcalHash, toGoogle } from './gcal.ts';
+import { GCAL_DELETED, GCAL_ID_PREFIX, type GcalBody, type GcalMark, gcalHash, toGoogle } from './gcal.ts';
+import { tombDone, tombList } from './gcal-tomb.ts';
 
 const DAY_MS = 86_400_000;
 /** 한 번에 보낼 수 (많으면 다음 차례에) */
@@ -37,6 +38,21 @@ export type GcalOp =
       stale: boolean;
     };
 
+/**
+ * 보내기 한 차례(main/gcal-sync.ts)가 저장 쪽에 요구하는 것. 일정(GcalStore)과 할 일(GcalTodoStore)이 같은 모양이라
+ * 한 엔진이 둘 다 보낸다. 무덤 줄은 id 가 음수(-rowid)인 지우기로 온다: markDeleted 가 줄을 뺀다
+ */
+export interface GcalOpStore {
+  /** 새 구글 id 를 uid 에서 정할 때 붙이는 머리 */
+  readonly idPrefix: string;
+  pending(now: number, calendarId: string, tz: string): GcalOp[];
+  setCalendar(id: number, calendarId: string): void;
+  assignId(id: number, googleId: string, calendarId: string): void;
+  markSent(id: number, hash: string, uid: string | null): void;
+  markDeleted(id: number): void;
+  forget(id: number): void;
+}
+
 interface Row {
   id: number;
   start_at: number;
@@ -48,7 +64,8 @@ interface Row {
   uid?: string | null;
 }
 
-export class GcalStore {
+export class GcalStore implements GcalOpStore {
+  readonly idPrefix = GCAL_ID_PREFIX;
   #db: Db;
   #events: EventStore;
 
@@ -83,7 +100,15 @@ export class GcalStore {
       this.#collect(rows, ops, calendarId, tz);
       if (rows.length < BATCH) break;
     }
-    return ops.slice(0, BATCH);
+    // 영구 삭제된 일정의 구글 일정 (무덤): 지금 고른 캘린더가 아닌 곳이면 못 써도 넘어간다
+    const tomb: GcalOp[] = tombList(this.#db, 'event', BATCH).map((x) => ({
+      kind: 'delete',
+      eventId: -x.rowid,
+      googleId: x.googleId,
+      calendarId: x.calendarId || calendarId,
+      stale: (x.calendarId || calendarId) !== calendarId,
+    }));
+    return [...tomb, ...ops].slice(0, BATCH);
   }
 
   #collect(rows: Row[], ops: GcalOp[], calendarId: string, tz: string): void {
@@ -200,7 +225,9 @@ export class GcalStore {
 
   /** 구글에서도 지웠다 (없던 것도) */
   markDeleted(eventId: number): void {
-    this.#db.prepare('update event set google_hash = ? where id = ?').run(GCAL_DELETED, eventId);
+    // 음수 id 는 무덤 줄 (영구 삭제된 일정): 줄을 뺀다
+    if (eventId < 0) tombDone(this.#db, -eventId);
+    else this.#db.prepare('update event set google_hash = ? where id = ?').run(GCAL_DELETED, eventId);
   }
 
   /** 구글에 그 일정이 없다 (다른 계정, 구글에서 지움): id 를 버리고 다음에 새로 넣는다 */
@@ -225,6 +252,16 @@ export class GcalStore {
       out.add(`${r.google_id}@google.com`);
       if (r.google_uid) out.add(r.google_uid);
     }
+    // 구글 캘린더에 올린 할 일과 지우는 중인 것(무덤)도: 같은 캘린더를 가져와도 일정으로 되돌아오지 않게
+    const todos = this.#db
+      .prepare('select google_id, google_uid from todo where google_id is not null')
+      .all() as { google_id: string; google_uid: string | null }[];
+    for (const r of todos) {
+      out.add(`${r.google_id}@google.com`);
+      if (r.google_uid) out.add(r.google_uid);
+    }
+    for (const r of this.#db.prepare('select google_id from gcal_tomb').all() as { google_id: string }[])
+      out.add(`${r.google_id}@google.com`);
     return out;
   }
 }

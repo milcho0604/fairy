@@ -3,6 +3,7 @@
 // 칸 시각(sync_clock)은 합친 결과 그대로 직접 적는다. Electron 없이 돈다.
 import type { Db } from '../../shared/db-schema.ts';
 import { eventAnchor } from '../../shared/event-store.ts';
+import { tombRows } from '../../shared/gcal-tomb.ts';
 import { type Anchor, fireAt } from '../../shared/remind.ts';
 import { SYNC_KINDS, type SyncKind } from '../../shared/sync-fields.ts';
 import type { Json, SyncItem } from '../../shared/sync-item.ts';
@@ -596,6 +597,9 @@ export function purgeRow(db: Db, kind: SyncKind, uid: string, now = Date.now()):
       } else if (kind === 'event') {
         run(db, "delete from reminder where kind = 'event' and ref_id = ?", id);
       }
+      // 구글 캘린더에 올라간 행이면 일정을 나중에 지울 수 있게 무덤에 옮긴다 (할 일, 그리고 페어리가 넣은 일정)
+      if (kind === 'todo') tombRows(db, 'todo', 'id = ?', now, id);
+      else if (kind === 'event') tombRows(db, 'event', "id = ? and source = 'local'", now, id);
       run(db, `delete from ${kind} where id = ?`, id);
       if (kind === 'event') {
         const seriesId = r.repeat_series === null ? id : Number(r.repeat_series);

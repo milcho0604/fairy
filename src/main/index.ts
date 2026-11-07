@@ -599,6 +599,7 @@ ready
       mail,
       events,
       gcalLinks,
+      gcalTodoLinks,
       life,
       shop,
       achievements,
@@ -1601,6 +1602,7 @@ ready
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
     const gcal = createGcal({
       store: gcalLinks,
+      todoStore: gcalTodoLinks,
       events,
       onEvents: () => {
         panel.refresh();

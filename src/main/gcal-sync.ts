@@ -1,7 +1,7 @@
 // 구글 캘린더에 쓰기: 한 차례 보내기. 일렉트론 없이 돈다 (시험에서 API 를 흉내 낸다).
 // 보낼 것은 저장 파일에서 고르고(GcalStore.pending), 일정마다 다시 하기 간격(GcalBackoff)을 지킨다.
 import { type GcalBackoff, type GcalProblem, isGoogleId, toGooglePatch } from '../shared/gcal.ts';
-import type { GcalOp, GcalStore } from '../shared/gcal-store.ts';
+import type { GcalOp, GcalOpStore } from '../shared/gcal-store.ts';
 import { googleIdFromUid } from '../shared/sync-item.ts';
 import type { ApiResult } from './gcal-auth.ts';
 
@@ -41,7 +41,7 @@ function uidOf(json: unknown): string | null {
  */
 export async function applyOp(
   op: GcalOp,
-  d: { store: GcalStore; api: GcalApi; newId: () => string },
+  d: { store: GcalOpStore; api: GcalApi; newId: () => string },
 ): Promise<Outcome> {
   if (op.kind === 'delete') {
     const r = await d.api('DELETE', eventsPath(op.calendarId, op.googleId));
@@ -68,7 +68,7 @@ export async function applyOp(
   }
   // 새 일정의 구글 id 는 일정 uid 에서 정한다: 동기화한 다른 기기가 같은 일정을 보내도 같은 id 라 409 를 받아 고치기로 바뀐다.
   // 이미 구글 id 가 있는 일정은 그대로
-  const derivedId = op.uid ? googleIdFromUid(op.uid) : undefined;
+  const derivedId = op.uid ? googleIdFromUid(op.uid, d.store.idPrefix) : undefined;
   const id = op.googleId && isGoogleId(op.googleId) ? op.googleId : (derivedId ?? d.newId());
   const fresh = !op.confirmed || id !== op.googleId;
   // 넣기 전에 id 와 캘린더를 적어 둔다 (대답을 못 받고 꺼져도 다음에 같은 id 로 보내 겹치지 않는다)
@@ -123,7 +123,7 @@ export function reasonOf(json: unknown): string {
  * 구글이 받지 않는 일정 하나(400)는 길게 미루고 다음 것으로 간다. GcalLost 는 그대로 던진다
  */
 export async function syncPass(d: {
-  store: GcalStore;
+  store: GcalOpStore;
   backoff: GcalBackoff;
   api: GcalApi;
   newId: () => string;

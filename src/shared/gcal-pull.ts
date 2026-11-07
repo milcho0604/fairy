@@ -3,7 +3,7 @@
 // 가져온 일정은 페어리에서 읽기 전용이다 (구글로 되돌려 쓰지 않는다. 알림과 고정만 페어리 것).
 import { plusDays } from './day.ts';
 import { dayStartMs } from './event-store.ts';
-import { GCAL_ID_PREFIX } from './gcal.ts';
+import { GCAL_ID_PREFIXES } from './gcal.ts';
 
 const DAY_MS = 86_400_000;
 /** 읽을 범위: 지난 7일부터 앞으로 60일까지 */
@@ -62,7 +62,13 @@ export function isFromFairy(item: unknown, ours?: ReadonlySet<string>): boolean 
   };
   if (v?.extendedProperties?.private?.jjakkung === '1') return true;
   if (!ours) return false;
-  if (typeof v?.id === 'string' && v.id.startsWith(GCAL_ID_PREFIX) && ours.has(`${v.id}@google.com`))
+  // 보내는 중 대답을 못 받아 표식이 안 남은 일정도 id 머리(일정 jjk, 할 일 jjt)와 보낸 기록으로 걸린다
+  const id = v?.id;
+  if (
+    typeof id === 'string' &&
+    GCAL_ID_PREFIXES.some((p) => id.startsWith(p)) &&
+    ours.has(`${id}@google.com`)
+  )
     return true;
   return typeof v?.iCalUID === 'string' && ours.has(v.iCalUID);
 }

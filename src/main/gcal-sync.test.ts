@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, migrate } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
-import { GcalBackoff } from '../shared/gcal.ts';
+import { GCAL_ID_PREFIX, GcalBackoff } from '../shared/gcal.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
 import { googleIdFromUid } from '../shared/sync-item.ts';
 import { type ApiResult, classifyApi } from './gcal-auth.ts';
@@ -89,7 +89,10 @@ function fakeGoogle() {
 
 /** 일정의 uid 에서 정한 구글 id (새 일정은 이 id 로 간다, 기획서 6절) */
 const gid = (db: Db, eventId: number): string =>
-  googleIdFromUid((db.prepare('select uid from event where id = ?').get(eventId) as { uid: string }).uid);
+  googleIdFromUid(
+    (db.prepare('select uid from event where id = ?').get(eventId) as { uid: string }).uid,
+    GCAL_ID_PREFIX,
+  );
 
 function setup() {
   const db = new DatabaseSync(':memory:') as unknown as Db;
@@ -352,7 +355,7 @@ test('동기화한 두 기기가 같은 새 일정을 보내면 같은 구글 id
   const uid = (a.db.prepare('select uid from event where id = ?').get(ea.id) as { uid: string }).uid;
   const eb = b.events.add({ title: '회의 (고침)', startAt: NOW + HOUR }, NOW);
   b.db.prepare('update event set uid = ? where id = ?').run(uid, eb.id);
-  const id = googleIdFromUid(uid);
+  const id = googleIdFromUid(uid, GCAL_ID_PREFIX);
   assert.match(id, /^jjk[0-9a-v]{26}$/);
   // 한 구글 캘린더를 두 기기가 같이 쓴다
   b.g.cals.set('primary', a.g.cals.get('primary') as Map<string, Record<string, unknown>>);
