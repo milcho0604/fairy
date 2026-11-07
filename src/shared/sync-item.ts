@@ -2,7 +2,7 @@
 // 항목 하나는 칸 값(f)과 칸마다 시각(c)이다. 칸마다 시각이 큰 쪽이 이기고, 같으면 값의 정해진 글자 순서로 정한다
 // (어느 기기에서 합쳐도 같은 쪽이 남는다). 메모 본문만 마지막으로 맞춘 본문(base)과 견줘 따로 정한다.
 import { cutText } from './cut-text.ts';
-import { appendsTo, mergeNoteText, NOTE_TITLE_MAX } from './note-store.ts';
+import { appendsTo, mergeNoteText, NOTE_TITLE_MAX, noteFormatOf } from './note-store.ts';
 import type { SyncKind } from './sync-fields.ts';
 import { derivedUid, sha256Hex } from './sync-uid.ts';
 
@@ -192,6 +192,8 @@ export function conflictCopy(
     updated_at: copy.t,
     deleted_at: null,
     pinned_at: null,
+    // 사본도 원본과 같은 형식으로 보인다 (마크다운 글이 글자 그대로 보이지 않게)
+    format: noteFormatOf(orig.f.format),
   };
   const c: Record<string, number> = {};
   for (const k of Object.keys(f)) c[k] = t;

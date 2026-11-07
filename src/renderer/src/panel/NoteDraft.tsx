@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { draftHasText, mayGrabFocus } from './note-draft.ts';
+import { savedFormat } from './note-prefs.ts';
 import { onNoteFocus, takeNoteFocus } from './open-target.ts';
 
 export type DraftField = 'title' | 'body';
@@ -186,7 +187,9 @@ export function NoteDraft({
         value={body}
         maxLength={NOTE_BODY_MAX}
         aria-label={t('panel.note.bodyLabel')}
-        placeholder={t('panel.note.bodyPlaceholder')}
+        placeholder={t(
+          savedFormat() === 'md' ? 'panel.note.bodyPlaceholder' : 'panel.note.bodyPlaceholderTxt',
+        )}
         onChange={(e) =>
           change('body', e.target.value, e.nativeEvent instanceof InputEvent && e.nativeEvent.isComposing)
         }

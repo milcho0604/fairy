@@ -1,7 +1,7 @@
 // SQLite 스키마 (P2-01). node:sqlite 를 쓴다: Electron 44 의 Node 24.21 에 들어 있어 네이티브 모듈 빌드가 없다.
 // 버전은 PRAGMA user_version 에 적고, 앱이 올라갈 때 순서대로 바꾼다. 바꾸기 전 파일 복사는 메인이 한다.
 
-import { SYNC_MIGRATION_SQL } from './db-schema-sync.ts';
+import { NOTE_FORMAT_MIGRATION_SQL, SYNC_MIGRATION_SQL } from './db-schema-sync.ts';
 
 /** 버전 n 으로 올리는 SQL. 배열 순서 = 버전 (0번은 1판으로 올리는 것). 한 번 내보낸 판은 고치지 않고 새 판을 더한다. */
 export const MIGRATIONS: readonly string[] = [
@@ -373,6 +373,8 @@ export const MIGRATIONS: readonly string[] = [
     primary key (kind, google_id, google_cal)
   );
   `,
+  // 26판: 메모 형식 (txt 또는 md). 마크다운 메모는 미리보기를 보여 준다. 동기화 칸이라 메모 트리거를 새 칸 목록으로 다시 만든다
+  NOTE_FORMAT_MIGRATION_SQL,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -52,6 +52,7 @@ import type { LookMotion } from '../shared/look-motion.ts';
 import type { MailBox } from '../shared/mail.ts';
 import type { MoveAsk } from '../shared/moves.ts';
 import { NOTES, type NoteBridge } from '../shared/note-ipc.ts';
+import type { NoteFormat } from '../shared/note-store.ts';
 import { NOTICE, type NoticeBridge, type NoticeView } from '../shared/notice-ipc.ts';
 import { SERVER, type ServerBridge, type ServerStatus } from '../shared/server-account.ts';
 import { FRIENDS, type FriendsBridge, type FriendsState } from '../shared/server-friends.ts';
@@ -571,7 +572,10 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },
     noteGet: (id: number) => ipcRenderer.invoke(PANEL.noteGet, id),
-    noteAdd: (text?: string | { title: string; body: string }) => ipcRenderer.invoke(PANEL.noteAdd, text),
+    noteAdd: (text?: string | { title: string; body: string }, format?: NoteFormat) =>
+      ipcRenderer.invoke(PANEL.noteAdd, text, format),
+    noteFormat: (id: number, format: NoteFormat) => ipcRenderer.invoke(PANEL.noteFormat, id, format),
+    openLink: (url: string) => ipcRenderer.send(PANEL.openLink, url),
     noteUpdate: (id, patch, base) => ipcRenderer.invoke(PANEL.noteUpdate, id, patch, base),
     noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),

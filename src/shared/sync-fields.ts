@@ -29,7 +29,7 @@ export const SYNC_FIELDS: Record<SyncKind, readonly string[]> = {
     'due_min',
   ],
   todo_step: ['todo_id', 'title', 'done', 'ord', 'created_at'],
-  note: ['title', 'body', 'source', 'created_at', 'updated_at', 'deleted_at', 'pinned_at'],
+  note: ['title', 'body', 'source', 'created_at', 'updated_at', 'deleted_at', 'pinned_at', 'format'],
   event: [
     'title',
     'start_at',
