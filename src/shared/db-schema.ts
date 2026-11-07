@@ -357,6 +357,22 @@ export const MIGRATIONS: readonly string[] = [
   `,
   // 24판: 기기 간 동기화 바탕 (docs/sync-plan.md 4절). uid, 칸 시각, 보낼 목록, 영구 삭제 표식을 트리거가 채운다
   SYNC_MIGRATION_SQL,
+  // 25판: 할 일을 구글 캘린더로 보내기 (docs/gcal-todo-plan.md 6절). 일정 표와 같은 이름과 뜻의 구글 칸 네 개,
+  // 그리고 영구 삭제된 행의 구글 일정을 나중에라도 지우려고 남기는 무덤 표 (kind 는 todo 나 event)
+  `
+  alter table todo add column google_id text;
+  alter table todo add column google_cal text;
+  alter table todo add column google_hash text;
+  alter table todo add column google_uid text;
+  create index todo_google on todo(google_id) where google_id is not null;
+  create table gcal_tomb (
+    kind text not null,
+    google_id text not null,
+    google_cal text not null default '',
+    at integer not null,
+    primary key (kind, google_id, google_cal)
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

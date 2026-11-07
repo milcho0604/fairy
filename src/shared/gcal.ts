@@ -22,6 +22,10 @@ export const GCAL_PRIMARY = 'primary';
 
 /** 짝꿍이 정해 보내는 구글 일정 id 머리. 구글 id 는 base32hex 소문자(0-9, a-v) 5~1024자 */
 export const GCAL_ID_PREFIX = 'jjk';
+/** 할 일을 보낼 때 정하는 구글 일정 id 머리 (docs/gcal-todo-plan.md 5절) */
+export const GCAL_TODO_ID_PREFIX = 'jjt';
+/** 페어리가 정한 id 머리들. 가져오기가 되돌아온 일정을 거를 때 쓴다 */
+export const GCAL_ID_PREFIXES: readonly string[] = [GCAL_ID_PREFIX, GCAL_TODO_ID_PREFIX];
 
 /** 구글 캘린더 켜고 끄기를 두는 파일 (데이터 폴더, 비밀 아님). 펫 MCP 서버도 "AI가 구글 일정도 보기"를 여기서 읽는다 */
 export const GCAL_PREFS_FILE = 'google-calendar.json';
@@ -101,6 +105,17 @@ export interface GcalStatus {
   /** 아직 못 보낸 일정 수 */
   pending: number;
   problem: GcalProblem | null;
+  /** 할 일 보내기 (docs/gcal-todo-plan.md). 설정 화면은 4번 PR 에서 */
+  todos?: {
+    on: boolean;
+    target: 'fairy' | 'pick';
+    calendarId: string | null;
+    /** 구글에 올라가 있는 수 */
+    sent: number;
+    /** 아직 못 보낸 수 */
+    pending: number;
+    problem: GcalProblem | null;
+  };
 }
 
 export interface GcalBridge {
@@ -141,7 +156,7 @@ export interface GcalBody {
   end: GcalTime;
   reminders: { useDefault: false; overrides: { method: 'popup'; minutes: number }[] };
   status: 'confirmed';
-  extendedProperties: { private: { jjakkung: '1' } };
+  extendedProperties: { private: { jjakkung: '1'; fairyKind?: 'todo' } };
 }
 
 export type GcalTime = { dateTime: string; timeZone: string } | { date: string };
@@ -222,10 +237,10 @@ export function gcalHash(body: GcalBody): string {
 export const GCAL_DELETED = 'deleted';
 
 /** 새 구글 일정 id: 머리 + 무작위 base32hex 26자 (130비트). randomBytes 는 무작위 바이트 (시험에서 바꾼다) */
-export function newGoogleId(randomBytes: (n: number) => Uint8Array): string {
+export function newGoogleId(randomBytes: (n: number) => Uint8Array, prefix: string = GCAL_ID_PREFIX): string {
   const abc = '0123456789abcdefghijklmnopqrstuv';
   const bytes = randomBytes(26);
-  let out = GCAL_ID_PREFIX;
+  let out = prefix;
   for (const b of bytes) out += abc[b & 31];
   return out;
 }

@@ -119,19 +119,24 @@ export const DEFAULT_CHOICE: Readonly<CalChoice> = Object.freeze({
  * 창에서 온 고른 것 다듬기. 틀린 id 는 빼고, 겹치면 하나로, 많으면 앞에서 PULL_CALS_MAX 개.
  * 읽기만 캘린더나 틀린 id 로 보내기면 통째로 거절(undefined)
  */
-export function cleanChoice(raw: unknown, known: readonly GcalCalendar[] | null): CalChoice | undefined {
+export function cleanChoice(
+  raw: unknown,
+  known: readonly GcalCalendar[] | null,
+  /** 일정 가져오기와 보내기에서 뺄 캘린더 (페어리가 만든 할 일 전용 캘린더) */
+  exclude?: string | null,
+): CalChoice | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const v = raw as { pull?: unknown; push?: unknown };
   if (!Array.isArray(v.pull)) return undefined;
   const pull: string[] = [];
   for (const x of v.pull) {
     const id = typeof x === 'string' && x.length <= 300 ? cleanCalendarId(x) : undefined;
-    if (id && !pull.includes(id)) pull.push(id);
+    if (id && id !== exclude && !pull.includes(id)) pull.push(id);
     if (pull.length >= PULL_CALS_MAX) break;
   }
   if (v.push === null) return { pull, push: null };
   const push = typeof v.push === 'string' && v.push.length <= 300 ? cleanCalendarId(v.push) : undefined;
-  if (!push) return undefined;
+  if (!push || push === exclude) return undefined;
   if (!canPush(known?.find((c) => c.id === push))) return undefined;
   return { pull, push };
 }

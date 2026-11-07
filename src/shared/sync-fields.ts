@@ -57,7 +57,7 @@ export const SYNC_VIRTUAL_FIELDS: Record<SyncKind, readonly string[]> = {
 
 /** 맞추지 않는 칸 (시각도 적지 않는다). 기기마다 따로 정하거나 다른 칸에서 다시 만든다 */
 export const SYNC_EXCLUDED_FIELDS: Record<SyncKind, readonly string[]> = {
-  todo: ['id', 'auto_removed', 'sort_ord', 'coins'],
+  todo: ['id', 'auto_removed', 'sort_ord', 'coins', 'google_id', 'google_cal', 'google_hash', 'google_uid'],
   todo_step: ['id'],
   note: ['id'],
   event: [

@@ -6,6 +6,7 @@ import { plusDays, weekdayOf as weekday } from './day.ts';
 import { clockJumped, type Db } from './db-schema.ts';
 import { canDeferToTomorrow } from './due-choices.ts';
 import { FOCUS, focusReward } from './focus.ts';
+import { tombRows } from './gcal-tomb.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
 import { type Anchor, atLocal, DEFAULT_REMINDS, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
@@ -787,6 +788,8 @@ export class TodoStore {
     for (let i = 0; i < ids.length; i += 500) {
       const part = ids.slice(i, i + 500);
       const marks = part.map(() => '?').join(',');
+      // 구글 캘린더에 올라간 할 일이면 일정을 나중에 지울 수 있게 무덤에 옮긴다 (행이 지워지면 구글 id 도 사라진다)
+      tombRows(this.#db, 'todo', `id in (${marks})`, Date.now(), ...part);
       this.#db.prepare(`delete from todo_step where todo_id in (${marks})`).run(...part);
       this.#db.prepare(`delete from reminder where kind = 'todo' and ref_id in (${marks})`).run(...part);
       this.#db.prepare(`delete from todo where id in (${marks})`).run(...part);

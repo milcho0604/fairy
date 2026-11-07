@@ -8,21 +8,21 @@ import { join } from 'node:path';
 import { app, type BrowserWindow, type IpcMainInvokeEvent, ipcMain, shell, type WebContents } from 'electron';
 import type { EventStore } from '../shared/event-store.ts';
 import {
-  cleanCalendarId,
   GCAL,
   GCAL_PREFS_FILE,
-  GCAL_PRIMARY,
+  GCAL_TODO_ID_PREFIX,
   GcalBackoff,
   type GcalCalLabel,
   type GcalMark,
   type GcalProblem,
   type GcalStatus,
-  gcalAiOn,
   newGoogleId,
   type PanelGcal,
 } from '../shared/gcal.ts';
-import { cleanCalendars, cleanChoice, DEFAULT_CHOICE, type GcalCalendar } from '../shared/gcal-cals.ts';
+import { cleanChoice } from '../shared/gcal-cals.ts';
+import { type GcalPrefs, parseGcalPrefs } from '../shared/gcal-prefs.ts';
 import type { GcalStore } from '../shared/gcal-store.ts';
+import type { GcalTodoStore } from '../shared/gcal-todo-store.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   authUrl,
@@ -51,22 +51,7 @@ const KICK_MS = 1500;
 /** 구글 일정을 읽어 오는 간격 (따로 바뀐 게 없어도). 설정의 "지금 맞추기"는 바로 */
 const PULL_EVERY_MS = 15 * 60_000;
 
-interface Prefs {
-  push: boolean;
-  /** 고른 캘린더의 원래 일정을 읽어 오기. 옛 설정(이 칸이 없음)은 꺼 둔다: 연결할 때 켠다 */
-  pull: boolean;
-  /** 가져온 구글 일정도 AI 에 보이기. 사용자가 켠 경우에만 (기본 꺼짐) */
-  ai: boolean;
-  /** 보낼 캘린더 (push 가 켜졌을 때). 예전 판에서는 가져오는 캘린더이기도 했다 */
-  calendarId: string;
-  lastSyncAt: number | null;
-  /** 가져올 캘린더들 (구글 캘린더 옵션 창). 예전 설정(이 칸이 없음)은 [calendarId] */
-  pullCals: string[];
-  /** 마지막으로 읽은 내 캘린더 목록 (이름, 색, 권한). 아직 못 읽었으면 null */
-  cals: GcalCalendar[] | null;
-  /** 연결에 캘린더 목록 보기 권한이 있는지. 모르면 null, 예전 연결이면 false */
-  listScope: boolean | null;
-}
+type Prefs = GcalPrefs;
 
 const userFile = (name: string) => join(app.getPath('userData'), name);
 const TOKEN_FILE = 'google-token.json';
@@ -74,32 +59,9 @@ const PREFS_FILE = GCAL_PREFS_FILE;
 
 function readPrefs(): Prefs {
   try {
-    const v = JSON.parse(readFileSync(userFile(PREFS_FILE), 'utf8')) as Record<string, unknown>;
-    const calendarId = cleanCalendarId(v.calendarId) ?? GCAL_PRIMARY;
-    const pullCals = Array.isArray(v.pullCals)
-      ? (cleanChoice({ pull: v.pullCals, push: null }, null)?.pull ?? [])
-      : [calendarId];
-    return {
-      push: v.push === true,
-      pull: v.pull === true,
-      ai: gcalAiOn(v),
-      calendarId,
-      lastSyncAt: typeof v.lastSyncAt === 'number' && Number.isFinite(v.lastSyncAt) ? v.lastSyncAt : null,
-      pullCals,
-      cals: cleanCalendars(v.cals),
-      listScope: typeof v.listScope === 'boolean' ? v.listScope : null,
-    };
+    return parseGcalPrefs(JSON.parse(readFileSync(userFile(PREFS_FILE), 'utf8')));
   } catch {
-    return {
-      push: false,
-      pull: false,
-      ai: false,
-      calendarId: GCAL_PRIMARY,
-      lastSyncAt: null,
-      pullCals: [...DEFAULT_CHOICE.pull],
-      cals: null,
-      listScope: null,
-    };
+    return parseGcalPrefs(undefined);
   }
 }
 
@@ -136,6 +98,8 @@ const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 export function createGcal(o: {
   store: GcalStore;
+  /** 할 일을 구글 캘린더로 보내는 저장 쪽 (docs/gcal-todo-plan.md) */
+  todoStore: GcalTodoStore;
   /** 읽어 온 구글 일정을 넣을 곳 (source = google) */
   events: EventStore;
   /** 읽어 와서 일정이 바뀌었다. 패널과 알림을 다시 본다 */
@@ -176,10 +140,23 @@ export function createGcal(o: {
   let listing = false;
   let listTried = false;
   const backoff = new GcalBackoff();
+  /** 할 일 보내기의 다시 하기 간격 (일정과 키가 섞이지 않게 따로) */
+  const todoBackoff = new GcalBackoff();
+  /** 할 일 보내기: 아직 못 보낸 수, 멈춘 까닭 */
+  let todoPending = 0;
+  let todoProblem: GcalProblem | null = null;
   /** 구글이 받지 않은 일정 id → 그때 내용 지문 (내용이 바뀌면 다시 보낼 차례라 못 보냄 표시를 내린다) */
   const rejected = new Map<number, string>();
 
   const connected = () => !!token.get();
+
+  function sentTodos(): number {
+    try {
+      return o.todoStore.sentCount();
+    } catch {
+      return 0;
+    }
+  }
 
   function status(): GcalStatus {
     return {
@@ -200,6 +177,14 @@ export function createGcal(o: {
       pulled,
       pending,
       problem: problem ?? pullProblem,
+      todos: {
+        on: prefs.todos.on,
+        target: prefs.todos.target,
+        calendarId: prefs.todos.calendarId,
+        sent: sentTodos(),
+        pending: todoPending,
+        problem: todoProblem,
+      },
     };
   }
 
@@ -243,9 +228,13 @@ export function createGcal(o: {
     pending = 0;
     dropPulled();
     backoff.clear();
+    todoBackoff.clear();
+    todoPending = 0;
+    todoProblem = null;
     rejected.clear();
     // 다시 연결하는 계정이 다를 수 있다: 보낸 기록을 "확인 전"으로 (같은 계정이면 겹치지 않고, 다른 계정이면 새로 들어간다)
     o.store.resetSent();
+    o.todoStore.resetSent();
     broadcast();
     o.onMarks?.();
     o.onLinked?.();
@@ -293,6 +282,8 @@ export function createGcal(o: {
 
   const linked = () => !!client && connected();
   const active = () => linked() && prefs.push;
+  /** 할 일 보내기가 켜져 있고 올릴 캘린더가 정해졌다 */
+  const todoActive = () => linked() && prefs.todos.on && !!prefs.todos.calendarId;
 
   /** 허락에서 캘린더 권한이 빠졌다: 다시 연결해야 한다. 남은 권한도 구글에서 거둔다 */
   function scopeLost() {
@@ -300,7 +291,10 @@ export function createGcal(o: {
     token.set(null);
     access = null;
     problem = 'scope';
+    todoPending = 0;
+    todoProblem = null;
     o.store.resetSent();
+    o.todoStore.resetSent();
     dropPulled();
     if (refresh) void revokeToken(f, refresh).catch(() => {});
     o.onLinked?.();
@@ -321,6 +315,14 @@ export function createGcal(o: {
     }
     if (prefs.push) await push();
     else pending = 0;
+    // 일정 다음에 할 일을 차례로 (동시에 돌리지 않는다)
+    if (linked()) {
+      if (todoActive()) await pushTodos();
+      else {
+        todoPending = 0;
+        todoProblem = null;
+      }
+    }
     if (linked() && prefs.pull && (pullForce || Date.now() - lastPullTry >= PULL_EVERY_MS)) await pull();
   }
 
@@ -329,12 +331,14 @@ export function createGcal(o: {
     pullForce = false;
     lastPullTry = Date.now();
     const cals = prefs.pullCals;
+    // 페어리가 만든 할 일 전용 캘린더는 읽지 않는다 (기존 캘린더에 올리는 경우는 읽는다: 되돌아온 것은 가져오기가 거른다)
+    const own = prefs.todos.target === 'fairy' ? prefs.todos.calendarId : null;
     let r: PullResult;
     try {
       r = await pullPass({
         events: o.events,
         api: (method, path) => api(method, path),
-        calendars: cals,
+        calendars: own ? cals.filter((id) => id !== own) : cals,
         now: Date.now,
         ours: o.store.sentUids(),
         untitled: t('panel.event.untitled'),
@@ -404,6 +408,37 @@ export function createGcal(o: {
     else if (r.waiting === 0 && (problem === 'offline' || problem === 'calendar')) problem = null;
   }
 
+  /** 날짜가 있는 할 일을 고른 캘린더로 보낸다 (일정 보내기와 같은 엔진, 저장 쪽만 다르다) */
+  async function pushTodos(): Promise<void> {
+    const calendarId = prefs.todos.calendarId;
+    if (!calendarId) return;
+    let r: PassResult;
+    try {
+      r = await syncPass({
+        store: o.todoStore,
+        backoff: todoBackoff,
+        api,
+        newId: () => newGoogleId((n) => randomBytes(n), GCAL_TODO_ID_PREFIX),
+        now: Date.now,
+        calendarId,
+        tz: tz(),
+        log: o.log,
+      });
+    } catch (err) {
+      if (err instanceof GcalLost) return;
+      throw err;
+    }
+    todoPending = r.pending;
+    if (r.again) again = true;
+    if (r.sent) {
+      o.log('gcal', '할 일 보냄', r.sent);
+      setPrefs({ lastSyncAt: Date.now() });
+    }
+    if (r.stop === 'scope') scopeLost();
+    if (r.stop) todoProblem = r.stop === 'scope' ? null : r.stop;
+    else if (r.waiting === 0) todoProblem = null;
+  }
+
   async function run(): Promise<void> {
     if (running) {
       again = true;
@@ -440,7 +475,7 @@ export function createGcal(o: {
 
   /** 일정이 바뀌었다 (패널, 빠른 입력, MCP) */
   function kick() {
-    if (active()) schedule(KICK_MS);
+    if (active() || todoActive()) schedule(KICK_MS);
   }
 
   /** 곧 구글 일정을 다시 읽는다 (켬, 캘린더 바꿈, 연결함) */
@@ -556,7 +591,10 @@ export function createGcal(o: {
     access = null;
     problem = null;
     pending = 0;
+    todoPending = 0;
+    todoProblem = null;
     backoff.clear();
+    todoBackoff.clear();
     rejected.clear();
     clearTimeout(timer);
     // 구글에서도 권한을 거둔다. 인터넷이 안 되면 이 컴퓨터에서만 지운다 (구글 계정 > 보안 > 서드 파티 앱에서 거둘 수 있다)
@@ -566,9 +604,12 @@ export function createGcal(o: {
         .catch((err) => o.log('gcal', '권한 거두기 실패', err instanceof Error ? err.name : 'error'));
     // 다음에 다른 계정으로 이어도 빠짐없이 들어가게 보낸 기록을 "확인 전"으로
     o.store.resetSent();
+    o.todoStore.resetSent();
+    // 지우던 중인 구글 일정(무덤)은 그 계정 것이라 비운다. 올릴 캘린더와 계정 지문도 그 계정 것이라 비운다
+    o.todoStore.clearTomb();
     // 읽어 온 구글 일정도 걷어 낸다 (연결을 끊으면 더는 맞출 수 없다). 캘린더 목록도 그 계정 것이라 지운다
     dropPulled();
-    setPrefs({ cals: null, listScope: null });
+    setPrefs({ cals: null, listScope: null, account: null, todos: { ...prefs.todos, calendarId: null } });
     o.log('gcal', '연결 끊음');
     broadcast();
     o.onMarks?.();
@@ -623,7 +664,8 @@ export function createGcal(o: {
    */
   ipcMain.handle(GCAL.setCalendars, (e, raw: unknown) => {
     if (!ok(e)) return undefined;
-    const c = cleanChoice(raw, prefs.cals);
+    // 페어리가 만든 할 일 전용 캘린더는 일정을 가져오거나 보낼 곳으로 고를 수 없다
+    const c = cleanChoice(raw, prefs.cals, prefs.todos.target === 'fairy' ? prefs.todos.calendarId : null);
     if (!c) return refreshed();
     const pullChanged = c.pull.join('\n') !== prefs.pullCals.join('\n');
     if (pullChanged) {
@@ -685,6 +727,7 @@ export function createGcal(o: {
   if (existsSync(imported)) {
     try {
       o.store.resetSent();
+      o.todoStore.resetSent();
       rmSync(imported, { force: true });
       o.log('gcal', '백업 가져온 뒤 보낸 기록 되돌림');
     } catch {
