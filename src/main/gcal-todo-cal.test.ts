@@ -577,3 +577,29 @@ test('페어리 캘린더 지우기: 캘린더째 지우고, 이미 없어도 �
   g.forced.push(new Error('net'));
   assert.deepEqual(await deleteCalendar(g.api, SMALL), { ok: false, stop: 'offline' });
 });
+
+test('만든 직후 구글 목록에 아직 안 보여도 돌려주는 목록에 만든 캘린더가 든다', async () => {
+  const made = 'abc123@group.calendar.google.com';
+  const api: AnyApi = async (method) =>
+    method === 'POST'
+      ? res(200, { id: made })
+      : res(200, { items: [{ id: ME, primary: true, accessRole: 'owner', summary: ME }] });
+  const r = await ensureFairyCalendar({ api, lang: 'ko', tz: TZ, canCreate: true });
+  assert.ok(r.ok);
+  assert.equal(r.calendarId, made);
+  assert.ok(r.calendars.some((c) => c.id === made && c.fairy && c.role === 'owner'));
+  assert.equal(fairyState({ calendars: r.calendars, todos: prefsOf({ calendarId: made }) }), 'ready');
+});
+
+test('남는 캘린더에 올린 할 일이 있는지 센다 (옮기기 전에 지우지 않게)', async () => {
+  const { todos, g, pass, store } = setup();
+  g.fairy(BIG);
+  g.fairy(SMALL);
+  todos.add({ title: '가', due: '2026-10-12' }, NOW);
+  await pass(BIG);
+  assert.equal(store.sentInCals([BIG]), 1);
+  assert.equal(store.sentInCals([SMALL]), 0);
+  assert.equal(store.sentInCals([]), 0);
+  await pass(SMALL);
+  assert.equal(store.sentInCals([BIG]), 0);
+});

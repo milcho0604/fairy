@@ -159,3 +159,41 @@ test('브라우저를 열 수 없으면 failed', async () => {
   });
   assert.deepEqual(g, { kind: 'kept', problem: 'failed' });
 });
+
+/** 브라우저 응답 뒤에 stillMine 을 바꾸는 시점을 고른다 */
+async function cancelAt(when: 'start' | 'exchange' | 'list') {
+  let mine = when !== 'start';
+  const f: FetchLike = async (url) => {
+    if (url === TOKEN_URL) {
+      if (when === 'exchange') mine = false;
+      return json(200, { access_token: 'A', refresh_token: 'R', expires_in: 3600, scope: ALL });
+    }
+    if (when === 'list') mine = false;
+    return json(200, { items: [{ id: ME, primary: true, accessRole: 'owner' }] });
+  };
+  return runGrant({
+    f,
+    client: CLIENT,
+    now: () => NOW,
+    expectedAccount: accountFingerprint(ME),
+    page: () => ({ title: 't', body: 'b' }),
+    onCancel: () => {},
+    stillMine: () => mine,
+    openExternal: async (url) => {
+      const u = new URL(url);
+      await new Promise<void>((resolve) => {
+        get(`${u.searchParams.get('redirect_uri')}/?code=c&state=${u.searchParams.get('state')}`, (x) => {
+          x.resume();
+          x.on('end', resolve);
+        }).on('error', () => resolve());
+      });
+    },
+    timeoutMs: 200,
+  });
+}
+
+test('토큰 받는 중, 목록 읽는 중, 서버가 열리기 전에 취소되면 granted 가 아니라 cancelled', async () => {
+  assert.deepEqual(await cancelAt('exchange'), { kind: 'cancelled' });
+  assert.deepEqual(await cancelAt('list'), { kind: 'cancelled' });
+  assert.deepEqual(await cancelAt('start'), { kind: 'cancelled' });
+});

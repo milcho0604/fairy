@@ -74,6 +74,11 @@ export async function runGrant(d: {
   const state = newState();
   const lb = await startLoopback({ state, page: d.page, timeoutMs: d.timeoutMs });
   d.onCancel(lb.cancel);
+  // 서버가 열리기를 기다리는 사이 취소가 왔으면 열지 않고 끝낸다
+  if (!d.stillMine()) {
+    lb.cancel();
+    return { kind: 'cancelled' };
+  }
   d.log?.('gcal', '새 권한 받기 시작');
   let openFailed = false;
   try {
@@ -111,8 +116,10 @@ export async function runGrant(d: {
     });
   } catch (err) {
     d.log?.('gcal', '새 권한 토큰 받기 실패', err instanceof Error ? err.name : 'error');
-    return { kind: 'kept', problem: 'offline' };
+    return d.stillMine() ? { kind: 'kept', problem: 'offline' } : { kind: 'cancelled' };
   }
+  // 받는 사이 연결을 끊었거나 새로 연결했으면 이 토큰은 버린다
+  if (!d.stillMine()) return { kind: 'cancelled' };
   if (!got.ok) {
     d.log?.('gcal', '새 권한 토큰 받기 실패', got.error, got.status);
     return { kind: 'kept', problem: 'failed' };
@@ -122,6 +129,7 @@ export async function runGrant(d: {
   if (!t.appScope) return { kind: 'kept', problem: 'noApp' };
   if (!t.refreshToken) return { kind: 'kept', problem: 'failed' };
   const primary = await primaryOf(d.f, t.accessToken);
+  if (!d.stillMine()) return { kind: 'cancelled' };
   if ('problem' in primary) return { kind: 'kept', problem: primary.problem };
   const account = accountFingerprint(primary.id);
   if (account !== d.expectedAccount) return { kind: 'kept', problem: 'account' };

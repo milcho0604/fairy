@@ -146,6 +146,12 @@ export async function ensureFairyCalendar(d: {
   const ids = new Set([madeId, ...again.calendars.filter((c) => c.fairy).map((c) => c.id)]);
   const canonical = [...ids].sort()[0] ?? madeId;
   let calendars = again.calendars;
+  // 구글 목록이 늦어 방금 만든 것이 아직 안 보일 수 있다: 만든 것으로 채워 둔다 (없어진 것으로 오해하지 않게)
+  if (!calendars.some((c) => c.id === madeId))
+    calendars = [
+      ...calendars,
+      { id: madeId, name: NAMES[d.lang], color: null, role: 'owner', primary: false, fairy: true },
+    ];
   if (canonical !== madeId) {
     // 더 작은 id 의 캘린더가 이미 있다: 방금 만든 것은 지운다
     try {

@@ -588,7 +588,19 @@ export function createGcal(o: {
       setPrefs({ todos: { ...prefs.todos, calendarId: eff.moveTo } });
       todoBackoff.clear();
       kick();
-    } else if (eff.gone) fairyIsGone();
+    } else if (eff.gone) {
+      // 목록이 늦은 것일 수 있다: 정말 없는지 한 번 더 묻고 비운다
+      const id = prefs.todos.calendarId;
+      if (id)
+        void calendarGone(api, id)
+          .then((gone) => {
+            if (gone && prefs.todos.calendarId === id) {
+              fairyIsGone();
+              broadcast();
+            }
+          })
+          .catch(() => {});
+    }
   }
 
   /** 새 권한(캘린더 만들기와 지우기)을 따로 받는다. 연결과 설정은 건드리지 않는다 */
@@ -605,7 +617,14 @@ export function createGcal(o: {
     }
     connecting?.cancel();
     let cancelWait: () => void = () => {};
-    const mine = { cancel: () => cancelWait() };
+    // 허락 서버가 열리기 전에 온 취소도 기억한다
+    let cancelled = false;
+    const mine = {
+      cancel: () => {
+        cancelled = true;
+        cancelWait();
+      },
+    };
     connecting = mine;
     broadcast();
     try {
@@ -617,15 +636,18 @@ export function createGcal(o: {
         openExternal: (url) => shell.openExternal(url),
         onCancel: (c) => {
           cancelWait = c;
+          if (cancelled) c();
         },
-        stillMine: () => connecting === mine,
+        stillMine: () => connecting === mine && !cancelled,
         page: (ok) => ({
           title: t(ok ? 'gcal.page.okTitle' : 'gcal.page.failTitle'),
           body: t(ok ? 'gcal.page.okBody' : 'gcal.page.failBody'),
         }),
         log: o.log,
       });
-      if (r.kind === 'granted') {
+      if (r.kind === 'granted' && (connecting !== mine || cancelled)) {
+        // 마지막 순간에 연결이 끊기거나 바뀌었다: 아무것도 바꾸지 않는다
+      } else if (r.kind === 'granted') {
         // 새 토큰으로 바꾼다. 설정은 새 권한 칸과 지문만 고친다. scopeLost 도 부르지 않는다
         token.set(r.tokens.refreshToken);
         access = { token: r.tokens.accessToken, expiresAt: r.tokens.expiresAt };
@@ -705,7 +727,14 @@ export function createGcal(o: {
     await loadCalendars();
     if (extraFairy(prefs.cals).length === 0 || !prefs.cals) return;
     if (!(await needApp())) return;
-    const r = await removeExtraFairy({ api, calendars: prefs.cals, log: o.log });
+    // 이 기기의 할 일이 아직 남는 캘린더에 있으면 먼저 옮기고, 그래도 남은 것은 지우지 않는다
+    if (todoActive()) await run();
+    const left = extraFairy(prefs.cals).filter((id) => o.todoStore.sentInCals([id]) > 0);
+    const r = await removeExtraFairy({
+      api,
+      calendars: prefs.cals.filter((c) => !left.includes(c.id)),
+      log: o.log,
+    });
     if (r.deleted.length > 0 && prefs.cals)
       setPrefs({ cals: prefs.cals.filter((c) => !r.deleted.includes(c.id)) });
     if (r.stop === 'scope') appScopeMissing();
@@ -740,6 +769,8 @@ export function createGcal(o: {
     if (prefs.todos.on) setTodos({ on: false });
     todoPending = 0;
     todoProblem = null;
+    // 돌고 있는 보내기가 끝난 뒤에 무덤으로 옮긴다 (그 사이 보낸 것이 빠지지 않게)
+    for (let i = 0; running && i < 300; i++) await new Promise((r) => setTimeout(r, 100));
     if (prefs.todos.target === 'fairy') {
       await loadCalendars();
       const id = canonicalFairy(prefs.cals) ?? prefs.todos.calendarId;

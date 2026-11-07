@@ -165,6 +165,19 @@ export class GcalTodoStore implements GcalOpStore {
     return n;
   }
 
+  /** 이 캘린더들에 올라가 있는 할 일 수 (남는 캘린더를 지우기 전에 옮겨졌는지 본다) */
+  sentInCals(ids: readonly string[]): number {
+    if (ids.length === 0) return 0;
+    const q = ids.map(() => '?').join(',');
+    return Number(
+      (
+        this.#db
+          .prepare(`select count(*) as n from todo where google_id is not null and google_cal in (${q})`)
+          .get(...ids) as { n: number }
+      ).n,
+    );
+  }
+
   /** 지울 차례인 무덤 줄 (할 일 것만) */
   tombTodos(limit: number): TombRow[] {
     return tombList(this.#db, 'todo', limit);
