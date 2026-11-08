@@ -579,7 +579,7 @@ export function createGcal(o: {
       todoBackoff.clear();
       o.todoStore.resetSent();
       o.todoStore.clearTomb();
-      patch.todos = { ...prefs.todos, calendarId: null };
+      patch.todos = { ...prefs.todos, calendarId: null, lastSentAt: null };
       setPrefs(patch);
       return;
     }
@@ -914,7 +914,7 @@ export function createGcal(o: {
       listScope: null,
       account: null,
       appScope: false,
-      todos: { ...prefs.todos, calendarId: null },
+      todos: { ...prefs.todos, calendarId: null, lastSentAt: null },
     });
     o.log('gcal', '연결 끊음');
     broadcast();

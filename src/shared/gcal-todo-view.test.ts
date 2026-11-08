@@ -179,4 +179,5 @@ test('마지막으로 올린 때는 다 올렸을 때만 붙고, 남은 것이 �
   assert.equal(todoView(base({ ...on, sent: 5, pending: 2 })).at, null);
   assert.equal(todoView(base({ ...on, sent: 5, lastSentAt: null })).at, null);
   assert.equal(todoView(base({ ...on, on: false, sent: 5 })).at, null);
+  assert.equal(todoView(base({ ...on, sent: 0 })).at, null, '다 지운 뒤에는 옛 시각을 보이지 않는다');
 });

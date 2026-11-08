@@ -28,7 +28,7 @@ export interface TodoView {
   on: boolean;
   /** 켜져 있을 때 올린 개수 줄 (꺼져 있으면 없음) */
   status: TodoLine | null;
-  /** 상태 줄 뒤에 붙일 마지막으로 올린 때 (다 올렸을 때만) */
+  /** 상태 줄 뒤에 붙일 마지막으로 올린 때 (다 올려서 올라가 있는 것이 있을 때만) */
   at: number | null;
   /** 문제와 안내 줄 (위에서부터) */
   notes: TodoLine[];
@@ -82,7 +82,8 @@ export function todoView(todos: GcalTodos | undefined): TodoView {
           : { key: 'gcal.todo.state.idle', warn: false };
   }
   const hasFairyCal = todos.target === 'fairy' && !!todos.calendarId;
-  const at = status && status.key !== 'gcal.todo.state.pending' ? (todos.lastSentAt ?? null) : null;
+  // 올라가 있는 것이 있을 때만 (다 지운 뒤나 다른 계정으로 바꾼 뒤에 옛 시각을 보이지 않게)
+  const at = status?.key === 'gcal.todo.state.sent' ? (todos.lastSentAt ?? null) : null;
   return {
     on: todos.on,
     status,
