@@ -167,3 +167,17 @@ test('고른 캘린더가 저장된 것과 다르면 켜지지 않는다', () =>
   assert.notEqual(chooseOutcome(v, 'pick', 'X'), 'ok');
   assert.equal(chooseOutcome(v, 'pick', 'Y'), 'ok');
 });
+
+test('마지막으로 올린 때는 다 올렸을 때만 붙고, 남은 것이 있으면 붙지 않는다', () => {
+  const on = {
+    on: true,
+    calendarId: 'c@group.calendar.google.com',
+    fairy: 'ready' as const,
+    lastSentAt: 1_700_000_000_000,
+  };
+  assert.equal(todoView(base({ ...on, sent: 5 })).at, 1_700_000_000_000);
+  assert.equal(todoView(base({ ...on, sent: 5, pending: 2 })).at, null);
+  assert.equal(todoView(base({ ...on, sent: 5, lastSentAt: null })).at, null);
+  assert.equal(todoView(base({ ...on, on: false, sent: 5 })).at, null);
+  assert.equal(todoView(base({ ...on, sent: 0 })).at, null, '다 지운 뒤에는 옛 시각을 보이지 않는다');
+});

@@ -113,12 +113,17 @@ test('설정: todos 와 account 가 저장했다 다시 읽어도 남는다. 깨
   // 저장(JSON)했다 다시 읽는다: 알지 못하는 칸이라 사라지는 일이 없다
   const again = parseGcalPrefs(JSON.parse(JSON.stringify(saved)));
   assert.deepEqual(again, saved);
-  assert.deepEqual(again.todos, { on: true, target: 'pick', calendarId: 'todo@group.calendar.google.com' });
+  assert.deepEqual(again.todos, {
+    on: true,
+    target: 'pick',
+    calendarId: 'todo@group.calendar.google.com',
+    lastSentAt: null,
+  });
   assert.equal(again.account, hash);
   assert.equal(again.calendarId, 'work@group.calendar.google.com');
   // 예전 파일(칸 없음)
   const old = parseGcalPrefs({ push: true });
-  assert.deepEqual(old.todos, { on: false, target: 'pick', calendarId: null });
+  assert.deepEqual(old.todos, { on: false, target: 'pick', calendarId: null, lastSentAt: null });
   assert.equal(old.account, null);
   assert.deepEqual(old.pullCals, ['primary']);
   // 깨진 값
@@ -126,13 +131,14 @@ test('설정: todos 와 account 가 저장했다 다시 읽어도 남는다. 깨
     on: false,
     target: 'pick',
     calendarId: null,
+    lastSentAt: null,
   });
   assert.equal(parseGcalPrefs({ account: '메일@주소.com' }).account, null);
   assert.deepEqual(parseGcalPrefs(undefined).todos, defaultOff());
   assert.deepEqual(cleanTodoPrefs({ target: 'fairy', calendarId: 'primary' }).calendarId, 'primary');
 });
 
-const defaultOff = () => ({ on: false, target: 'pick', calendarId: null });
+const defaultOff = () => ({ on: false, target: 'pick', calendarId: null, lastSentAt: null });
 
 test('페어리가 만든 할 일 캘린더는 가져오기와 보내기 고르기에서 빠진다', () => {
   const x = 'todos@group.calendar.google.com';

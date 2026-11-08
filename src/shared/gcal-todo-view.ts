@@ -28,6 +28,8 @@ export interface TodoView {
   on: boolean;
   /** 켜져 있을 때 올린 개수 줄 (꺼져 있으면 없음) */
   status: TodoLine | null;
+  /** 상태 줄 뒤에 붙일 마지막으로 올린 때 (다 올려서 올라가 있는 것이 있을 때만) */
+  at: number | null;
   /** 문제와 안내 줄 (위에서부터) */
   notes: TodoLine[];
   /** 쓰던 페어리 할 일 캘린더가 구글에서 없어졌다: "다시 만들기" */
@@ -51,7 +53,16 @@ export const problemKey = (p: GcalProblem): ProblemKey => `gcal.problem.${p}`;
 
 export function todoView(todos: GcalTodos | undefined): TodoView {
   if (!todos) {
-    return { on: false, status: null, notes: [], recreate: false, extras: 0, removeSent: false, where: null };
+    return {
+      on: false,
+      status: null,
+      at: null,
+      notes: [],
+      recreate: false,
+      extras: 0,
+      removeSent: false,
+      where: null,
+    };
   }
   const notes: TodoLine[] = [];
   if (todos.grant) notes.push({ key: grantKey(todos.grant), warn: true });
@@ -71,9 +82,12 @@ export function todoView(todos: GcalTodos | undefined): TodoView {
           : { key: 'gcal.todo.state.idle', warn: false };
   }
   const hasFairyCal = todos.target === 'fairy' && !!todos.calendarId;
+  // 올라가 있는 것이 있을 때만 (다 지운 뒤나 다른 계정으로 바꾼 뒤에 옛 시각을 보이지 않게)
+  const at = status?.key === 'gcal.todo.state.sent' ? (todos.lastSentAt ?? null) : null;
   return {
     on: todos.on,
     status,
+    at,
     notes,
     recreate: gone,
     extras,
