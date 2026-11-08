@@ -147,6 +147,8 @@ export interface GcalStatus {
     sent: number;
     /** 아직 못 보낸 수 */
     pending: number;
+    /** 마지막으로 올리거나 지운 때 */
+    lastSentAt?: number | null;
     problem: GcalProblem | null;
     /** 캘린더 만들기와 지우기 권한을 받았는지 */
     appScope?: boolean;

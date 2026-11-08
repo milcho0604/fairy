@@ -202,6 +202,7 @@ export function createGcal(o: {
         calendarId: prefs.todos.calendarId,
         sent: sentTodos(),
         pending: todoPending,
+        lastSentAt: prefs.todos.lastSentAt,
         problem: todoProblem,
         appScope: prefs.appScope,
         fairy: fairyState({ calendars: prefs.cals, todos: prefs.todos, lost: fairyLost }),
@@ -469,7 +470,8 @@ export function createGcal(o: {
     if (r.again) again = true;
     if (r.sent) {
       o.log('gcal', '할 일 보냄', r.sent);
-      setPrefs({ lastSyncAt: Date.now() });
+      const now = Date.now();
+      setPrefs({ lastSyncAt: now, todos: { ...prefs.todos, lastSentAt: now } });
     }
     if (r.stop === 'scope') scopeLost();
     if (r.stop) todoProblem = r.stop === 'scope' ? null : r.stop;

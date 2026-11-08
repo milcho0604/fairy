@@ -215,6 +215,7 @@ const prefsOf = (o: Partial<GcalTodoPrefs> = {}): GcalTodoPrefs => ({
   on: true,
   target: 'fairy',
   calendarId: SMALL,
+  lastSentAt: null,
   ...o,
 });
 const fcal = (id: string): GcalCalendar => ({

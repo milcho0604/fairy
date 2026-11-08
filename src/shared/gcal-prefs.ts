@@ -9,6 +9,8 @@ export interface GcalTodoPrefs {
   target: 'fairy' | 'pick';
   /** 올릴 캘린더. 아직 정하지 않았으면 null (켜져 있어도 이때는 보내지 않는다) */
   calendarId: string | null;
+  /** 마지막으로 할 일을 구글에 올리거나 지운 때. 아직 없으면 null */
+  lastSentAt: number | null;
 }
 
 export interface GcalPrefs {
@@ -34,7 +36,12 @@ export interface GcalPrefs {
   appScope: boolean;
 }
 
-export const defaultTodoPrefs = (): GcalTodoPrefs => ({ on: false, target: 'pick', calendarId: null });
+export const defaultTodoPrefs = (): GcalTodoPrefs => ({
+  on: false,
+  target: 'pick',
+  calendarId: null,
+  lastSentAt: null,
+});
 
 export function cleanTodoPrefs(raw: unknown): GcalTodoPrefs {
   const v = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
@@ -43,6 +50,10 @@ export function cleanTodoPrefs(raw: unknown): GcalTodoPrefs {
     target: v.target === 'fairy' ? 'fairy' : 'pick',
     calendarId:
       typeof v.calendarId === 'string' && v.calendarId ? (cleanCalendarId(v.calendarId) ?? null) : null,
+    lastSentAt:
+      typeof v.lastSentAt === 'number' && Number.isFinite(v.lastSentAt) && v.lastSentAt > 0
+        ? v.lastSentAt
+        : null,
   };
 }
 

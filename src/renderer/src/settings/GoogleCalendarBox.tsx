@@ -216,7 +216,12 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
               <div className="toggle">
                 <div className="text">
                   <span>{t('gcal.todo.title')}</span>
-                  {todo.status && <small className="toggle-note">{line(todo.status)}</small>}
+                  {todo.status && (
+                    <small className="toggle-note">
+                      {line(todo.status)}
+                      {todo.at ? ` (${when(todo.at)})` : ''}
+                    </small>
+                  )}
                   {todo.where && (
                     <small>
                       {todo.where === 'fairy'
