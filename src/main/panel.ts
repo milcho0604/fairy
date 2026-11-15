@@ -56,6 +56,7 @@ import {
 import {
   NOTE_BODY_MAX,
   type NoteStore,
+  noteFormatOf,
   notePreview,
   noteTitle,
   searchNotes,
@@ -93,6 +94,7 @@ import { onDisplaysChanged } from './display-watch.ts';
 import { drafts, getToasts, getView, noteKeep, setToasts, setView } from './drafts.ts';
 import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
+import { openLink } from './open-link.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { reviveOnCrash } from './revive.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
@@ -561,7 +563,7 @@ export function createPanel(o: PanelOptions) {
   ipcMain.handle(
     PANEL.noteAdd,
     // 디스크가 가득 차면 저장이 던진다: 오류 글로 답해 화면이 안내하게 한다 (saving)
-    saving((e, text: unknown) => {
+    saving((e, text: unknown, format: unknown) => {
       if (!ours(e)) return undefined;
       // 큰 창의 빈 새 메모 칸은 제목과 본문을 그대로 보낸다 (쓰던 공백을 지우지 않는다)
       const typed =
@@ -573,10 +575,11 @@ export function createPanel(o: PanelOptions) {
           ? {
               ...(typeof typed.title === 'string' ? { title: typed.title } : {}),
               ...(typeof typed.body === 'string' ? { body: typed.body } : {}),
+              format: noteFormatOf(format),
             }
           : body
-            ? { body }
-            : {},
+            ? { body, format: noteFormatOf(format) }
+            : { format: noteFormatOf(format) },
         Date.now(),
       );
       freshNotes.add(n.id);
@@ -647,6 +650,22 @@ export function createPanel(o: PanelOptions) {
         : { ok: true, ...(at !== undefined ? { updatedAt: at } : {}) };
     }),
   );
+  // 형식 바꾸기: 글을 고친 것이 아니라 고친 시각은 그대로 (NoteStore.setFormat)
+  ipcMain.handle(PANEL.noteFormat, (e, id: unknown, format: unknown): boolean => {
+    if (!ours(e) || typeof id !== 'number' || (format !== 'txt' && format !== 'md')) return false;
+    try {
+      const saved = o.notes.setFormat(id, format);
+      if (saved) push();
+      return !!saved;
+    } catch (err) {
+      o.log('panel', '메모 형식 저장 실패', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  });
+  // 마크다운 미리보기 속 링크: 메인이 http, https 인지 다시 보고 기본 브라우저로 연다 (패널 창은 옮겨 가지 않는다)
+  ipcMain.on(PANEL.openLink, (e, url: unknown) => {
+    if (ours(e)) openLink(url, o.log);
+  });
   ipcMain.on(PANEL.noteRemove, (e, id: unknown) => {
     if (!ours(e) || !isId(id)) return;
     o.notes.remove(id, Date.now());

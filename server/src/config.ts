@@ -36,6 +36,8 @@ export type Config = {
   kakaoAuthUrl?: string;
   /** 서버 백업 (5단계, 7절). 키가 없으면 백업 경로만 503 backup_off */
   backup?: BackupConfig;
+  /** 쪽지 글 칸 암호화 열쇠 32바이트 (INBOX_ENC_KEY, hex 64자). 비면 평문으로 쓴다 (서버는 정상으로 뜬다) */
+  inboxKey?: Buffer | undefined;
   /** 기능 키의 기본값 (env FEATURE_*). DB(feature_flag)에 값이 있으면 DB 가 이긴다 (features.ts) */
   features?: Partial<Record<string, FeatureMode>>;
 };
@@ -78,6 +80,15 @@ export function readBackupKey(raw: string | undefined): Buffer | undefined {
   if (!v) return undefined;
   if (!/^[0-9a-fA-F]{64}$/.test(v))
     throw new Error('BACKUP_ENC_KEY 는 hex 64자(32바이트)여야 한다 (openssl rand -hex 32)');
+  return Buffer.from(v, 'hex');
+}
+
+/** INBOX_ENC_KEY: 비면 undefined (쪽지 글을 평문으로 둔다), 모양이 틀리면 뜨지 않는다 */
+export function readInboxKey(raw: string | undefined): Buffer | undefined {
+  const v = (raw ?? '').trim();
+  if (!v) return undefined;
+  if (!/^[0-9a-fA-F]{64}$/.test(v))
+    throw new Error('INBOX_ENC_KEY 는 hex 64자(32바이트)여야 한다 (openssl rand -hex 32)');
   return Buffer.from(v, 'hex');
 }
 
@@ -217,6 +228,7 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
           1024 ** 3,
       ),
     },
+    inboxKey: readInboxKey(env.INBOX_ENC_KEY),
     features: {
       kakao_login: readFeature('FEATURE_KAKAO_LOGIN', env.FEATURE_KAKAO_LOGIN),
       coin_reset: readFeature('FEATURE_COIN_RESET', env.FEATURE_COIN_RESET),

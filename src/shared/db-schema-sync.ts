@@ -215,3 +215,18 @@ ${SPECS.map(rowTriggers).join('\n')}
 ${reminderTriggers()}
 ${repeatTriggers()}
 `;
+
+// 26판: 메모 형식(format) 칸이 동기화 칸이 된다. 앞 판은 고치지 않으므로, 메모 트리거를 지우고 format 이 든 칸 목록으로 다시 만든다.
+// 지금 있는 메모의 format 칸 시각은 적지 않는다 (모두 기본값 txt 라 첫 동기화가 시각 0 으로 싣는다)
+const NOTE_FORMAT_SPEC: Spec = {
+  kind: 'note',
+  fields: [...(SPECS.find((s) => s.kind === 'note')?.fields ?? []), 'format'],
+  extra: [],
+  tracked: () => '1',
+};
+
+export const NOTE_FORMAT_MIGRATION_SQL = `
+  alter table note add column format text not null default 'txt';
+  ${['ai', 'ui', 'ai2', 'tomb', 'au', 'ad'].map((n) => `drop trigger sync_note_${n};`).join('\n  ')}
+${rowTriggers(NOTE_FORMAT_SPEC)}
+`;

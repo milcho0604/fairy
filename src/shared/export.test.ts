@@ -135,8 +135,18 @@ test('메모 마크다운: 파일 하나에 묶기, 메모마다 파일(앞머�
       createdAt: NOW,
       updatedAt: NOW,
       pinnedAt: null,
+      format: 'txt',
     },
-    { id: 2, title: '', body: '장보기\n우유', source: 'ai', createdAt: NOW, updatedAt: NOW, pinnedAt: null },
+    {
+      id: 2,
+      title: '',
+      body: '장보기\n우유',
+      source: 'ai',
+      createdAt: NOW,
+      updatedAt: NOW,
+      pinnedAt: null,
+      format: 'txt',
+    },
   ];
   const one = notesMarkdown(notes, NOW);
   assert.match(one, /^# 페어리 메모/);
@@ -159,6 +169,7 @@ test('묶은 메모 마크다운: 제목 칸이 빈 메모는 머리로 쓴 첫 
     createdAt: NOW,
     updatedAt: NOW,
     pinnedAt: null,
+    format: 'txt',
   });
   const one = (body: string) => notesMarkdown([note(body)], NOW).split('\n---\n\n')[1] ?? '';
   // 머리 줄 (# 제목) 도 한 번만
@@ -195,6 +206,7 @@ test('파일 이름: 금지 글자, 예약 이름, 겹치는 이름', () => {
     createdAt: 0,
     updatedAt: 0,
     pinnedAt: null,
+    format: 'txt',
   });
   assert.deepEqual(noteFileNames([n('메모'), n('메모'), n('MEMO'), n('memo')]), [
     '메모.md',

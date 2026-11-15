@@ -24,7 +24,14 @@ import {
   repairEventTimes,
 } from '../shared/event-store.ts';
 import { GCAL_PREFS_FILE, gcalAiOn } from '../shared/gcal.ts';
-import { NOTE_BODY_MAX, NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
+import {
+  NOTE_BODY_MAX,
+  NoteStore,
+  noteFormatOf,
+  notePreview,
+  noteTitle,
+  searchNotes,
+} from '../shared/note-store.ts';
 import {
   addPetAction,
   CONFIRM_ENV,
@@ -486,13 +493,21 @@ const TOOLS: Tool[] = [
       properties: {
         title: { type: 'string', description: '제목 (없으면 본문 첫 줄이 제목처럼 보인다)' },
         body: { type: 'string', description: '본문 (마크다운)' },
+        format: {
+          type: 'string',
+          enum: ['txt', 'md'],
+          description: '메모 형식. md 면 페어리 메모에서 꾸밈을 적용한 미리보기를 볼 수 있다 (기본 txt)',
+        },
       },
       required: ['body'],
     },
     run: (a) => {
       const body = typeof a.body === 'string' ? a.body : '';
       if (!body.trim()) throw new Error('body 가 비었어');
-      const n = open().notes.add({ title: str(a.title), body, source: 'ai' }, Date.now());
+      const n = open().notes.add(
+        { title: str(a.title), body, source: 'ai', format: noteFormatOf(a.format) },
+        Date.now(),
+      );
       return `메모를 남겼어 (id ${n.id})`;
     },
   },
@@ -538,7 +553,7 @@ const TOOLS: Tool[] = [
     run: (a) => {
       const n = open().notes.get(idOf(a.id));
       if (!n) throw new Error(`id ${String(a.id)} 메모가 없어`);
-      return `# ${noteTitle(n)}\n(고친 때 ${stamp(n.updatedAt)})\n\n${n.body}`;
+      return `# ${noteTitle(n)}\n(고친 때 ${stamp(n.updatedAt)}, 형식 ${n.format})\n\n${n.body}`;
     },
   },
   {

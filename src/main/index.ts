@@ -599,6 +599,7 @@ ready
       mail,
       events,
       gcalLinks,
+      gcalTodoLinks,
       life,
       shop,
       achievements,
@@ -1215,7 +1216,11 @@ ready
           if (fed !== undefined) void pet.say({ kind: 'answer', text: fed, ttlMs: 3000 });
         }
       },
-      onChanged: () => sendStatus(),
+      onChanged: () => {
+        sendStatus();
+        // 할 일을 고치면 구글 캘린더로 곧 보낸다 (켜 두지 않았으면 아무것도 하지 않는다)
+        gcal.kick();
+      },
       openChat: () => chat.open(pet.bounds()),
       openSettings: () => settingsWindow.open(),
       panelPin: () => settings.get().panelPin,
@@ -1601,6 +1606,7 @@ ready
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
     const gcal = createGcal({
       store: gcalLinks,
+      todoStore: gcalTodoLinks,
       events,
       onEvents: () => {
         panel.refresh();

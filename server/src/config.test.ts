@@ -148,6 +148,11 @@ test('서버 백업 키: 비면 끔, hex 64자만. 카카오 주소는 https 만
   const k = 'ab'.repeat(32);
   assert.equal(readConfig({ ...env, BACKUP_ENC_KEY: k }).backup?.key?.toString('hex'), k);
   assert.throws(() => readConfig({ ...env, BACKUP_ENC_KEY: 'short' }), /BACKUP_ENC_KEY/);
+  assert.equal(c.inboxKey, undefined);
+  assert.equal(readConfig({ ...env, INBOX_ENC_KEY: '  ' }).inboxKey, undefined);
+  assert.equal(readConfig({ ...env, INBOX_ENC_KEY: k }).inboxKey?.toString('hex'), k);
+  assert.throws(() => readConfig({ ...env, INBOX_ENC_KEY: 'short' }), /INBOX_ENC_KEY/);
+  assert.throws(() => readConfig({ ...env, INBOX_ENC_KEY: 'zz'.repeat(32) }), /INBOX_ENC_KEY/);
   assert.throws(() => readConfig({ ...env, KAKAO_AUTH_URL: 'http://kauth.example' }), /https/);
   assert.equal(readConfig({ ...env, FEATURE_KAKAO_LOGIN: 'Allowlist' }).features?.kakao_login, 'allowlist');
   assert.throws(() => readConfig({ ...env, FEATURE_KAKAO_LOGIN: 'on' }), /FEATURE_KAKAO_LOGIN/);

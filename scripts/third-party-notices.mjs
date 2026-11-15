@@ -2,7 +2,7 @@
 //   node scripts/third-party-notices.mjs [출력 경로, 기본 build/THIRD_PARTY_NOTICES.txt]
 // 넣는 것:
 // - 실행에 들어가는 npm 패키지: dependencies(설치판 node_modules)와 렌더러 묶음에 들어가는
-//   devDependencies(react, react-dom, three, onnxruntime-web), 그리고 그 의존성 전부
+//   devDependencies(react, react-dom, three, onnxruntime-web, marked, dompurify), 그리고 그 의존성 전부
 // - 맥 앱에 넣는 sd.cpp sd-cli: stable-diffusion.cpp, ggml (MIT), libwebp (BSD). 소스(.cache/sdcpp/src)가 있으면
 //   그 라이선스 파일, 없으면 고정 고지문
 // Electron 과 Chromium 의 고지는 Electron 이 앱 안에 LICENSE, LICENSES.chromium.html 로 넣는다.
@@ -17,7 +17,7 @@ const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'));
 const pkgs = lock.packages;
 
 /** 렌더러가 묶어 넣는 개발 의존성 (electron.vite.config.ts 의 렌더러 묶음) */
-const BUNDLED = ['react', 'react-dom', 'three', 'onnxruntime-web'];
+const BUNDLED = ['react', 'react-dom', 'three', 'onnxruntime-web', 'marked', 'dompurify'];
 
 /** node_modules/a/node_modules/b 처럼 중첩된 경로에서 의존성 이름을 찾는다 (npm 해석 순서) */
 function resolveDep(fromKey, name) {

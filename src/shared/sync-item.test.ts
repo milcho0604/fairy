@@ -162,15 +162,17 @@ test('충돌 사본 uid 는 원본 uid, 진 쪽 시각, 본문 지문이 같으�
 
 test('구글 일정 id: uid 에서 정한다 (a~v, 0~9, 5~1024자, 같은 uid 는 같은 id)', () => {
   const uid = '0123456789abcdef0123456789abcdef';
-  const id = googleIdFromUid(uid);
-  assert.equal(id, googleIdFromUid(uid));
+  const id = googleIdFromUid(uid, 'jjk');
+  assert.equal(id, googleIdFromUid(uid, 'jjk'));
   assert.match(id, /^jjk[0-9a-v]{26}$/);
   assert.ok(id.length >= 5 && id.length <= 1024);
-  assert.notEqual(id, googleIdFromUid('ffffffffffffffffffffffffffffffff'));
+  assert.notEqual(id, googleIdFromUid('ffffffffffffffffffffffffffffffff', 'jjk'));
   // 16진 32자리가 아닌 uid 도 쓸 수 있는 id 가 나온다
-  assert.match(googleIdFromUid('not a hex uid!'), /^jjk[0-9a-v]{26}$/);
+  assert.match(googleIdFromUid('not a hex uid!', 'jjk'), /^jjk[0-9a-v]{26}$/);
+  // 머리만 다르고 나머지 26글자는 같다 (할 일은 jjt)
+  assert.equal(googleIdFromUid(uid, 'jjt'), `jjt${id.slice(3)}`);
   // 서로 다른 무작위 uid 1000개가 겹치지 않는다
   const seen = new Set<string>();
-  for (let i = 0; i < 1000; i++) seen.add(googleIdFromUid(bodyHash(`x${i}`)));
+  for (let i = 0; i < 1000; i++) seen.add(googleIdFromUid(bodyHash(`x${i}`), 'jjk'));
   assert.equal(seen.size, 1000);
 });

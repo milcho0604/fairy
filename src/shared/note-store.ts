@@ -7,6 +7,11 @@ import { pinAt } from './pin.ts';
 import { TRASH_DAYS, trashDaysLeft } from './todo-store.ts';
 
 export type NoteSource = 'me' | 'ai';
+/** 메모 형식 (26판). txt 는 쓴 그대로, md 는 마크다운이라 미리보기에서 꾸밈을 적용해 보여 준다 */
+export type NoteFormat = 'txt' | 'md';
+
+/** 모르는 값(옛 앱이 보낸 항목에 없거나, 새 형식)은 txt */
+export const noteFormatOf = (v: unknown): NoteFormat => (v === 'md' ? 'md' : 'txt');
 
 export interface Note {
   id: number;
@@ -17,6 +22,8 @@ export interface Note {
   updatedAt: number;
   /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null */
   pinnedAt: number | null;
+  /** 형식 (26판) */
+  format: NoteFormat;
 }
 
 interface Row {
@@ -27,6 +34,7 @@ interface Row {
   created_at: number;
   updated_at: number;
   pinned_at?: unknown;
+  format?: unknown;
   deleted_at?: number | null;
 }
 
@@ -38,6 +46,7 @@ const toNote = (r: Row): Note => ({
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at),
   pinnedAt: pinAt(r.pinned_at),
+  format: noteFormatOf(r.format),
 });
 
 export const NOTE_TITLE_MAX = 80;
@@ -154,15 +163,18 @@ export class NoteStore {
     return r ? toNote(r) : undefined;
   }
 
-  add(input: { title?: string; body?: string; source?: NoteSource }, now: number): Note {
+  add(input: { title?: string; body?: string; source?: NoteSource; format?: NoteFormat }, now: number): Note {
     const r = this.#db
-      .prepare('insert into note (title, body, source, created_at, updated_at) values (?, ?, ?, ?, ?)')
+      .prepare(
+        'insert into note (title, body, source, created_at, updated_at, format) values (?, ?, ?, ?, ?, ?)',
+      )
       .run(
         cutText((input.title ?? '').trim(), NOTE_TITLE_MAX),
         cutText(input.body ?? '', NOTE_BODY_MAX),
         input.source === 'ai' ? 'ai' : 'me',
         now,
         now,
+        noteFormatOf(input.format),
       );
     return this.get(Number(r.lastInsertRowid)) as Note;
   }
@@ -215,6 +227,19 @@ export class NoteStore {
     if (!n) return undefined;
     if (on && n.pinnedAt !== null) return n;
     this.#db.prepare('update note set pinned_at = ? where id = ?').run(on ? now : null, id);
+    return this.get(id);
+  }
+
+  /**
+   * 형식 바꾸기 (txt 와 md). 글을 고친 것이 아니라 고친 시각(updated_at)은 그대로 둔다 (고정과 같다).
+   * 같은 형식이면 쓰지 않아 동기화 칸 시각이 올라가지 않는다. 지운 메모는 바꾸지 않는다
+   */
+  setFormat(id: number, format: NoteFormat): Note | undefined {
+    const n = this.get(id);
+    if (!n) return undefined;
+    const next = noteFormatOf(format);
+    if (n.format === next) return n;
+    this.#db.prepare('update note set format = ? where id = ?').run(next, id);
     return this.get(id);
   }
 

@@ -161,3 +161,22 @@ test('예전 연결(캘린더 목록 권한 없음)이면 목록 대신 다시 �
   assert.equal(listState({ connected: true, listScope: null, calendars: null }), 'loading');
   assert.equal(listState({ connected: true, listScope: true, calendars: [] }), 'ready');
 });
+
+test('calendarRows: 페어리 할 일 캘린더 줄은 fairy 표시, 보내기는 못 고른다', () => {
+  const cals: GcalCalendar[] = [
+    { id: 'primary', name: '기본', color: null, role: 'owner', primary: true },
+    {
+      id: 'todo@group.calendar.google.com',
+      name: '페어리 할 일',
+      color: null,
+      role: 'owner',
+      primary: false,
+      fairy: true,
+    },
+  ];
+  const rows = calendarRows({ calendars: cals, pull: [], push: null });
+  assert.equal(rows[0]?.fairy, undefined);
+  assert.equal(rows[0]?.canPush, true);
+  assert.equal(rows[1]?.fairy, true);
+  assert.equal(rows[1]?.canPush, false);
+});

@@ -2,7 +2,13 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { NoteAiKind, NoteHit, NoteSummary, PanelState } from '../../../shared/ipc.ts';
 import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/note-polish.ts';
-import { mergeNoteText, NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
+import {
+  mergeNoteText,
+  NOTE_BODY_MAX,
+  NOTE_TITLE_MAX,
+  type Note,
+  type NoteFormat,
+} from '../../../shared/note-store.ts';
 import { pinFirst } from '../../../shared/pin.ts';
 import { singleFlight } from '../chat/single-flight.ts';
 import { useLanguage } from '../language-context.ts';
@@ -10,6 +16,8 @@ import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { type DraftSel, type DraftText, NoteDraft } from './NoteDraft.tsx';
+import { NoteMarkdown } from './NoteMarkdown.tsx';
+import { type NoteMode, savedFormat, savedMode, saveFormat, saveMode } from './note-prefs.ts';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
 import { draftKeepOf, NoteSaver, openFromKept, SaveGate } from './note-save.ts';
 import { onOpenNote, requestNoteFocus, takePendingNote } from './open-target.ts';
@@ -119,7 +127,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   const [newNote] = useState(() =>
     singleFlight(async (text?: string) => {
       openTurn.current++;
-      const n = await bridge.noteAdd(text).catch(() => undefined);
+      const n = await bridge.noteAdd(text, savedFormat()).catch(() => undefined);
       // 디스크가 가득 차면 못 만든다: 말없이 두지 않고 이유를 보인다
       if (!n || 'ok' in n) {
         setNewError((n && 'error' in n && n.error) || t('panel.retry'));
@@ -133,7 +141,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   /** 넓은 칸의 빈 새 메모 칸: 첫 글로 메모를 만들고, 그 뒤 고침을 저장하다가 조용해지면 그 메모의 편집기로 넘긴다 (NoteDraft) */
   const [enterAt, setEnterAt] = useState<{ id: number } & DraftSel>();
   const draftAdd = useCallback(async (first: DraftText) => {
-    const n = await bridge.noteAdd(first).catch(() => undefined);
+    const n = await bridge.noteAdd(first, savedFormat()).catch(() => undefined);
     if (!n || 'ok' in n) {
       setNewError((n && 'error' in n && n.error) || t('panel.retry'));
       return undefined;
@@ -394,6 +402,16 @@ function NoteEditor({
   const parked = useRef(false);
   const [title, setTitle] = useState(draft?.title ?? note.title);
   const [body, setBody] = useState(draft?.body ?? note.body);
+  /** 형식 (txt, md). 바꾸면 이 메모에 저장하고, 새 메모의 처음 형식으로도 기억한다 */
+  const [format, setFormat] = useState<NoteFormat>(note.format);
+  // 다른 기기나 펫이 형식을 바꾸면 열려 있는 편집기도 따라간다
+  useEffect(() => setFormat(note.format), [note.format]);
+  /** 마크다운 메모의 편집과 미리보기. 마지막으로 본 쪽으로 열되, 쓴 글이 없으면 편집 (볼 것이 없다) */
+  const [mode, setMode] = useState<NoteMode>(() =>
+    (draft?.body ?? note.body).trim() ? savedMode() : 'edit',
+  );
+  const previewing = format === 'md' && mode === 'preview';
+  const previewRef = useRef<HTMLElement>(null);
   /** 마지막 저장이 실패했다 (디스크 가득 등). 글은 들고 있고 다음 고침이나 뒤로 갈 때 다시 보낸다 */
   const [saveError, setSaveError] = useState('');
   /** 마지막 고침까지 저장됐다 (고치면 꺼지고 저장되면 켜진다). 자동 저장이라 저장됐는지 보이게 */
@@ -654,6 +672,30 @@ function NoteEditor({
     clearTimeout(timer.current);
     timer.current = setTimeout(flush, SAVE_MS);
   };
+  /** 형식 바꾸기: 이 메모에 저장하고(글은 그대로), 새 메모의 처음 형식으로도 기억한다. 저장하지 못하면 되돌린다 */
+  const pickFormat = (next: NoteFormat) => {
+    if (next === format) return;
+    const prev = format;
+    setFormat(next);
+    saveFormat(next);
+    void bridge.noteFormat(note.id, next).then((ok) => {
+      if (!ok && alive.current) setFormat(prev);
+    });
+  };
+  /** 편집과 미리보기 바꾸기: 마지막으로 본 쪽을 기억한다. 글 칸이 사라져도 Esc 가 이 편집기에 닿도록 초점을 옮겨 둔다 */
+  const pickMode = (next: NoteMode) => {
+    if (next === mode) return;
+    void flush();
+    setMode(next);
+    saveMode(next);
+    setTimeout(() => {
+      if (!alive.current) return;
+      if (next === 'edit') bodyRef.current?.focus();
+      else if (!document.activeElement || document.activeElement === document.body)
+        previewRef.current?.focus();
+    }, 0);
+  };
+
   /**
    * 뒤로(단추, Esc). 비었으면 지운다: 새 메모는 소리 없이, 쓰던 것을 다 지웠으면 되돌리기 알림과 함께.
    * 저장이 실패하면 나가지 않고 글을 그대로 둔다 (안내가 뜬다)
@@ -878,6 +920,39 @@ function NoteEditor({
           </button>
         </p>
       )}
+      <div className="note-formats">
+        {/* biome-ignore lint/a11y/useSemanticElements: 단추 둘을 이은 고르기라 fieldset 이 아니다 */}
+        <span className="note-seg" role="group" aria-label={t('panel.note.format')}>
+          {(['txt', 'md'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={format === f}
+              className={format === f ? 'on' : ''}
+              title={t(f === 'md' ? 'panel.note.formatMdHint' : 'panel.note.formatTxtHint')}
+              onClick={() => pickFormat(f)}
+            >
+              {t(f === 'md' ? 'panel.note.format.md' : 'panel.note.format.txt')}
+            </button>
+          ))}
+        </span>
+        {format === 'md' && (
+          // biome-ignore lint/a11y/useSemanticElements: 단추 둘을 이은 고르기라 fieldset 이 아니다
+          <span className="note-seg" role="group" aria-label={t('panel.note.mode')}>
+            {(['edit', 'preview'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={mode === m}
+                className={mode === m ? 'on' : ''}
+                onClick={() => pickMode(m)}
+              >
+                {t(m === 'edit' ? 'panel.note.mode.edit' : 'panel.note.mode.preview')}
+              </button>
+            ))}
+          </span>
+        )}
+      </div>
       <input
         ref={titleRef}
         className="note-title-input"
@@ -893,28 +968,32 @@ function NoteEditor({
           if (e.key === 'Enter' && !e.nativeEvent.isComposing) bodyRef.current?.focus();
         }}
       />
-      <textarea
-        ref={bodyRef}
-        value={body}
-        maxLength={NOTE_BODY_MAX}
-        aria-label={t('panel.note.bodyLabel')}
-        placeholder={t('panel.note.bodyPlaceholder')}
-        // 다듬는 동안 글이 바뀌면 받은 글을 끼울 자리가 어긋난다
-        readOnly={!!polish}
-        onBlur={(e) => {
-          lastSel.current = {
-            start: e.currentTarget.selectionStart,
-            end: e.currentTarget.selectionEnd,
-            at: Date.now(),
-          };
-        }}
-        onChange={(e) => {
-          lastSel.current = undefined;
-          setUndo(undefined);
-          setBody(e.target.value);
-          save({ body: e.target.value });
-        }}
-      />
+      {previewing ? (
+        <NoteMarkdown ref={previewRef} source={body} onLink={bridge.openLink} />
+      ) : (
+        <textarea
+          ref={bodyRef}
+          value={body}
+          maxLength={NOTE_BODY_MAX}
+          aria-label={t('panel.note.bodyLabel')}
+          placeholder={t(format === 'md' ? 'panel.note.bodyPlaceholder' : 'panel.note.bodyPlaceholderTxt')}
+          // 다듬는 동안 글이 바뀌면 받은 글을 끼울 자리가 어긋난다
+          readOnly={!!polish}
+          onBlur={(e) => {
+            lastSel.current = {
+              start: e.currentTarget.selectionStart,
+              end: e.currentTarget.selectionEnd,
+              at: Date.now(),
+            };
+          }}
+          onChange={(e) => {
+            lastSel.current = undefined;
+            setUndo(undefined);
+            setBody(e.target.value);
+            save({ body: e.target.value });
+          }}
+        />
+      )}
       <p className="note-saved" role="status">
         {savedMark && !saveError ? t('panel.note.saved') : ''}
       </p>

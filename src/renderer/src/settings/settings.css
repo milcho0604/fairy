@@ -1315,6 +1315,72 @@ textarea.rules {
   grid-column: 3;
 }
 
+/* 페어리 할 일 전용 캘린더 줄: 일정 가져오기와 보내기에서 고를 수 없다 */
+.gcal-cal-fairy .gcal-cal-name,
+.gcal-cal-fairy .gcal-cell {
+  opacity: 0.55;
+}
+
+/* 할 일 올릴 곳 고르기 (GcalTodoSheet): 큰 선택 둘과, 기존 캘린더 목록 */
+.gcal-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.gcal-opt {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.gcal-opt.on {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+}
+
+.gcal-opt .gcal-check {
+  margin-top: 2px;
+}
+
+/* 선택 제목은 길어도 줄을 바꿔 다 보인다 (캘린더 줄의 한 줄 말줄임을 쓰지 않는다) */
+.gcal-opt .gcal-cal-text .name {
+  white-space: normal;
+}
+
+.gcal-cal-pick {
+  grid-template-columns: minmax(0, 1fr) 28px;
+  cursor: pointer;
+}
+
+.gcal-sheet .danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.gcal-confirm-body {
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+/* 구글 칸 안 할 일 올리기 */
+.gcal-todo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 @media (max-width: 420px) {
   .gcal-sheet-backdrop {
     align-items: flex-end;

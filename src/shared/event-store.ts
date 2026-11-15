@@ -4,6 +4,7 @@ import { cutText } from './cut-text.ts';
 import { plusDays } from './day.ts';
 import { clockJumped, type Db } from './db-schema.ts';
 import { NO_END_MIN } from './event-overlap.ts';
+import { tombRows } from './gcal-tomb.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
 import {
@@ -868,6 +869,8 @@ export class EventStore {
             .prepare('insert or ignore into event_repeat_skip (series_id, start_at) values (?, ?)')
             .run(row.repeat_series, row.start_at);
         }
+        // 구글 캘린더에 올라간 일정이면 나중에 지울 수 있게 무덤에 옮긴다 (행이 지워지면 구글 id 도 사라진다)
+        tombRows(this.#db, 'event', 'id = ?', now, row.id);
         this.#db.prepare('delete from event where id = ?').run(row.id);
       }
     }

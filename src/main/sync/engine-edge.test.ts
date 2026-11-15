@@ -311,3 +311,32 @@ test('같은 시각에 다른 uid 로 이미 펼쳐진 손대지 않은 회차�
   assert.equal(rows[0]?.title, '이번만');
   assert.equal(b.engine.view().held, 0);
 });
+
+test('갈아끼우며 지우는 회차가 구글로 보낸 것이면 무덤에 남긴다', async () => {
+  const server = new FakeSyncServer();
+  const { a, b } = await pair(server);
+  const now = Date.now();
+  const e = a.events.add({ title: '주간', startAt: now + 86_400_000, repeat: 'weekly' }, now);
+  await settle([a, b]);
+  b.events.dueReminders(now);
+  const occ = a.db
+    .prepare(
+      'select id, uid, start_at from event where repeat_series = ? and id <> ? order by start_at limit 1',
+    )
+    .get(e.id, e.id) as { id: number; uid: string; start_at: number };
+  b.db
+    .prepare(
+      "update event set uid = ?, google_id = 'jjkold', google_cal = 'primary', google_hash = 'h' where uid = ?",
+    )
+    .run('99999999999999999999999999999999', occ.uid);
+  a.events.update(occ.id, { title: '이번만' }, now);
+  await settle([a, b]);
+  const tomb = b.db.prepare("select kind, google_id from gcal_tomb where google_id = 'jjkold'").all() as {
+    kind: string;
+    google_id: string;
+  }[];
+  assert.deepEqual(
+    tomb.map((t) => t.kind),
+    ['event'],
+  );
+});

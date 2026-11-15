@@ -3,6 +3,8 @@
 // 칸 시각(sync_clock)은 합친 결과 그대로 직접 적는다. Electron 없이 돈다.
 import type { Db } from '../../shared/db-schema.ts';
 import { eventAnchor } from '../../shared/event-store.ts';
+import { tombRows } from '../../shared/gcal-tomb.ts';
+import { noteFormatOf } from '../../shared/note-store.ts';
 import { type Anchor, fireAt } from '../../shared/remind.ts';
 import { SYNC_KINDS, type SyncKind } from '../../shared/sync-fields.ts';
 import type { Json, SyncItem } from '../../shared/sync-item.ts';
@@ -180,6 +182,7 @@ export function readItem(db: Db, kind: SyncKind, uid: string, dev: { id: string 
       updated_at: Number(r.updated_at),
       deleted_at: (r.deleted_at as number | null) ?? null,
       pinned_at: (r.pinned_at as number | null) ?? null,
+      format: noteFormatOf(r.format),
     };
   } else {
     // 추적하지 않는 펼친 회차라도 서버가 아는 것(보낸 적이나 받은 적이 있다)이거나 칸 시각이 남아 있으면(한 번 추적했다) 보낸다:
@@ -343,12 +346,14 @@ function write(db: Db, item: SyncItem, o: { now: number; degrade?: boolean }): A
       num(f.updated_at, 0),
       num(f.deleted_at),
       num(f.pinned_at),
+      // 형식 칸이 없는 항목(26판 앞의 앱이 보낸 것)은 새 메모면 txt, 있던 메모면 가진 그대로
+      'format' in f ? noteFormatOf(f.format) : noteFormatOf(have?.format),
     ];
     if (have) {
       id = Number(have.id);
       run(
         db,
-        'update note set title = ?, body = ?, source = ?, created_at = ?, updated_at = ?, deleted_at = ?, pinned_at = ? where id = ?',
+        'update note set title = ?, body = ?, source = ?, created_at = ?, updated_at = ?, deleted_at = ?, pinned_at = ?, format = ? where id = ?',
         ...vals,
         id,
       );
@@ -356,7 +361,7 @@ function write(db: Db, item: SyncItem, o: { now: number; degrade?: boolean }): A
       id = Number(
         run(
           db,
-          'insert into note (title, body, source, created_at, updated_at, deleted_at, pinned_at, uid) values (?, ?, ?, ?, ?, ?, ?, ?)',
+          'insert into note (title, body, source, created_at, updated_at, deleted_at, pinned_at, format, uid) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
           ...vals,
           uid,
         ).lastInsertRowid,
@@ -463,6 +468,8 @@ function writeEvent(
       uid,
     );
     for (const c of clash) {
+      // 구글로 보낸 회차면 지우기 전에 무덤에 옮긴다 (안 그러면 구글 일정이 남는다)
+      tombRows(db, 'event', "id = ? and source = 'local'", o.now, Number(c.id));
       run(db, "delete from reminder where kind = 'event' and ref_id = ?", Number(c.id));
       run(db, 'delete from event where id = ?', Number(c.id));
     }
@@ -596,6 +603,9 @@ export function purgeRow(db: Db, kind: SyncKind, uid: string, now = Date.now()):
       } else if (kind === 'event') {
         run(db, "delete from reminder where kind = 'event' and ref_id = ?", id);
       }
+      // 구글 캘린더에 올라간 행이면 일정을 나중에 지울 수 있게 무덤에 옮긴다 (할 일, 그리고 페어리가 넣은 일정)
+      if (kind === 'todo') tombRows(db, 'todo', 'id = ?', now, id);
+      else if (kind === 'event') tombRows(db, 'event', "id = ? and source = 'local'", now, id);
       run(db, `delete from ${kind} where id = ?`, id);
       if (kind === 'event') {
         const seriesId = r.repeat_series === null ? id : Number(r.repeat_series);

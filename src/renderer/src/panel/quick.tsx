@@ -12,6 +12,7 @@ import { useLanguageUpdates } from '../use-language.ts';
 import { useDraft } from './draft.ts';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { escClosesWindow, isEsc, takeEsc } from './keys.ts';
+import { savedFormat } from './note-prefs.ts';
 
 const bridge = window.jjakkungPanel;
 /**
@@ -190,7 +191,7 @@ function QuickAdd() {
           };
         else setError(r.error ?? t('panel.add.failed'));
       } else {
-        const n = await bridge.noteAdd(from.text).catch(() => undefined);
+        const n = await bridge.noteAdd(from.text, savedFormat()).catch(() => undefined);
         if (n && !('ok' in n)) made = { kind: 'note', id: n.id, text: from.text, msg: t('keep.quick.note') };
         else setError((n && 'error' in n && n.error) || t('panel.add.failed'));
       }

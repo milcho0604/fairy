@@ -8,6 +8,7 @@ import {
   calendarListPath,
   type GcalCalendar,
   parseCalendarList,
+  primaryIdOf,
 } from '../shared/gcal-cals.ts';
 import {
   fromGoogle,
@@ -152,7 +153,12 @@ export async function pullPass(d: {
 
 /** 캘린더 목록 (구글 캘린더 옵션 창). 예전 연결이라 목록 권한이 없으면 scope */
 export type CalendarListResult =
-  | { ok: true; calendars: GcalCalendar[] }
+  | {
+      ok: true;
+      calendars: GcalCalendar[];
+      /** 기본 캘린더의 진짜 id (계정 지문을 만들 때만 쓴다. 저장하지 않는다) */
+      primaryId: string | null;
+    }
   | { ok: false; stop: 'scope' | 'offline' | 'failed' };
 
 export async function listCalendars(d: {
@@ -184,5 +190,5 @@ export async function listCalendars(d: {
     page = typeof json.nextPageToken === 'string' && json.nextPageToken ? json.nextPageToken : undefined;
     if (!page) break;
   }
-  return { ok: true, calendars: parseCalendarList(items) };
+  return { ok: true, calendars: parseCalendarList(items), primaryId: primaryIdOf(items) };
 }

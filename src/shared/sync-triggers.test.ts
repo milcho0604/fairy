@@ -65,7 +65,7 @@ test('23판 파일(행 있음)에서 24판으로 올리면 모든 행에 uid 가
     );
   }
   assert.deepEqual(migrate(db), { from: 23, to: SCHEMA_VERSION });
-  assert.equal(SCHEMA_VERSION, 24);
+  assert.ok(SCHEMA_VERSION >= 24);
   for (const t of ['todo', 'todo_step', 'note', 'event']) {
     assert.equal(n(db, `select count(*) n from ${t}`), 50);
     assert.equal(

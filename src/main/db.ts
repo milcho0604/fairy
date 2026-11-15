@@ -7,6 +7,7 @@ import type { Db } from '../shared/db-schema.ts';
 import { EventStore, repairAllDayZone, repairEventTimes, repairRepeatZone } from '../shared/event-store.ts';
 import { type ExportTodo, readExportTodos } from '../shared/export.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
+import { GcalTodoStore } from '../shared/gcal-todo-store.ts';
 import { HabitStore } from '../shared/habit.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { MailStore } from '../shared/mail-store.ts';
@@ -36,6 +37,7 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   events: EventStore;
   /** 구글 캘린더로 보낸 일정 (6단계 쓰기) */
   gcalLinks: GcalStore;
+  gcalTodoLinks: GcalTodoStore;
   life: PetLife;
   shop: ItemStore;
   achievements: AchievementStore;
@@ -106,6 +108,7 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     mail: new MailStore(d),
     events,
     gcalLinks: new GcalStore(d, events),
+    gcalTodoLinks: new GcalTodoStore(d),
     life: new PetLife(d),
     // 메모리에 열었으면(새 판, 못 엶) 비어 있는 메모리 대신 디스크의 원래 파일을 WAL 까지 합쳐 한 파일로 복사한다
     vacuumInto: (target: string) => {

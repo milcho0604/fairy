@@ -17,11 +17,21 @@ export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
  */
 export const GCAL_LIST_SCOPE = 'https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 
+/**
+ * 캘린더를 만들고 지우는 권한 (calendars.insert, calendars.delete). 페어리가 만든 캘린더에만 닿는다.
+ * 할 일 전용 캘린더를 새로 만들 사람에게만 그 순간에 묻는다 (docs/gcal-todo-plan.md 3절)
+ */
+export const GCAL_APP_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
+
 /** 기본 캘린더 (로그인한 계정의 기본 캘린더) */
 export const GCAL_PRIMARY = 'primary';
 
 /** 짝꿍이 정해 보내는 구글 일정 id 머리. 구글 id 는 base32hex 소문자(0-9, a-v) 5~1024자 */
 export const GCAL_ID_PREFIX = 'jjk';
+/** 할 일을 보낼 때 정하는 구글 일정 id 머리 (docs/gcal-todo-plan.md 5절) */
+export const GCAL_TODO_ID_PREFIX = 'jjt';
+/** 페어리가 정한 id 머리들. 가져오기가 되돌아온 일정을 거를 때 쓴다 */
+export const GCAL_ID_PREFIXES: readonly string[] = [GCAL_ID_PREFIX, GCAL_TODO_ID_PREFIX];
 
 /** 구글 캘린더 켜고 끄기를 두는 파일 (데이터 폴더, 비밀 아님). 펫 MCP 서버도 "AI가 구글 일정도 보기"를 여기서 읽는다 */
 export const GCAL_PREFS_FILE = 'google-calendar.json';
@@ -43,6 +53,12 @@ export const GCAL = {
   setCalendars: 'gcal:set-calendars',
   listCalendars: 'gcal:list-calendars',
   syncNow: 'gcal:sync-now',
+  /** 할 일 보내기 (docs/gcal-todo-plan.md 4절, 9절) */
+  grantApp: 'gcal:grant-app',
+  todoSetOn: 'gcal:todo-set-on',
+  todoChoose: 'gcal:todo-choose',
+  todoRemoveExtras: 'gcal:todo-remove-extras',
+  todoRemoveSent: 'gcal:todo-remove-sent',
   /** 메인 → 설정 창: 상태가 바뀌었다 */
   changed: 'gcal:changed',
 } as const;
@@ -67,6 +83,27 @@ export type GcalProblem =
   | 'offline'
   | 'calendar'
   | 'failed';
+
+/**
+ * 새 권한 받기(grantAppScope)가 막힌 까닭. 지금 연결은 그대로다
+ * - denied, timeout, offline, failed: 연결할 때와 같다
+ * - noEvents: 허락 화면에서 일정 칸을 체크하지 않았다
+ * - noApp: 캘린더 만들기 칸을 체크하지 않았다 (기존 캘린더에 올리기로 안내한다)
+ * - noList: 캘린더 목록 칸을 체크하지 않았다 (같은 계정인지 볼 수 없다)
+ * - account: 다른 구글 계정을 골랐다 (바꾸려면 연결을 끊고 다시 연결)
+ */
+export type GcalGrantProblem =
+  | 'denied'
+  | 'timeout'
+  | 'offline'
+  | 'failed'
+  | 'noEvents'
+  | 'noApp'
+  | 'noList'
+  | 'account';
+
+/** 페어리 할 일 캘린더 상태: none(없음), ready(있음), gone(쓰던 것이 구글에서 없어짐: 다시 만들기를 보인다), unknown(목록을 아직 못 읽음) */
+export type GcalFairyState = 'none' | 'ready' | 'gone' | 'unknown';
 
 export interface GcalStatus {
   /** 이 짝꿍에 OAuth 클라이언트가 들어 있는지. 없으면 연결 단추 대신 안내만 */
@@ -101,7 +138,30 @@ export interface GcalStatus {
   /** 아직 못 보낸 일정 수 */
   pending: number;
   problem: GcalProblem | null;
+  /** 할 일 보내기 (docs/gcal-todo-plan.md). 설정 화면은 4번 PR 에서 */
+  todos?: {
+    on: boolean;
+    target: 'fairy' | 'pick';
+    calendarId: string | null;
+    /** 구글에 올라가 있는 수 */
+    sent: number;
+    /** 아직 못 보낸 수 */
+    pending: number;
+    /** 마지막으로 올리거나 지운 때 */
+    lastSentAt?: number | null;
+    problem: GcalProblem | null;
+    /** 캘린더 만들기와 지우기 권한을 받았는지 */
+    appScope?: boolean;
+    fairy?: GcalFairyState;
+    /** 정본 말고 남은 페어리 할 일 캘린더 수 (1 이상이면 "남는 것 지우기"를 보인다) */
+    extras?: number;
+    /** 새 권한 받기, 캘린더 만들기와 지우기에서 막힌 까닭 */
+    grant?: GcalGrantProblem | null;
+  };
 }
+
+/** 할 일 캘린더로 고른 곳: 페어리가 만든 캘린더, 또는 기존 캘린더 하나 */
+export type GcalTodoChoice = { target: 'fairy' } | { target: 'pick'; calendarId: string };
 
 export interface GcalBridge {
   status(): Promise<GcalStatus>;
@@ -117,6 +177,16 @@ export interface GcalBridge {
   /** 내 캘린더 목록 다시 읽기 */
   listCalendars(): Promise<GcalStatus>;
   syncNow(): Promise<GcalStatus>;
+  /** 캘린더 만들기와 지우기 권한을 따로 받는다 (연결은 그대로, 설정은 건드리지 않는다) */
+  grantApp(): Promise<GcalStatus>;
+  /** 할 일 보내기 켜고 끄기. 끄면 보내기만 멈춘다 */
+  setTodoOn(on: boolean): Promise<GcalStatus>;
+  /** 올릴 곳 고르기. fairy 는 페어리 할 일 캘린더를 찾고 없으면 만든다 (새 권한이 없으면 먼저 받는다) */
+  chooseTodoTarget(c: GcalTodoChoice): Promise<GcalStatus>;
+  /** 정본 말고 남은 페어리 할 일 캘린더를 지운다 */
+  removeExtraFairy(): Promise<GcalStatus>;
+  /** 구글에 올린 할 일을 지운다 (fairy 면 캘린더째, pick 이면 올린 일정만). 보내기는 먼저 끈다 */
+  removeSentTodos(): Promise<GcalStatus>;
   /** 듣기를 그만두는 함수를 돌려준다 (탭을 오갈 때 듣는 것이 쌓이지 않게) */
   onChanged(listener: (s: GcalStatus) => void): () => void;
 }
@@ -141,7 +211,7 @@ export interface GcalBody {
   end: GcalTime;
   reminders: { useDefault: false; overrides: { method: 'popup'; minutes: number }[] };
   status: 'confirmed';
-  extendedProperties: { private: { jjakkung: '1' } };
+  extendedProperties: { private: { jjakkung: '1'; fairyKind?: 'todo' } };
 }
 
 export type GcalTime = { dateTime: string; timeZone: string } | { date: string };
@@ -222,10 +292,10 @@ export function gcalHash(body: GcalBody): string {
 export const GCAL_DELETED = 'deleted';
 
 /** 새 구글 일정 id: 머리 + 무작위 base32hex 26자 (130비트). randomBytes 는 무작위 바이트 (시험에서 바꾼다) */
-export function newGoogleId(randomBytes: (n: number) => Uint8Array): string {
+export function newGoogleId(randomBytes: (n: number) => Uint8Array, prefix: string = GCAL_ID_PREFIX): string {
   const abc = '0123456789abcdefghijklmnopqrstuv';
   const bytes = randomBytes(26);
-  let out = GCAL_ID_PREFIX;
+  let out = prefix;
   for (const b of bytes) out += abc[b & 31];
   return out;
 }
