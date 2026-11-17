@@ -58,6 +58,17 @@ export function tabByKey(e: ModKeyLike, mac: boolean, count: number): number | u
   return n >= 1 && n <= count ? n - 1 : undefined;
 }
 
+/** Cmd/Ctrl+N 이면 새 메모 (메모 화면에서만 쓴다). 한글 자판이면 key 가 'ㅜ' 라서 자리(KeyN)로도 본다 */
+export function newNoteByKey(e: ModKeyLike & { repeat?: boolean; keyCode?: number }, mac: boolean): boolean {
+  if (!onlyMod(e, mac) || e.repeat || e.keyCode === 229) return false;
+  return e.code === 'KeyN' || e.key.toLowerCase() === 'n';
+}
+
+/** 새 메모 단축키 글자: 맥은 ⌘N, 그 밖은 Ctrl+N */
+export function newNoteShortcut(mac: boolean): string {
+  return mac ? '⌘N' : 'Ctrl+N';
+}
+
 /**
  * Cmd/Ctrl+Z 를 알림의 "되돌리기"로 쓸지. 쓰던 글이 있는 입력칸에서는 글 되돌리기(운영체제 몫)라 아니다.
  * fieldText: 커서가 있는 입력칸의 글 (입력칸 밖이면 undefined)

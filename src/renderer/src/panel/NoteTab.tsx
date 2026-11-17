@@ -13,7 +13,7 @@ import { pinFirst } from '../../../shared/pin.ts';
 import { singleFlight } from '../chat/single-flight.ts';
 import { useLanguage } from '../language-context.ts';
 import { ago } from './format.ts';
-import { isEsc, takeEsc } from './keys.ts';
+import { isEsc, newNoteByKey, newNoteShortcut, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { type DraftSel, type DraftText, NoteDraft } from './NoteDraft.tsx';
 import { NoteMarkdown } from './NoteMarkdown.tsx';
@@ -27,6 +27,7 @@ import { useSurface } from './surface.tsx';
 import { useKeepScroll } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
+const MAC = navigator.userAgent.includes('Mac');
 const SAVE_MS = 400;
 /** 새 메모를 만든 뒤 이 동안은 또 만들지 않는다 (그사이 메모가 열려 단추가 사라진다) */
 const NEW_NOTE_HOLD_MS = 800;
@@ -168,6 +169,21 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     setOpen(undefined);
     setDraftKey((k) => k + 1);
   };
+  /** "새 메모" 단추와 Cmd/Ctrl+N 이 같이 하는 일 */
+  const makeNew = () => (split ? startDraft() : void newNote());
+  const makeNewRef = useRef(makeNew);
+  makeNewRef.current = makeNew;
+  // Cmd/Ctrl+N: 새 메모 단추와 같은 결과. 시트나 대화상자가 떠 있으면 그 뒤에서 만들지 않는다
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !newNoteByKey(e, MAC)) return;
+      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
+      e.preventDefault();
+      makeNewRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // 새로 그린 칸이 자리 잡은 뒤에 커서 신호를 보낸다 (그리기 전에 보내면 사라질 앞 칸이 가져간다)
   useEffect(() => {
     if (draftKey > 0) requestNoteFocus();
@@ -265,8 +281,17 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             }
           }}
         />
-        <button type="button" className="primary" onClick={() => (split ? startDraft() : void newNote())}>
+        <button
+          type="button"
+          className="primary new-note"
+          title={t('panel.note.newKey', { keys: newNoteShortcut(MAC) })}
+          aria-keyshortcuts={MAC ? 'Meta+N' : 'Control+N'}
+          onClick={makeNew}
+        >
           {t('panel.note.new')}
+          <span className="keyhint" aria-hidden="true">
+            {newNoteShortcut(MAC)}
+          </span>
         </button>
       </div>
       {newError && (
