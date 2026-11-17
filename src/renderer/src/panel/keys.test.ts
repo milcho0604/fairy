@@ -136,3 +136,19 @@ test('새 메모 단축키 글자', () => {
   assert.equal(newNoteShortcut(true), '⌘N');
   assert.equal(newNoteShortcut(false), 'Ctrl+N');
 });
+
+test('Dvorak 등: 물리 N 자리(code=KeyN)에 다른 글자(key=b)면 새 메모가 아니다', () => {
+  const n = (mods: Partial<ModKeyLike>, key: string, code: string) => ({
+    key,
+    code,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...mods,
+  });
+  assert.equal(newNoteByKey(n({ metaKey: true }, 'b', 'KeyN'), true), false);
+  assert.equal(newNoteByKey(n({ ctrlKey: true }, 'b', 'KeyN'), false), false);
+  // Dvorak 에서 N 은 다른 물리 자리(KeyL)에 있다
+  assert.equal(newNoteByKey(n({ metaKey: true }, 'n', 'KeyL'), true), true);
+});

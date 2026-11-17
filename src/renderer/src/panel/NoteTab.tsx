@@ -19,7 +19,7 @@ import { type DraftSel, type DraftText, NoteDraft } from './NoteDraft.tsx';
 import { NoteMarkdown } from './NoteMarkdown.tsx';
 import { type NoteMode, savedFormat, savedMode, saveFormat, saveMode } from './note-prefs.ts';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
-import { draftKeepOf, NoteSaver, openFromKept, SaveGate } from './note-save.ts';
+import { draftKeepOf, NoteSaver, openFromKept, placeKeepOf, SaveGate } from './note-save.ts';
 import { onOpenNote, requestNoteFocus, takePendingNote } from './open-target.ts';
 import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
@@ -525,10 +525,10 @@ function NoteEditor({
             ? `${r.error ?? ''} ${t('panel.note.staleKeep')}`
             : `${r.error ?? t('panel.retry')} ${t('panel.note.unsaved')}`,
         );
-      } else keepDraft(); // 닫히는 중이라 안내를 볼 사람이 없다: 글을 보관 길에 남긴다
+      } else keepDraft({ ...pos.current }); // 닫히는 중이라 안내를 볼 사람이 없다: 글을 보관 길에 남긴다
     },
     blocked() {
-      if (!alive.current) keepDraft();
+      if (!alive.current) keepDraft({ ...pos.current });
     },
   };
   /** S 를 바탕으로 쓰던 창 글에 저장된 글 M 을 합쳐 보여 준다. 합친 글이 저장된 글과 다르면 다시 저장한다 */
@@ -721,16 +721,14 @@ function NoteEditor({
       ...(parked.current ? { parked: true as const } : {}),
     });
   };
-  /** 탭을 떠난다: 이 메모를 마지막으로 본 자리로 적어 둔다 (빈 새 메모, 지운 메모, 뒤로 나간 메모는 적지 않는다) */
+  /**
+   * 탭을 떠난다: 이 메모를 마지막으로 본 자리(칸, 커서, 스크롤)만 적어 둔다 (빈 새 메모, 지운 메모, 뒤로 나간 메모는 적지 않는다).
+   * 글(draft)은 여기서 적지 않는다: 나가면서 보내는 저장이 성공하면 낡은 글이 남아 다른 곳이 고친 것을 덮기 때문이다.
+   * 저장이 실패하면 keepDraft(실패 훅과 나가는 길)가 그때 글을 적는다
+   */
   const keepPlace = () => {
     if (gone.current || left.current || (wasEmpty && isEmpty())) return;
-    keepNote(note.id, {
-      id: note.id,
-      ...pos.current,
-      at: Date.now(),
-      ...(draftKeepOf(saver, latest.current) ?? {}),
-      ...(parked.current ? { parked: true as const } : {}),
-    });
+    keepNote(note.id, placeKeepOf(note.id, pos.current, Date.now(), parked.current));
   };
   const keepPlaceNow = useRef(keepPlace);
   keepPlaceNow.current = keepPlace;

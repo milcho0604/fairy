@@ -192,6 +192,20 @@ export function draftKeepOf(
 }
 
 /**
+ * 탭을 떠날 때 적는 자리(칸, 커서, 스크롤)만의 보관 글. 글(draft, base)은 넣지 않는다:
+ * 나가면서 보내는 저장이 성공하면 낡은 글이 남아, 다시 열 때 다른 곳이 고친 것을 덮거나 가짜 충돌을 띄운다.
+ * 저장이 실패한 글은 keepDraft 가 따로 적는다
+ */
+export function placeKeepOf(
+  id: number,
+  pos: Pick<NoteKept, 'field' | 'start' | 'end' | 'scroll'>,
+  at: number,
+  parked: boolean,
+): NoteKept {
+  return { id, ...pos, at, ...(parked ? { parked: true as const } : {}) };
+}
+
+/**
  * 메모를 열 때 보관 글을 어떻게 쓸지. 보관한 글이 저장된 글과 같으면 쓸 것이 없다.
  * - 다른 곳이 먼저 고쳐 멈춘 글(conflict)이면 그 상태 그대로: 자동으로 저장하지 않고 고르게 한다
  * - 닫히는 중이라 답을 못 받은 글이면(base), 그 뒤 저장된 글이 바탕에서 달라졌는지 본다. 달라졌으면(다른 곳이 고쳤으면) 덮지 않고

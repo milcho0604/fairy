@@ -61,7 +61,9 @@ export function tabByKey(e: ModKeyLike, mac: boolean, count: number): number | u
 /** Cmd/Ctrl+N 이면 새 메모 (메모 화면에서만 쓴다). 한글 자판이면 key 가 'ㅜ' 라서 자리(KeyN)로도 본다 */
 export function newNoteByKey(e: ModKeyLike & { repeat?: boolean; keyCode?: number }, mac: boolean): boolean {
   if (!onlyMod(e, mac) || e.repeat || e.keyCode === 229) return false;
-  return e.code === 'KeyN' || e.key.toLowerCase() === 'n';
+  // 영문자 자판이면 key 로만 (Dvorak 의 물리 N 자리는 다른 글자). 한글 등 영문자가 아니면 자리(KeyN)로 보충한다
+  if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase() === 'n';
+  return e.code === 'KeyN';
 }
 
 /** 새 메모 단축키 글자: 맥은 ⌘N, 그 밖은 Ctrl+N */
