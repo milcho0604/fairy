@@ -78,7 +78,7 @@ test('cursor 출력: 전체 글로 오든 조각으로 오든 새 글만 보낸�
   ]);
 });
 
-test('이어가기 없는 AI: 같은 AI 와 끝난 대화만 최근 4개 붙인다', () => {
+test('이어가기 없는 AI: 같은 AI 와 끝난 대화만 예산 안에서 붙인다', () => {
   let s = initialChat('custom-1');
   for (let i = 1; i <= 6; i++) {
     s = addQuestion(s, { user: `u${i}`, pet: `p${i}` }, `질문${i}`, []);
@@ -89,7 +89,7 @@ test('이어가기 없는 AI: 같은 AI 와 끝난 대화만 최근 4개 붙인�
   assert.equal(history.length, 6);
   const prompt = textPrompt('성격', history, '새 질문');
   assert.ok(prompt.startsWith('성격'));
-  assert.ok(!prompt.includes('질문2') && prompt.includes('질문3') && prompt.includes('답6'));
+  assert.ok(prompt.includes('질문1') && prompt.includes('질문3') && prompt.includes('답6'));
   assert.ok(prompt.endsWith('사용자 질문: 새 질문'));
   assert.ok(!prompt.includes('다른 AI'));
 });

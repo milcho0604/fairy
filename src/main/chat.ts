@@ -574,7 +574,7 @@ export function createChat(o: ChatOptions) {
         if (ephemeral && !state.ephemeral && raw.type === 'done' && raw.text.trim())
           carry.set(
             provider,
-            [...(carry.get(provider) ?? []), { question: base, answer: raw.text }].slice(-3),
+            [...(carry.get(provider) ?? []), { question: base, answer: raw.text }].slice(-6),
           );
         if (event.type === 'delta') {
           const msg = state.messages.find((m) => m.id === ids.pet);
@@ -883,7 +883,7 @@ export function createChat(o: ChatOptions) {
       (p) => specOf(p)?.adapter,
     )) {
       next = { ...next, sessions: { ...next.sessions, [p]: undefined } };
-      carry.set(p, historyFor(next, p).slice(-3));
+      carry.set(p, historyFor(next, p).slice(-6));
     }
     state = next;
     cleared = undefined;
