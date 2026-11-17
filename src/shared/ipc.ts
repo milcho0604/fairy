@@ -1360,9 +1360,10 @@ export interface PanelBridge {
   snapshot(): Promise<PanelState>;
   /**
    * 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다.
-   * opts.quick: 빠른 입력이다("메모:" 머리말은 메모로). opts.as: 'todo' 면 시각이 있어도 할 일로 (분류 바꾸기)
+   * opts.quick: 빠른 입력이다("메모:" 머리말은 메모로). opts.as: 'todo' 면 시각이 있어도 할 일로 (분류 바꾸기).
+   * opts.autoLead: 화면이 자동으로 넣은 "#태그 " 앞머리. 글 앞에 그대로 있으면 저장할 때 제목 끝으로 옮긴다
    */
-  add(text: string, opts?: { quick?: boolean; as?: 'todo' }): Promise<PanelAddResult>;
+  add(text: string, opts?: { quick?: boolean; as?: 'todo'; autoLead?: string }): Promise<PanelAddResult>;
   /** 받은 코인 수. 이미 끝냈거나 없는 할 일이면 null (빠르게 여러 번 누른 체크) */
   complete(id: number): Promise<number | null>;
   undo(id: number): Promise<number>;
