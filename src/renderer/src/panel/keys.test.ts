@@ -5,6 +5,8 @@ import {
   escClosesWindow,
   isEsc,
   type ModKeyLike,
+  newNoteByKey,
+  newNoteShortcut,
   tabByKey,
   tabStepByKey,
   undoByKey,
@@ -94,4 +96,59 @@ test('면에 건 Esc: 작은 패널만 창을 닫고 큰 창은 닫지 않는다
   assert.equal(escClosesSurface({ key: 'Escape', defaultPrevented: true }, 'panel'), false);
   assert.equal(escClosesSurface({ key: 'Escape', isComposing: true }, 'panel'), false);
   assert.equal(escClosesSurface({ key: 'Enter' }, 'panel'), false);
+});
+
+test('Cmd/Ctrl+N 은 새 메모: 맥은 Cmd, 그 밖은 Ctrl 하나만', () => {
+  const n = (mods: Partial<ModKeyLike & { repeat: boolean; keyCode: number }>, key = 'n', code = 'KeyN') => ({
+    key,
+    code,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...mods,
+  });
+  assert.equal(newNoteByKey(n({ metaKey: true }), true), true);
+  assert.equal(newNoteByKey(n({ ctrlKey: true }), true), false);
+  assert.equal(newNoteByKey(n({ ctrlKey: true }), false), true);
+  assert.equal(newNoteByKey(n({ metaKey: true }), false), false);
+  assert.equal(newNoteByKey(n({}), true), false);
+  assert.equal(newNoteByKey(n({ metaKey: true, shiftKey: true }), true), false);
+  assert.equal(newNoteByKey(n({ metaKey: true, altKey: true }), true), false);
+  // 한글 자판: key 는 ㅜ, 자리는 KeyN
+  assert.equal(newNoteByKey(n({ metaKey: true }, 'ㅜ'), true), true);
+  // 한글 조합 중, 누르고 있는 반복은 아니다
+  assert.equal(newNoteByKey(n({ metaKey: true, isComposing: true }), true), false);
+  assert.equal(newNoteByKey(n({ metaKey: true, keyCode: 229 }), true), false);
+  assert.equal(newNoteByKey(n({ metaKey: true, repeat: true }), true), false);
+  // 다른 단축키와 겹치지 않는다: Cmd+1~5, K, W, Z, 쉼표
+  for (const [key, code] of [
+    ['1', 'Digit1'],
+    ['k', 'KeyK'],
+    ['w', 'KeyW'],
+    ['z', 'KeyZ'],
+    [',', 'Comma'],
+  ])
+    assert.equal(newNoteByKey(n({ metaKey: true }, key, code), true), false);
+});
+
+test('새 메모 단축키 글자', () => {
+  assert.equal(newNoteShortcut(true), '⌘N');
+  assert.equal(newNoteShortcut(false), 'Ctrl+N');
+});
+
+test('Dvorak 등: 물리 N 자리(code=KeyN)에 다른 글자(key=b)면 새 메모가 아니다', () => {
+  const n = (mods: Partial<ModKeyLike>, key: string, code: string) => ({
+    key,
+    code,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...mods,
+  });
+  assert.equal(newNoteByKey(n({ metaKey: true }, 'b', 'KeyN'), true), false);
+  assert.equal(newNoteByKey(n({ ctrlKey: true }, 'b', 'KeyN'), false), false);
+  // Dvorak 에서 N 은 다른 물리 자리(KeyL)에 있다
+  assert.equal(newNoteByKey(n({ metaKey: true }, 'n', 'KeyL'), true), true);
 });

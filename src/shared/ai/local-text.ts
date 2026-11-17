@@ -1,6 +1,29 @@
 // 무료 AI(작은 로컬 모델) 답 다듬기 (v2). 작은 모델은 생각 표시를 남기거나, 한자를 섞거나,
 // 같은 낱말을 되풀이하거나, 길게 늘어놓는다(2026-10-06 비교 시험). 보여 주기 전에 고친다.
 
+import { type Exchange, LOCAL_BUDGET, trimHistory } from './text.ts';
+
+/**
+ * 작은 모델은 "반말로" 지시만으로는 존댓말로 답한다. 반말 예시 대화를 앞 대화로 넣으면 훨씬 잘 따른다
+ * (2026-10-06 비교 시험 변형 a, b). 한자 금지 한 줄도 같이 준다.
+ */
+export const BANMAL_EXAMPLES = [
+  { question: '배고파', answer: '헉, 배고프구나! 간단하게 뭐라도 먹고 오자.' },
+  {
+    question: '오늘 할 일 너무 많아',
+    answer: '많구나. 제일 급한 거 하나만 먼저 끝내 보자. 내가 옆에서 응원할게!',
+  },
+  { question: '고마워', answer: '에헤헤, 나도 고마워! 언제든 불러.' },
+];
+/**
+ * 로컬 모델에 줄 앞 대화. 같은 대화의 최근 문답을 글자 예산 안에서 넣는다.
+ * 반말 예시는 대화가 없을 때만 앞에 둔다: 대화가 쌓인 뒤에도 예시를 두면 모델이 예시 말투와 말("에헤헤", "응원할게")을 되풀이한다
+ */
+export function localHistory(history: readonly Exchange[], banmal: boolean): Exchange[] {
+  const recent = trimHistory(history, LOCAL_BUDGET);
+  return banmal && recent.length < 2 ? [...BANMAL_EXAMPLES, ...recent] : recent;
+}
+
 /** 펫 답은 짧게. 이만큼 문장이 넘으면 자른다 (목록과 코드는 자르지 않는다) */
 const MAX_SENTENCES = 4;
 

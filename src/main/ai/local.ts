@@ -3,9 +3,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, type UtilityProcess, utilityProcess } from 'electron';
 import type { LocalModel } from '../../shared/ai/catalog.ts';
-import { cleanLocalAnswer } from '../../shared/ai/local-text.ts';
+import { cleanLocalAnswer, localHistory } from '../../shared/ai/local-text.ts';
 import { withRules } from '../../shared/ai/persona.ts';
-import { HISTORY_TURNS } from '../../shared/ai/text.ts';
 import type { AiEvent } from '../../shared/ai/types.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { hasFinalConsonant } from '../../shared/josa.ts';
@@ -105,24 +104,12 @@ function touch() {
 }
 
 /**
- * 작은 모델은 "반말로" 지시만으로는 존댓말로 답한다. 반말 예시 대화를 앞 대화로 넣으면 훨씬 잘 따른다
- * (2026-10-06 비교 시험 변형 a, b). 한자 금지 한 줄도 같이 준다.
- */
-const BANMAL_EXAMPLES = [
-  { question: '배고파', answer: '헉, 배고프구나! 간단하게 뭐라도 먹고 오자.' },
-  {
-    question: '오늘 할 일 너무 많아',
-    answer: '많구나. 제일 급한 거 하나만 먼저 끝내 보자. 내가 옆에서 응원할게!',
-  },
-  { question: '고마워', answer: '에헤헤, 나도 고마워! 언제든 불러.' },
-];
-/**
  * 작은 모델에는 긴 성격 지시보다 짧은 지시가 낫다. 앱의 긴 지시(목록, 화면 캡처, 이모지 규칙)를 그대로 주면
  * "했어."처럼 앞뒤 없는 답이 잦았다(2026-10-06 같은 질문 8번 비교)
  */
 const banmalSystem = (petName: string) =>
   // 받침 있는 이름은 "이야", 없으면 "야" (밤이야, 밀크야)
-  `넌 내 화면에 사는 페어리 ${petName}${hasFinalConsonant(petName) ? '이야' : '야'}. 나랑 친구니까 반말로 다정하게, 두세 문장으로 짧게 말해. 모르는 건 모른다고 해. 한자, 중국어, 일본어는 절대 쓰지 마. 한글로만 말해.`;
+  `넌 내 화면에 사는 페어리 ${petName}${hasFinalConsonant(petName) ? '이야' : '야'}. 나랑 친구니까 반말로 다정하게, 두세 문장으로 짧게 말해. 모르는 건 모른다고 해. 한자, 중국어, 일본어는 절대 쓰지 마. 한글로만 말해. 일정이나 할 일은 내가 묻거나 꼭 필요할 때만 말하고 먼저 꺼내지 마. 바로 앞 답들과 같은 시작이나 같은 문장을 되풀이하지 마.`;
 
 /** 무료 AI 로 묻는다. runAi 와 같은 모양(사건 콜백, 취소). banmal: 한국어 반말 성격이면 예시와 후처리를 쓴다 */
 export function runLocal(
@@ -214,12 +201,10 @@ export function runLocal(
       system: opts.banmal
         ? banmalSystem(opts.petName ?? '콩이') + withRules(shortRules)
         : shortPersona(req.persona, opts.rules ?? '', shortRules),
-      history: [...(opts.banmal ? BANMAL_EXAMPLES : []), ...req.history.slice(-HISTORY_TURNS)].flatMap(
-        (h) => [
-          { role: 'user' as const, text: h.question },
-          { role: 'assistant' as const, text: h.answer },
-        ],
-      ),
+      history: localHistory(req.history, opts.banmal).flatMap((h) => [
+        { role: 'user' as const, text: h.question },
+        { role: 'assistant' as const, text: h.answer },
+      ]),
       text: req.text,
       noThink: !!model.noThink,
       maxTokens: MAX_TOKENS,

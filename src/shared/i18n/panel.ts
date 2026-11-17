@@ -154,6 +154,7 @@ export const ko = {
   'panel.note.search': '메모 찾기',
   'panel.note.searchIn': (v: { n: number }) => `메모 ${v.n}개에서 찾기`,
   'panel.note.new': '새 메모',
+  'panel.note.newKey': (v: { keys: string }) => `새 메모 (${v.keys})`,
   'panel.note.notFound': '찾는 메모가 없어.',
   'panel.note.makeFrom': '이 내용으로 메모 만들기',
   'panel.note.empty.list': '메모가 없어. "새 메모"를 눌러 적어 봐. AI 답도 메모로 남길 수 있어.',
@@ -427,6 +428,7 @@ export const en: Translation<typeof ko> = {
   'panel.note.search': 'Search notes',
   'panel.note.searchIn': (v: { n: number }) => (Number(v.n) === 1 ? 'Search 1 note' : `Search ${v.n} notes`),
   'panel.note.new': 'New note',
+  'panel.note.newKey': (v: { keys: string }) => `New note (${v.keys})`,
   'panel.note.notFound': 'No matching notes.',
   'panel.note.makeFrom': 'Make a note with this',
   'panel.note.empty.list':

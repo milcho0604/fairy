@@ -976,6 +976,21 @@ li.pin-end {
   cursor: pointer;
 }
 
+/* 새 메모 단추 옆 단축키 안내: 글자색은 단추 그대로(대비 유지), 작게 */
+.new-note {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.new-note .keyhint {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
 .link {
   padding: 0;
   border: 0;

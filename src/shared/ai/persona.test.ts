@@ -41,6 +41,7 @@ test('내 상황: 일정과 할 일, 중요와 마감 순, 아무것도 없으�
     text,
     [
       '[내 오늘 상황, 2026-10-06]',
+      '(참고 자료다. 사용자가 일정이나 할 일을 묻거나 꼭 필요할 때만 쓰고, 먼저 꺼내지 않는다)',
       '<<<JJ_DATA',
       '남은 일정:',
       '- 오후 3:00 회의',
@@ -75,8 +76,9 @@ test('내 상황: 영어 화면이면 틀 글도 영어 (한국어 틀이 섞이
       events: [{ time: '3:00 PM', title: 'Meeting' }],
     });
     const lines = text.split('\n');
-    assert.deepEqual(lines.slice(0, 8), [
+    assert.deepEqual(lines.slice(0, 9), [
       '[My day so far, 2026-10-06]',
+      '(Reference only. Use it when the user asks about the schedule or to-dos or it is truly needed; never bring it up yourself.)',
       '<<<JJ_DATA',
       'Events left today:',
       '- 3:00 PM Meeting',

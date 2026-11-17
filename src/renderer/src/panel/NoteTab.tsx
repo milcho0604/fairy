@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { type MutableRefObject, memo, useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { NoteAiKind, NoteHit, NoteSummary, PanelState } from '../../../shared/ipc.ts';
 import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/note-polish.ts';
@@ -13,13 +13,13 @@ import { pinFirst } from '../../../shared/pin.ts';
 import { singleFlight } from '../chat/single-flight.ts';
 import { useLanguage } from '../language-context.ts';
 import { ago } from './format.ts';
-import { isEsc, takeEsc } from './keys.ts';
+import { isEsc, newNoteByKey, newNoteShortcut, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { type DraftSel, type DraftText, NoteDraft } from './NoteDraft.tsx';
 import { NoteMarkdown } from './NoteMarkdown.tsx';
 import { type NoteMode, savedFormat, savedMode, saveFormat, saveMode } from './note-prefs.ts';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
-import { draftKeepOf, NoteSaver, openFromKept, SaveGate } from './note-save.ts';
+import { draftKeepOf, NoteSaver, openFromKept, placeKeepOf, SaveGate } from './note-save.ts';
 import { onOpenNote, requestNoteFocus, takePendingNote } from './open-target.ts';
 import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
@@ -27,6 +27,7 @@ import { useSurface } from './surface.tsx';
 import { useKeepScroll } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
+const MAC = navigator.userAgent.includes('Mac');
 const SAVE_MS = 400;
 /** 새 메모를 만든 뒤 이 동안은 또 만들지 않는다 (그사이 메모가 열려 단추가 사라진다) */
 const NEW_NOTE_HOLD_MS = 800;
@@ -168,6 +169,21 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     setOpen(undefined);
     setDraftKey((k) => k + 1);
   };
+  /** "새 메모" 단추와 Cmd/Ctrl+N 이 같이 하는 일 */
+  const makeNew = () => (split ? startDraft() : void newNote());
+  const makeNewRef = useRef(makeNew);
+  makeNewRef.current = makeNew;
+  // Cmd/Ctrl+N: 새 메모 단추와 같은 결과. 시트나 대화상자가 떠 있으면 그 뒤에서 만들지 않는다
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !newNoteByKey(e, MAC)) return;
+      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
+      e.preventDefault();
+      makeNewRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // 새로 그린 칸이 자리 잡은 뒤에 커서 신호를 보낸다 (그리기 전에 보내면 사라질 앞 칸이 가져간다)
   useEffect(() => {
     if (draftKey > 0) requestNoteFocus();
@@ -190,10 +206,16 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     });
   }, [query, composing, s.notes]);
 
+  // 이 탭이 사라질 때(다른 탭, 다른 구역으로) 열어 둔 메모의 자리를 적어 둔다. 다시 오면 그 메모가 그대로 열린다.
+  // 목록에서 다른 메모를 눌러 편집기만 바뀔 때는 적지 않는다 (그때마다 적으면 마지막으로 본 메모가 아닌 것으로 돌아간다)
+  const placeRef = useRef<() => void>(undefined);
+  useEffect(() => () => placeRef.current?.(), []);
+
   const editor = open && (
     <NoteEditor
       key={open.id}
       note={open}
+      placeRef={placeRef}
       focusAt={enterAt?.id === open.id ? enterAt : undefined}
       changedAt={s.notes.find((n) => n.id === open.id)?.updatedAt}
       onBack={() => {
@@ -265,8 +287,17 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             }
           }}
         />
-        <button type="button" className="primary" onClick={() => (split ? startDraft() : void newNote())}>
+        <button
+          type="button"
+          className="primary new-note"
+          title={t('panel.note.newKey', { keys: newNoteShortcut(MAC) })}
+          aria-keyshortcuts={MAC ? 'Meta+N' : 'Control+N'}
+          onClick={makeNew}
+        >
           {t('panel.note.new')}
+          <span className="keyhint" aria-hidden="true">
+            {newNoteShortcut(MAC)}
+          </span>
         </button>
       </div>
       {newError && (
@@ -378,10 +409,13 @@ function NoteEditor({
   note,
   changedAt,
   focusAt,
+  placeRef,
   onBack,
   onRemoved,
 }: {
   note: Note;
+  /** 탭이 사라질 때 NoteTab 이 불러 이 메모의 자리를 적게 한다 */
+  placeRef: MutableRefObject<(() => void) | undefined>;
   /** 빈 새 메모 칸에서 막 넘어왔다: 글을 쓰던 칸의 끝에 커서를 둔다 */
   focusAt?: { field: 'title' | 'body'; start: number; end: number };
   /** 목록에 온 이 메모의 고친 시각. 연 뒤 다른 곳(append_note 등)이 고치면 커진다 */
@@ -400,6 +434,27 @@ function NoteEditor({
   const dropKept = () => keepNote(note.id, undefined);
   /** 뒤로가기로 나갔다 (패널을 다시 열 때 저절로 열지 않는다) */
   const parked = useRef(false);
+  /** 뒤로(목록으로) 나갔다: 탭을 갔다 와도 다시 열지 않는다 */
+  const left = useRef(false);
+  /** 마지막으로 본 칸, 커서, 스크롤. 탭이 사라질 때는 화면 칸이 이미 떨어져 있어 읽을 수 없으니 바뀔 때마다 적어 둔다 */
+  const pos = useRef<{ field: 'title' | 'body'; start: number; end: number; scroll: number }>({
+    field: 'body',
+    start: 0,
+    end: 0,
+    scroll: 0,
+  });
+  const capturePos = () => {
+    const a = document.activeElement;
+    const el = a === titleRef.current ? titleRef.current : a === bodyRef.current ? bodyRef.current : null;
+    if (el)
+      pos.current = {
+        ...pos.current,
+        field: el === titleRef.current ? 'title' : 'body',
+        start: el.selectionStart ?? 0,
+        end: el.selectionEnd ?? 0,
+      };
+    if (bodyRef.current) pos.current.scroll = Math.round(bodyRef.current.scrollTop);
+  };
   const [title, setTitle] = useState(draft?.title ?? note.title);
   const [body, setBody] = useState(draft?.body ?? note.body);
   /** 형식 (txt, md). 바꾸면 이 메모에 저장하고, 새 메모의 처음 형식으로도 기억한다 */
@@ -470,10 +525,10 @@ function NoteEditor({
             ? `${r.error ?? ''} ${t('panel.note.staleKeep')}`
             : `${r.error ?? t('panel.retry')} ${t('panel.note.unsaved')}`,
         );
-      } else keepDraft(); // 닫히는 중이라 안내를 볼 사람이 없다: 글을 보관 길에 남긴다
+      } else keepDraft({ ...pos.current }); // 닫히는 중이라 안내를 볼 사람이 없다: 글을 보관 길에 남긴다
     },
     blocked() {
-      if (!alive.current) keepDraft();
+      if (!alive.current) keepDraft({ ...pos.current });
     },
   };
   /** S 를 바탕으로 쓰던 창 글에 저장된 글 M 을 합쳐 보여 준다. 합친 글이 저장된 글과 다르면 다시 저장한다 */
@@ -666,6 +721,17 @@ function NoteEditor({
       ...(parked.current ? { parked: true as const } : {}),
     });
   };
+  /**
+   * 탭을 떠난다: 이 메모를 마지막으로 본 자리(칸, 커서, 스크롤)만 적어 둔다 (빈 새 메모, 지운 메모, 뒤로 나간 메모는 적지 않는다).
+   * 글(draft)은 여기서 적지 않는다: 나가면서 보내는 저장이 성공하면 낡은 글이 남아 다른 곳이 고친 것을 덮기 때문이다.
+   * 저장이 실패하면 keepDraft(실패 훅과 나가는 길)가 그때 글을 적는다
+   */
+  const keepPlace = () => {
+    if (gone.current || left.current || (wasEmpty && isEmpty())) return;
+    keepNote(note.id, placeKeepOf(note.id, pos.current, Date.now(), parked.current));
+  };
+  const keepPlaceNow = useRef(keepPlace);
+  keepPlaceNow.current = keepPlace;
   const save = (patch: { title?: string; body?: string }) => {
     saver.pending = { ...saver.pending, ...patch };
     setSavedMark(false);
@@ -721,11 +787,15 @@ function NoteEditor({
       if (!(await flush())) return;
       dropKept();
     }
+    left.current = true;
     onBack();
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 메모를 열 때 한 번만 건다
   useEffect(() => {
+    // 이 편집기가 떠 있는 동안만 NoteTab 이 자리를 적게 부를 수 있다 (새 메모 칸이나 목록으로 나갔으면 부르지 않는다)
+    const place = () => keepPlaceNow.current();
+    placeRef.current = place;
     if (kept) {
       // 다른 곳을 눌러 닫혔던 자리로: 같은 칸, 같은 커서, 같은 스크롤
       const el = kept.field === 'title' ? titleRef.current : bodyRef.current;
@@ -779,9 +849,10 @@ function NoteEditor({
     return () => {
       window.removeEventListener('beforeunload', onUnload);
       offHiding();
+      if (placeRef.current === place) placeRef.current = undefined;
       // 탭을 바꾸거나 다른 메모를 눌러 나갔다: 남은 것을 저장하고, 빈 새 메모는 지운다. 저장이 실패한 채면 글을 적어 둔다.
       // 같은 메모를 곧바로 다시 열어도 이 저장이 끝난 뒤에 읽도록 맡겨 둔다 (saveGate)
-      keepDraft();
+      keepDraft({ ...pos.current });
       saveGate.hold(note.id, flush());
       if (!gone.current && wasEmpty && isEmpty()) bridge.noteRemove(note.id);
     };
@@ -791,6 +862,11 @@ function NoteEditor({
     // biome-ignore lint/a11y/noStaticElementInteractions: 메모 안 어디서든 Esc 는 목록으로 (입력칸, 단추 모두)
     <div
       className="note-editor"
+      onSelect={capturePos}
+      onFocus={capturePos}
+      onBlur={capturePos}
+      onKeyUp={capturePos}
+      onScrollCapture={capturePos}
       // 마우스로 다른 곳을 눌렀으면 글 칸을 떠나기 전에 고른 자리는 잊는다 (다듬기 단추는 빼고)
       onMouseDown={(e) => {
         if (!(e.target as HTMLElement).closest('[data-polish]')) lastSel.current = undefined;
