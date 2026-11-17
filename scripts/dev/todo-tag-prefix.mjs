@@ -337,7 +337,7 @@ try {
     await sleep(700);
     const list = await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((x) => x.title.includes(${JSON.stringify(tx('점검표', 'checklist'))})))`).then(JSON.parse);
     const added = list[0];
-    check(`${tag} 넣은 할 일이 그 태그로 저장되고 날짜를 읽음`, !!added && added.title === `#${W} ${tx('점검표 쓰기', 'write checklist')}` && !!added.due, JSON.stringify(added && { t: added.title, d: added.due }));
+    check(`${tag} 넣은 할 일이 그 태그로 저장되고 날짜를 읽음`, !!added && added.title === `${tx('점검표 쓰기', 'write checklist')} #${W}` && !!added.due, JSON.stringify(added && { t: added.title, d: added.due }));
     check(`${tag} 넣은 뒤 같은 태그 앞머리가 다시 들어감`, (await inputOf(p)).v === `#${W} `, (await inputOf(p)).v);
     // 앞머리뿐이면 안 넣는다
     await p.ev(`${inputSel}.focus()`);
@@ -347,6 +347,20 @@ try {
     // 목록에도 그 태그 칩으로 걸림
     const shown = await p.ev(`document.querySelectorAll('li.todo[data-id]').length`);
     check(`${tag} 걸러 본 목록에 새 줄이 보임`, shown >= 3, String(shown));
+    // 자동 앞머리 뒤에 날짜 낱말만 쓰면: 제목은 태그, 마감은 그 날짜
+    await p.ev(`(() => { const i = ${inputSel}; i.focus(); i.setSelectionRange(i.value.length, i.value.length); return 1; })()`);
+    await p.type(tx('내일', 'tomorrow'));
+    await p.enter();
+    await sleep(700);
+    const only = await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((x) => x.title === ${JSON.stringify(`#${W}`)}))`).then(JSON.parse);
+    check(`${tag} 앞머리 뒤에 날짜만 쓰면 제목은 태그, 마감은 날짜`, only.length >= 1 && !!only[0].due, JSON.stringify(only.map((x) => ({ t: x.title, d: x.due }))));
+    // 직접 앞에 친 다른 태그는 쓴 자리 그대로
+    await setInput(p, `#${H} ${tx('직접 친 글', 'typed by me')}`);
+    await p.ev(`${inputSel}.focus()`);
+    await p.enter();
+    await sleep(700);
+    const typed = await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((x) => x.title.includes(${JSON.stringify(tx('직접 친 글', 'typed by me'))})))`).then(JSON.parse);
+    check(`${tag} 직접 친 태그는 앞에 그대로 저장됨`, typed.length >= 1 && typed.every((x) => x.title === `#${H} ${tx('직접 친 글', 'typed by me')}`), JSON.stringify(typed.map((x) => x.title)));
     // Esc 로 지우면 되넣지 않는다
     await p.ev(`${inputSel}.focus()`);
     await p.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });

@@ -8,6 +8,8 @@
 // - 태그를 풀면 자동 앞머리만 지우고, 다른 태그로 바꾸면 자동 앞머리만 바꾼다. 그 뒤에 쓴 글은 그대로다.
 // - 할 일을 넣은 직후 칸이 비면 같은 태그를 다시 넣는다 (같은 태그로 이어서 적게). 사용자가 지운 칸에는 되넣지 않는다.
 
+import { parseTodoLine, type QuickTodoTimed } from './remind-parse.ts';
+
 const LEAD_TAG = /^#([\p{L}\p{N}_-]{1,20})[ \t]+/u;
 
 /** 자동으로 넣는 앞머리: "#태그 " */
@@ -58,4 +60,30 @@ export function splitLeadTags(line: string): { lead: string; rest: string } {
   }
   if (!lead || rest.trim() === '') return { lead: '', rest: line };
   return { lead, rest };
+}
+
+/** 화면이 보낸 자동 앞머리가 맞는 모양("#태그 " 하나)인지. 아니면 null */
+export function autoLeadInput(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.normalize('NFC');
+  const m = s.match(LEAD_TAG);
+  return m && m[0] === s && !/^\d+$/.test(m[1] ?? '') ? s : null;
+}
+
+/** 앞머리 태그 하나를 제목 끝으로 옮긴다 ("점검표 쓰기" + "#회사 " 는 "점검표 쓰기 #회사") */
+export const tagToEnd = (title: string, auto: string): string => `${title} ${auto.trim()}`;
+
+/**
+ * 태그를 뗀 나머지가 날짜 낱말뿐이면("#회사 내일") 읽는 쪽이 제목을 비우지 않으려고 그 낱말을 제목으로 남긴다.
+ * 이때는 태그까지 한 줄로 읽어 제목은 태그, 날짜는 마감으로 한다 (태그를 안 떼던 때와 같은 결과). 아니면 null
+ */
+export function readTagOnlyTodo(
+  lead: string,
+  rest: string,
+  today: string,
+  nowMinute: number,
+): QuickTodoTimed | null {
+  if (!lead) return null;
+  const whole = parseTodoLine(`${lead}${rest}`, today, nowMinute);
+  return whole.title.trim() === lead.trim() ? { ...whole, title: lead.trim() } : null;
 }

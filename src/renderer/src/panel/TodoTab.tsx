@@ -209,7 +209,12 @@ export function TodoTab({
       setError(t('panel.add.empty'));
       return;
     }
-    const r = await bridge.add(value);
+    // 자동 앞머리가 그대로 앞에 있으면 알려서 저장할 때 제목 끝으로 옮기게 한다 (직접 친 태그는 보내지 않는다)
+    const auto = autoPrefix.current;
+    const r = await bridge.add(
+      value,
+      value === text && auto !== null && text.startsWith(auto) ? { autoLead: auto } : undefined,
+    );
     if (!r.ok) {
       setError(r.error ?? t('panel.add.failed'));
       return;

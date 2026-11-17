@@ -87,7 +87,7 @@ import {
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
-import { splitLeadTags } from '../shared/todo-tag-prefix.ts';
+import { autoLeadInput, readTagOnlyTodo, splitLeadTags, tagToEnd } from '../shared/todo-tag-prefix.ts';
 import { emptyViewKeep } from '../shared/view-keep.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -130,6 +130,8 @@ const RESIZE_IDLE_MS = 2000;
 interface AddOpts {
   quick?: boolean;
   as?: 'todo';
+  /** 화면이 자동으로 넣은 "#태그 " 앞머리. 그대로 앞에 있으면 저장할 때 제목 끝으로 옮긴다 */
+  autoLead?: string;
 }
 
 export interface PanelOptions {
@@ -416,6 +418,7 @@ export function createPanel(o: PanelOptions) {
       const opts: AddOpts = {
         quick: raw.quick === true,
         ...(raw.as === 'todo' ? { as: 'todo' as const } : {}),
+        ...(autoLeadInput(raw.autoLead) ? { autoLead: autoLeadInput(raw.autoLead) as string } : {}),
       };
       // 여러 줄을 붙여 넣으면 줄마다 하나씩 (할 일이나 일정). 빈 줄은 건너뛴다
       const lines = text
@@ -464,16 +467,21 @@ export function createPanel(o: PanelOptions) {
   }
   function addLine(full: string, now: number, opts: AddOpts = {}): PanelAddResult {
     // 앞에 붙은 "#태그 " 는 떼고 읽은 뒤 제목 앞에 되붙인다 (안 떼면 "#회사 내일 보고서" 의 내일이 맨 앞이 아니라 안 읽힌다)
-    const { lead, rest: line } = splitLeadTags(full);
+    const split0 = splitLeadTags(full);
+    const line = split0.rest;
+    // 화면이 자동으로 넣은 앞머리가 그대로 앞에 있으면 제목 끝으로 옮긴다 ("점검표 쓰기 #회사"). 직접 친 태그는 자리 그대로
+    const auto = opts.autoLead && split0.lead.startsWith(opts.autoLead) ? opts.autoLead : '';
+    const lead = split0.lead.slice(auto.length);
+    const named = (title: string) => (auto ? tagToEnd(lead + title, auto) : lead + title);
     // 분류 바꾸기("할 일로"): 시각이 있어도 할 일로 넣는다
-    if (opts.as === 'todo') return addTodo(line, now, undefined, lead);
+    if (opts.as === 'todo') return addTodo(line, now, undefined, lead, auto);
     if (opts.quick) {
       const memo = memoBody(full);
       if (memo !== undefined) return addMemo(memo, now);
     }
     // "30분 뒤 알려 줘", "in 30 minutes": 지금부터 N분 뒤에 울리는 알림 (마감 시각이 그때인 할 일, snooze.ts)
     const later = parseRemindIn(line);
-    if (later) return addRemindIn(lead + (later.title || t('snooze.remindTitle')), later.minutes, now);
+    if (later) return addRemindIn(named(later.title || t('snooze.remindTitle')), later.minutes, now);
     // "1시간 전에 알려줘", "하루 전 알림" 같은 알림 말은 먼저 뗀다 (남기면 "1시간"을 일정 길이로 읽는다)
     const { rest: text, remind } = splitRemind(line);
     const deadline = hasDeadlineWord(text) && !hasTimeRange(text);
@@ -483,12 +491,13 @@ export function createPanel(o: PanelOptions) {
     const ev = info?.ev;
     if (ev) {
       const startAt = localTime(ev.day, ev.minute);
-      const dup = sameEvent(ev.title, startAt, false);
+      // 저장하는 제목(태그 포함)으로 견줘야 저장된 일정과 겹침을 찾는다
+      const dup = sameEvent(named(ev.title), startAt, false);
       if (dup) return dup;
       const reminds = remindsOf(remind, false, ev.minute);
       const added = o.events.add(
         {
-          title: lead + ev.title,
+          title: named(ev.title),
           startAt,
           endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null,
           ...(reminds ? { reminds } : {}),
@@ -514,7 +523,7 @@ export function createPanel(o: PanelOptions) {
         ...(am ? { am } : {}),
       };
     }
-    return addTodo(text, now, remind, lead);
+    return addTodo(text, now, remind, lead, auto);
   }
   /** N분 뒤 알림: 그 시각이 마감인 할 일에 정각 알림 하나 */
   function addRemindIn(title: string, minutes: number, now: number): PanelAddResult {
@@ -524,14 +533,17 @@ export function createPanel(o: PanelOptions) {
     return { ok: true, kind: 'todo', id: todo.id, due: todo.due, remindAt: at };
   }
   /** 한 줄을 할 일로 넣는다 (마감, 마감 시각, 중요, 반복, 알림은 글에서 읽는다) */
-  function addTodo(line: string, now: number, taken?: TakenRemind, leadTags = ''): PanelAddResult {
+  function addTodo(line: string, now: number, taken?: TakenRemind, leadTags = '', auto = ''): PanelAddResult {
     const peeled = splitLeadTags(line);
     const lead = leadTags + peeled.lead;
     const split = taken === undefined ? splitRemind(peeled.rest) : { rest: peeled.rest, remind: taken };
-    const parsed = parseTodoLine(split.rest, localDay(now), minuteOfDay(now));
+    // 태그를 뗀 나머지가 날짜 낱말뿐이면 제목은 태그, 날짜는 마감 ("#회사 내일")
+    const tagOnly = readTagOnlyTodo(auto + lead, split.rest, localDay(now), minuteOfDay(now));
+    const parsed = tagOnly ?? parseTodoLine(split.rest, localDay(now), minuteOfDay(now));
     if (!parsed.title) return { ok: false, error: t('panel.add.empty') };
     const reminds = remindsOf(split.remind, parsed.dueMin === null, parsed.dueMin ?? 0);
-    const todo = o.store.add({ ...parsed, title: lead + parsed.title, ...(reminds ? { reminds } : {}) }, now);
+    const title = tagOnly ? parsed.title : auto ? tagToEnd(lead + parsed.title, auto) : lead + parsed.title;
+    const todo = o.store.add({ ...parsed, title, ...(reminds ? { reminds } : {}) }, now);
     push();
     const past = !!todo.due && todo.due < localDay(now);
     return {
