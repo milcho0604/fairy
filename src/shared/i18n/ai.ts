@@ -115,6 +115,7 @@ export const ko = {
   'ai.usage.resetAt': (v: { when: string }) => `${v.when} 초기화`,
   // AI 에게 보내는 질문에 붙이는 틀 (화면에는 안 보이고 AI 가 읽는다. 화면 말과 같은 말로 보낸다)
   'ai.ctx.head': (v: { day: string }) => `[내 오늘 상황, ${v.day}]`,
+  'ai.ctx.use': '(참고 자료다. 사용자가 일정이나 할 일을 묻거나 꼭 필요할 때만 쓰고, 먼저 꺼내지 않는다)',
   'ai.ctx.events': '남은 일정:',
   'ai.ctx.allDay': '종일',
   'ai.ctx.todos': '안 끝낸 할 일:',
@@ -232,6 +233,8 @@ export const en: Translation<typeof ko> = {
   'ai.usage.resetHours': (v) => (Number(v.n) === 1 ? 'Resets in 1 hour' : `Resets in ${v.n} hours`),
   'ai.usage.resetAt': (v) => `Resets ${v.when}`,
   'ai.ctx.head': (v) => `[My day so far, ${v.day}]`,
+  'ai.ctx.use':
+    '(Reference only. Use it when the user asks about the schedule or to-dos or it is truly needed; never bring it up yourself.)',
   'ai.ctx.events': 'Events left today:',
   'ai.ctx.allDay': 'All day',
   'ai.ctx.todos': 'Open to-dos:',
