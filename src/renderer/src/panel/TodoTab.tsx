@@ -18,6 +18,7 @@ import {
   type Todo,
   type TodoStep,
 } from '../../../shared/todo-store.ts';
+import { keepAuto, syncTagPrefix, tagPrefix } from '../../../shared/todo-tag-prefix.ts';
 import { restoredPages } from '../../../shared/view-keep.ts';
 import { useLanguage } from '../language-context.ts';
 import './assist.css';
@@ -130,6 +131,40 @@ export function TodoTab({
   const picked = tag && tags.some((x) => x.tag.toLowerCase() === tag.toLowerCase()) ? tag : null;
   // 고정한 것을 맨 위로 (고정한 순서), 아래는 원래 정렬 (중요, 마감 순)
   const shown = pinFirst(filterTodos(s.open, { query: finding ? query : '', tag: picked, composing }));
+  // 태그로 걸러 보는 중이고 칸이 비었으면 "#태그 " 를 미리 넣어 둔다 (규칙은 shared/todo-tag-prefix.ts)
+  const textRef = useRef(text);
+  textRef.current = text;
+  /** 칸 앞에 자동으로 넣어 둔 앞머리 (사용자가 고치면 null) */
+  const autoPrefix = useRef<string | null>(null);
+  /** 한글 조합 중 (끝나면 미룬 앞머리를 맞춘다) */
+  const imeOn = useRef(false);
+  const imeLater = useRef(false);
+  const putCaretEnd = () =>
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el && !imeOn.current) el.setSelectionRange(el.value.length, el.value.length);
+    });
+  const syncPrefix = () => {
+    if (imeOn.current) {
+      imeLater.current = true;
+      return;
+    }
+    imeLater.current = false;
+    const r = syncTagPrefix(textRef.current, autoPrefix.current, picked);
+    autoPrefix.current = r.auto;
+    if (!r.changed) return;
+    textRef.current = r.text;
+    setText(r.text);
+    setError('');
+    putCaretEnd();
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 고른 태그가 바뀔 때만 (syncPrefix 는 매번 새로 만들어도 같은 일)
+  useEffect(() => {
+    // 패널을 다시 열었을 때 보관소에서 돌아온 글이 앞머리뿐이면 우리 것으로 이어받는다
+    if (autoPrefix.current === null && picked && textRef.current === tagPrefix(picked))
+      autoPrefix.current = textRef.current;
+    syncPrefix();
+  }, [picked]);
   const lastPinned = shown.findLast((todo) => todo.pinnedAt !== null)?.id;
   /** 상세 칸에 열린 할 일 (목록에 보이는 것만: 태그나 찾기로 가려지면 닫는다) */
   const selected = wide ? shown.find((x) => x.id === selId) : undefined;
@@ -169,12 +204,23 @@ export function TodoTab({
 
   /** value 를 넣는다. 여러 줄 붙여 넣기면 칸에 적던 글은 그대로 둔다 */
   const add = async (value = text) => {
+    // 자동으로 넣은 앞머리뿐이면 쓴 글이 없는 것과 같다 ("#회사" 라는 할 일을 넣지 않는다)
+    if (value === text && autoPrefix.current !== null && text === autoPrefix.current) {
+      setError(t('panel.add.empty'));
+      return;
+    }
     const r = await bridge.add(value);
     if (!r.ok) {
       setError(r.error ?? t('panel.add.failed'));
       return;
     }
-    if (value === text) setText('');
+    if (value === text) {
+      // 같은 태그로 이어서 적게 앞머리를 다시 넣는다
+      const r = syncTagPrefix('', null, picked);
+      autoPrefix.current = r.auto;
+      setText(r.text);
+      if (r.text) putCaretEnd();
+    }
     setError('');
     // 새로 넣은 줄이 어디 있는지 알리려고 기억해 둔다 (상태가 오면 그 줄까지 스크롤하고 알린다)
     const ids =
@@ -335,13 +381,22 @@ export function TodoTab({
             placeholder={t('panel.todo.placeholder')}
             onChange={(e) => {
               setText(e.target.value);
+              autoPrefix.current = keepAuto(e.target.value, autoPrefix.current);
               setError('');
+            }}
+            onCompositionStart={() => {
+              imeOn.current = true;
+            }}
+            onCompositionEnd={() => {
+              imeOn.current = false;
+              if (imeLater.current) setTimeout(syncPrefix, 0);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) add();
               // 쓰던 줄이 있으면 Esc 는 먼저 그것만 지운다 (한 번 더 누르면 패널이 닫힌다)
               if (isEsc(e) && text) {
                 takeEsc(e);
+                autoPrefix.current = null;
                 setText('');
                 setError('');
               }

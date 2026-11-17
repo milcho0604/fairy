@@ -87,6 +87,7 @@ import {
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
+import { splitLeadTags } from '../shared/todo-tag-prefix.ts';
 import { emptyViewKeep } from '../shared/view-keep.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -461,16 +462,18 @@ export function createPanel(o: PanelOptions) {
     push();
     return { ok: true, kind: 'note', id: note.id };
   }
-  function addLine(line: string, now: number, opts: AddOpts = {}): PanelAddResult {
+  function addLine(full: string, now: number, opts: AddOpts = {}): PanelAddResult {
+    // 앞에 붙은 "#태그 " 는 떼고 읽은 뒤 제목 앞에 되붙인다 (안 떼면 "#회사 내일 보고서" 의 내일이 맨 앞이 아니라 안 읽힌다)
+    const { lead, rest: line } = splitLeadTags(full);
     // 분류 바꾸기("할 일로"): 시각이 있어도 할 일로 넣는다
-    if (opts.as === 'todo') return addTodo(line, now);
+    if (opts.as === 'todo') return addTodo(line, now, undefined, lead);
     if (opts.quick) {
-      const memo = memoBody(line);
+      const memo = memoBody(full);
       if (memo !== undefined) return addMemo(memo, now);
     }
     // "30분 뒤 알려 줘", "in 30 minutes": 지금부터 N분 뒤에 울리는 알림 (마감 시각이 그때인 할 일, snooze.ts)
     const later = parseRemindIn(line);
-    if (later) return addRemindIn(later.title || t('snooze.remindTitle'), later.minutes, now);
+    if (later) return addRemindIn(lead + (later.title || t('snooze.remindTitle')), later.minutes, now);
     // "1시간 전에 알려줘", "하루 전 알림" 같은 알림 말은 먼저 뗀다 (남기면 "1시간"을 일정 길이로 읽는다)
     const { rest: text, remind } = splitRemind(line);
     const deadline = hasDeadlineWord(text) && !hasTimeRange(text);
@@ -485,7 +488,7 @@ export function createPanel(o: PanelOptions) {
       const reminds = remindsOf(remind, false, ev.minute);
       const added = o.events.add(
         {
-          title: ev.title,
+          title: lead + ev.title,
           startAt,
           endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null,
           ...(reminds ? { reminds } : {}),
@@ -511,7 +514,7 @@ export function createPanel(o: PanelOptions) {
         ...(am ? { am } : {}),
       };
     }
-    return addTodo(text, now, remind);
+    return addTodo(text, now, remind, lead);
   }
   /** N분 뒤 알림: 그 시각이 마감인 할 일에 정각 알림 하나 */
   function addRemindIn(title: string, minutes: number, now: number): PanelAddResult {
@@ -521,12 +524,14 @@ export function createPanel(o: PanelOptions) {
     return { ok: true, kind: 'todo', id: todo.id, due: todo.due, remindAt: at };
   }
   /** 한 줄을 할 일로 넣는다 (마감, 마감 시각, 중요, 반복, 알림은 글에서 읽는다) */
-  function addTodo(line: string, now: number, taken?: TakenRemind): PanelAddResult {
-    const split = taken === undefined ? splitRemind(line) : { rest: line, remind: taken };
+  function addTodo(line: string, now: number, taken?: TakenRemind, leadTags = ''): PanelAddResult {
+    const peeled = splitLeadTags(line);
+    const lead = leadTags + peeled.lead;
+    const split = taken === undefined ? splitRemind(peeled.rest) : { rest: peeled.rest, remind: taken };
     const parsed = parseTodoLine(split.rest, localDay(now), minuteOfDay(now));
     if (!parsed.title) return { ok: false, error: t('panel.add.empty') };
     const reminds = remindsOf(split.remind, parsed.dueMin === null, parsed.dueMin ?? 0);
-    const todo = o.store.add({ ...parsed, ...(reminds ? { reminds } : {}) }, now);
+    const todo = o.store.add({ ...parsed, title: lead + parsed.title, ...(reminds ? { reminds } : {}) }, now);
     push();
     const past = !!todo.due && todo.due < localDay(now);
     return {
