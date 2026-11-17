@@ -18,7 +18,7 @@ test('보낼 메시지: 최근 문답 몇 개와 질문, 오래된 것부터 빼
   const history = Array.from({ length: 6 }, (_, i) => ({ question: `q${i}`, answer: `a${i}` }));
   const m = ticketMessages(history, '지금');
   assert.equal(m.length, TICKET_HISTORY * 2 + 1);
-  assert.deepEqual(m[0], { role: 'user', content: 'q2' });
+  assert.deepEqual(m[0], { role: 'user', content: 'q1' });
   assert.deepEqual(m.at(-1), { role: 'user', content: '지금' });
   const long = Array.from({ length: 4 }, () => ({ question: 'q'.repeat(2000), answer: 'a'.repeat(2000) }));
   const cut = ticketMessages(long, 'x'.repeat(4500));

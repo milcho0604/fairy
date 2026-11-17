@@ -117,9 +117,10 @@ test('codex, cursor 명령: "-" 로 시작하는 질문은 옵션으로 읽히�
 
 test('기록 안 남김: 최근 대화를 질문 앞에 붙인다', () => {
   assert.equal(withHistory([], '안녕'), '안녕');
-  const h = Array.from({ length: 6 }, (_, i) => ({ question: `q${i}`, answer: `a${i}` }));
+  const h = Array.from({ length: 14 }, (_, i) => ({ question: `q${i}`, answer: `a${i}` }));
   const text = withHistory(h, '다음');
-  assert.ok(!text.includes('q1') && text.includes('q2') && text.includes('q5'));
+  // 차례 수(12)와 글자 예산 안에서 최근 것부터
+  assert.ok(!text.includes('q1\n') && text.includes('q2\n') && text.includes('q13'));
   assert.ok(text.endsWith('사용자 질문: 다음'));
 });
 

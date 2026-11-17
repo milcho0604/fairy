@@ -7,7 +7,7 @@ import { type Lang, t } from '../../shared/i18n/index.ts';
 import type { AiChatBody, AiChatOutcome } from '../server-api.ts';
 
 /** 붙여 보낼 최근 문답 수 */
-export const TICKET_HISTORY = 4;
+export const TICKET_HISTORY = 5;
 /**
  * 서버 상한 안으로 자른다. 질문 글자 수는 사용자가 친 마지막 질문만 센다 (서버 .env 상한 AI_MAX_TOTAL_CHARS 8000 이하,
  * 운영자가 더 낮추면 서버가 too_long). 요청 전체(앞 문답 + 앱이 붙인 글 + 질문)는 서버 안전 상한 12000 보다 낮은 11500 으로 묶는다
