@@ -406,6 +406,8 @@ export function TodoTab({
             onCompositionEnd={() => {
               imeOn.current = false;
               if (imeLater.current) setTimeout(syncPrefix, 0);
+              // 조합 중에 앞머리 글자를 눌렀으면 그때는 못 옮겼다: 조합이 끝난 뒤 한 번 더 본다
+              else caretPastAuto();
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) add();
