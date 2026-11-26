@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseTodoLine } from './remind-parse.ts';
 import { todoTags } from './todo-filter.ts';
-import { keepAuto, splitLeadTags, syncTagPrefix, tagPrefix } from './todo-tag-prefix.ts';
+import { caretOutOfAuto, keepAuto, splitLeadTags, syncTagPrefix, tagPrefix } from './todo-tag-prefix.ts';
 
 test('빈 칸에 태그를 고르면 앞머리를 넣는다', () => {
   assert.deepEqual(syncTagPrefix('', null, '회사'), { text: '#회사 ', auto: '#회사 ', changed: true });
@@ -81,4 +81,26 @@ test('앞머리를 떼고 읽으면 날짜와 반복이 읽히고 제목에 되�
   assert.equal(parseTodoLine(q.rest, today, 600).repeat, 'daily');
   // 떼지 않으면 읽히지 않는다 (이 함수가 필요한 까닭)
   assert.equal(parseTodoLine('#회사 내일 보고서 쓰기', today, 600).due, null);
+});
+
+test('앞머리 글자 위를 누르면 커서를 글 끝으로 보낸다', () => {
+  // "#회사 " 의 앞, 가운데: 끝으로
+  assert.equal(caretOutOfAuto('#회사 ', '#회사 ', 0, 0), 4);
+  assert.equal(caretOutOfAuto('#회사 ', '#회사 ', 2, 2), 4);
+  // 앞머리 뒤에 쓴 글이 있어도 앞머리 안이면 글 끝으로
+  assert.equal(caretOutOfAuto('#회사 보고서', '#회사 ', 1, 1), 7);
+});
+
+test('사용자가 정한 커서 자리는 그대로 둔다', () => {
+  // 이미 끝, 앞머리 바로 뒤, 쓴 글 가운데
+  assert.equal(caretOutOfAuto('#회사 ', '#회사 ', 4, 4), null);
+  assert.equal(caretOutOfAuto('#회사 보고서', '#회사 ', 4, 4), null);
+  assert.equal(caretOutOfAuto('#회사 보고서', '#회사 ', 6, 6), null);
+  // 끌어서 고른 글자
+  assert.equal(caretOutOfAuto('#회사 ', '#회사 ', 0, 4), null);
+  assert.equal(caretOutOfAuto('#회사 보고서', '#회사 ', 0, 3), null);
+  assert.equal(caretOutOfAuto('#회사 보고서', '#회사 ', 0, 7), null);
+  // 자동 앞머리가 없거나 이미 고쳐진 글
+  assert.equal(caretOutOfAuto('#회사 ', null, 0, 0), null);
+  assert.equal(caretOutOfAuto('#회 ', '#회사 ', 0, 0), null);
 });

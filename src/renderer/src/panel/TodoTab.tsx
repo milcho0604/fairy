@@ -18,7 +18,7 @@ import {
   type Todo,
   type TodoStep,
 } from '../../../shared/todo-store.ts';
-import { keepAuto, syncTagPrefix, tagPrefix } from '../../../shared/todo-tag-prefix.ts';
+import { caretOutOfAuto, keepAuto, syncTagPrefix, tagPrefix } from '../../../shared/todo-tag-prefix.ts';
 import { restoredPages } from '../../../shared/view-keep.ts';
 import { useLanguage } from '../language-context.ts';
 import './assist.css';
@@ -143,6 +143,15 @@ export function TodoTab({
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (el && !imeOn.current) el.setSelectionRange(el.value.length, el.value.length);
+    });
+  // 칸을 누르거나 칸에 들어오면: 자동 앞머리 글자 위에 놓인 커서를 글 끝으로 (태그 앞이나 가운데에 글이 끼지 않게).
+  // 누른 자리는 mouseup 뒤에 정해지므로 한 틀 뒤에 본다
+  const caretPastAuto = () =>
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el || imeOn.current || document.activeElement !== el) return;
+      const to = caretOutOfAuto(el.value, autoPrefix.current, el.selectionStart ?? 0, el.selectionEnd ?? 0);
+      if (to !== null) el.setSelectionRange(to, to);
     });
   const syncPrefix = () => {
     if (imeOn.current) {
@@ -389,6 +398,8 @@ export function TodoTab({
               autoPrefix.current = keepAuto(e.target.value, autoPrefix.current);
               setError('');
             }}
+            onFocus={caretPastAuto}
+            onMouseUp={caretPastAuto}
             onCompositionStart={() => {
               imeOn.current = true;
             }}

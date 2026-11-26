@@ -87,3 +87,14 @@ export function readTagOnlyTodo(
   const whole = parseTodoLine(`${lead}${rest}`, today, nowMinute);
   return whole.title.trim() === lead.trim() ? { ...whole, title: lead.trim() } : null;
 }
+
+/**
+ * 칸을 누르거나 칸에 들어왔을 때 커서를 옮길 자리. 옮길 필요가 없으면 null.
+ * 자동 앞머리 글자 위를 누르면 커서가 "#태그" 앞이나 가운데에 놓여, 그대로 쓰면 "엥#회사", "#회엥사" 처럼 태그가 깨진다.
+ * 그래서 커서가 앞머리 안에 접혀 있으면(고른 글자 없이) 글 끝으로 보낸다.
+ * 골라 둔 글자(끌어 고르기, 통째로 골라 바꿔 쓰기)와 앞머리 뒤의 자리는 사용자가 정한 것이라 그대로 둔다. 화살표나 Home 으로 앞머리 안에 들어가는 것도 막지 않는다
+ */
+export function caretOutOfAuto(text: string, auto: string | null, start: number, end: number): number | null {
+  if (auto === null || !text.startsWith(auto)) return null;
+  return start === end && start < auto.length ? text.length : null;
+}
