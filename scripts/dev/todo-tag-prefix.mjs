@@ -281,6 +281,24 @@ try {
     await allChip(p);
     check(`${tag} 태그를 풀면 앞머리가 지워짐`, (await inputOf(p)).v === '');
 
+    // 칸을 마우스로 누르면: 앞머리 글자 위(앞, 가운데)를 눌러도 커서는 끝으로 가서 "X #태그" 로 저장된다 (11-26 "엥#페어리" 깨짐)
+    for (const [where, fx] of [['글자 앞', 0.02], ['태그 글자 가운데', 0.09], ['빈 오른쪽', 0.8]]) {
+      await allChip(p);
+      await chip(p, `#${W}`);
+      const r = await p.ev(`(() => { const b = ${inputSel}.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; })()`);
+      await p.clickAt(r.x + r.w * fx, r.y + r.h / 2);
+      await sleep(250);
+      st = await inputOf(p);
+      check(`${tag} ${where}: 눌러도 커서는 끝`, st.v === `#${W} ` && st.s === st.v.length && st.e === st.v.length, JSON.stringify(st));
+      const word = tx(`누름${name.replace(/\D/g, "")}x${fx}`, `click${name.replace(/\D/g, "")}x${fx}`);
+      await p.type(word);
+      await p.enter();
+      await sleep(700);
+      const got = await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((x) => x.title.includes(${JSON.stringify(word)})).map((x) => x.title))`).then(JSON.parse);
+      check(`${tag} ${where}: 누르고 쓰면 "글 #${W}" 로 저장`, got.length === 1 && got[0] === `${word} #${W}`, JSON.stringify(got));
+    }
+    await allChip(p);
+
     // 앞머리 뒤에 쓴 글은 그대로
     await chip(p, `#${W}`);
     await p.ev(`(() => { const i = ${inputSel}; i.focus(); i.setSelectionRange(i.value.length, i.value.length); return 1; })()`);
